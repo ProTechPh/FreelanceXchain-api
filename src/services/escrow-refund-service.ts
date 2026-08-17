@@ -16,6 +16,7 @@ import { projectRepository, type MilestoneEntity } from '../repositories/project
 import { getBlockchainAdapter } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { createPaymentRecord } from '../utils/payment-records.js';
 
 /**
  * Compute the escrow balance still available for refund: the contract total
@@ -188,8 +189,6 @@ async function validateRefundApproval(input: ApproveRefundInput): Promise<
   return { refund: refundData, contract: refundData.contract };
 }
 
-type FailedMilestone = { index: number; id: string; error: unknown };
-
 /**
  * Acquire the shared milestone-approve locks for multiple milestones in sorted
  * order (deadlock-free: every flow that locks several milestone keys uses the
@@ -339,6 +338,12 @@ export async function approveRefund(
         // refunded; a partial refund leaves it active.
         const refundsAllPending = refundTargets.length === pendingMilestones.length;
 
+        // tx hash per refunded milestone index — the full-refund path refunds
+        // every target in one tx (same hash), the partial path has one tx per
+        // milestone; already-refunded milestones skipped on idempotent retry get
+        // no new tx (null hash) but are still recorded so the log stays complete.
+        const refundTxHashes: Record<number, string | null> = {};
+
         try {
           const adapter = getBlockchainAdapter();
           if (!adapter.isAvailable()) {
@@ -368,7 +373,8 @@ export async function approveRefund(
                   `Milestone ${target.index} is ${onChainStatus.status} on-chain; expected Pending for refund`
                 );
               }
-              await adapter.refundMilestone(contract.escrow_address, target.index);
+              const refundResult = await adapter.refundMilestone(contract.escrow_address, target.index);
+              refundTxHashes[target.index] = refundResult.transactionHash ?? null;
             }
             logger.info('Blockchain partial refund executed', {
               refundId: input.refundId,
@@ -377,7 +383,10 @@ export async function approveRefund(
               refundedMilestones: refundTargets.map(t => t.index),
             });
           } else {
-            await adapter.refundEscrow(contract.escrow_address);
+            const refundResult = await adapter.refundEscrow(contract.escrow_address);
+            for (const target of refundTargets) {
+              refundTxHashes[target.index] = refundResult.transactionHash ?? null;
+            }
             logger.info('Blockchain refund executed', {
               refundId: input.refundId,
               escrowAddress: contract.escrow_address,
@@ -422,6 +431,31 @@ export async function approveRefund(
         if (refundsAllPending) {
           await contractRepository.updateContract(refund.contract_id, {
             status: 'cancelled',
+          });
+        }
+
+        // Payment records: one 'refund' record per refunded milestone so the
+        // payments log traces every escrow → employer movement (the milestone
+        // money returns to the employer). Best-effort: a failed record write
+        // never rolls back the refund — the funds already moved on-chain.
+        try {
+          for (const target of refundTargets) {
+            if (!(target.amount > 0)) continue;
+            await createPaymentRecord({
+              contractId: refund.contract_id,
+              milestoneId: projectMilestones[target.index]?.id ?? null,
+              payerId: contract.freelancer_id,
+              payeeId: contract.employer_id,
+              amount: target.amount,
+              paymentType: 'refund',
+              txHash: refundTxHashes[target.index] ?? null,
+              status: 'completed',
+            });
+          }
+        } catch (recordError) {
+          logger.error('Failed to record refund payment (payments log may diverge from ledger)', {
+            error: recordError,
+            refundId: input.refundId,
           });
         }
 

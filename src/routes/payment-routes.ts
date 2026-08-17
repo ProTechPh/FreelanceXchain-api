@@ -8,8 +8,9 @@ import {
   requestMilestoneCompletion,
   approveMilestone,
   getContractPaymentStatus,
-  disputeMilestone,
+  getContractPaymentHistory,
 } from '../services/payment-service.js';
+import { createDispute } from '../services/dispute-service.js';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
@@ -95,6 +96,41 @@ const router = Router();
  *         reason:
  *           type: string
  *           description: Reason for disputing the milestone
+ *     PaymentHistoryRecord:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *         milestoneId:
+ *           type: string
+ *           nullable: true
+ *         payerId:
+ *           type: string
+ *         payeeId:
+ *           type: string
+ *         amount:
+ *           type: number
+ *         currency:
+ *           type: string
+ *         txHash:
+ *           type: string
+ *           nullable: true
+ *         status:
+ *           type: string
+ *         paymentType:
+ *           type: string
+ *           enum: [escrow_deposit, milestone_release, refund, dispute_resolution, rush_fee]
+ *         createdAt:
+ *           type: string
+ *     PaymentHistoryResponse:
+ *       type: object
+ *       properties:
+ *         contractId:
+ *           type: string
+ *         items:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/PaymentHistoryRecord'
  */
 
 
@@ -353,23 +389,27 @@ router.post(
         return;
       }
 
-      const result = await disputeMilestone(
+      // Unified with POST /api/disputes: both endpoints go through
+      // dispute-service.createDispute so every dispute also marks the milestone
+      // Disputed on the escrow contract (real mode), keeping DB and ledger in sync.
+      const result = await createDispute({
         contractId,
         milestoneId,
-        userId,
-        reason
-      );
+        initiatorId: userId,
+        reason,
+      });
 
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
-                          result.error.code === 'UNAUTHORIZED' ? 403 : 400;
+                          result.error.code === 'UNAUTHORIZED' ? 403 :
+                          result.error.code === 'ALREADY_DISPUTED' || result.error.code === 'DUPLICATE_DISPUTE' ? 409 : 400;
         sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
       res.json({
         status: 'disputed',
-        disputeId: result.data.disputeId,
+        disputeId: result.data.id,
       });
     } catch (error) {
       /* istanbul ignore next */
@@ -427,6 +467,72 @@ router.get(
       }
 
       const result = await getContractPaymentStatus(contractId, userId, req.user?.role);
+
+      if (!result.success) {
+        const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
+                          result.error.code === 'UNAUTHORIZED' ? 403 : 400;
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
+        return;
+      }
+
+      res.json(result.data);
+    } catch (error) {
+      next(error);
+    }
+  })
+);
+
+
+/**
+ * @swagger
+ * /api/payments/contracts/{contractId}/history:
+ *   get:
+ *     summary: Get contract payment history
+ *     description: Get the payments log for a contract — every ledger money movement (escrow deposit, milestone release, refund, dispute resolution, rush fee), newest first
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The contract ID (UUID)
+ *     responses:
+ *       200:
+ *         description: Contract payment history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaymentHistoryResponse'
+ *       400:
+ *         description: Invalid UUID format
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not a party to the contract
+ *       404:
+ *         description: Contract not found
+ */
+router.get(
+  '/contracts/:contractId/history',
+  authMiddleware,
+  apiRateLimiter,
+  validateUUID(['contractId']),
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.userId;
+      const contractId = req.params['contractId'] ?? '';
+
+      /* istanbul ignore next */
+      if (!userId) {
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
+        return;
+      }
+
+      const result = await getContractPaymentHistory(contractId, userId, req.user?.role);
 
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :

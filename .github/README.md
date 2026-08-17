@@ -77,7 +77,7 @@ The blockchain layer uses an adapter pattern: set `BLOCKCHAIN_MODE=simulated` (t
 | **Database / Auth** | Appwrite (schema versioned in `scripts/setup-appwrite-db.ts`) |
 | **Blockchain** | Solidity 0.8.26, Hardhat, Ethers.js — Polygon Amoy (prod), Ganache (dev) |
 | **AI/ML** | OpenAI-compatible LLM API (default: Anthropic Claude) |
-| **Auth** | JWT (access + refresh), MFA, CSRF, role-based access, Didit KYC |
+| **Auth** | Appwrite session JWTs, MFA, CSRF, role-based access, Didit KYC |
 | **Infra** | Redis (rate limiting), Docker (multi-stage), Swagger/OpenAPI |
 
 ## 📦 Getting Started
@@ -99,7 +99,7 @@ pnpm install --frozen-lockfile
 
 # 2. Configure environment (see .env.example for the full list)
 cp .env.example .env
-# At minimum: APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, JWT_SECRET
+# At minimum: APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, CSRF_SECRET
 
 # 3. Compile smart contracts (required — the runtime loads ABIs from artifacts/)
 pnpm run compile
@@ -135,8 +135,6 @@ Curated list — the **authoritative, complete list is `.env.example`**. Require
 | Variable | Description |
 | --- | --- |
 | `APPWRITE_ENDPOINT` · `APPWRITE_PROJECT_ID` · `APPWRITE_API_KEY` | Appwrite connection (**required**) |
-| `JWT_SECRET` | JWT signing secret, min 32 chars (**required**) |
-| `JWT_REFRESH_SECRET` | Refresh-token secret (**required in production**) |
 | `CSRF_SECRET` · `MFA_ENCRYPTION_KEY` | CSRF signing & MFA encryption (**required in production**) |
 | `LLM_API_URL` · `LLM_MODEL` · `LLM_API_KEY` | AI matching (default: `https://api.anthropic.com`, `claude-haiku-4.5`) |
 | `BLOCKCHAIN_MODE` | `simulated` (default) or `real` |

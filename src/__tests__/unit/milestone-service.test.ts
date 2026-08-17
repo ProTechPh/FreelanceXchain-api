@@ -391,7 +391,7 @@ describe('Milestone Service', () => {
         makeProject([makeMilestone({ id: 'ms-1', status: 'submitted' }), makeMilestone({ id: 'ms-2', status: 'pending' })])
       );
 
-      const result = await getContractMilestones('c-1');
+      const result = await getContractMilestones('c-1', 'employer-1');
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -406,7 +406,7 @@ describe('Milestone Service', () => {
       mockContractRepository.getContractById.mockResolvedValueOnce(makeContract());
       mockProjectRepository.findProjectById.mockResolvedValueOnce(null);
 
-      const result = await getContractMilestones('c-1');
+      const result = await getContractMilestones('c-1', 'employer-1');
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual([]);
@@ -418,7 +418,7 @@ describe('Milestone Service', () => {
       mockContractRepository.getContractById.mockResolvedValueOnce(makeContract());
       mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([]));
 
-      const result = await getContractMilestones('c-1');
+      const result = await getContractMilestones('c-1', 'employer-1');
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual([]);
@@ -453,6 +453,18 @@ describe('Milestone Service', () => {
       mockContractRepository.getContractById.mockResolvedValueOnce(makeContract());
 
       const result = await getContractMilestones('c-1', 'random-user');
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('should return UNAUTHORIZED when no userId is provided (fail closed)', async () => {
+      const { getContractMilestones } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContract());
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([makeMilestone()]));
+
+      const result = await getContractMilestones('c-1');
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');

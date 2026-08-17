@@ -126,6 +126,12 @@ router.get('/projects', apiRateLimiter, asyncHandler(async (req: Request, res: R
     return;
   }
 
+  // Cross-validate the budget range
+  if (minBudget !== undefined && maxBudget !== undefined && minBudget > maxBudget) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'minBudget must be less than or equal to maxBudget', { requestId });
+    return;
+  }
+
   // Parse page size
   const pageSize = pageSizeParam ? Number(pageSizeParam) : undefined;
   if (pageSizeParam && (isNaN(pageSize!) || pageSize! < 1)) {
@@ -176,7 +182,7 @@ router.get('/projects', apiRateLimiter, asyncHandler(async (req: Request, res: R
  *         name: skills
  *         schema:
  *           type: string
- *         description: Comma-separated skill IDs to filter by
+ *         description: Comma-separated skill IDs or skill names to filter by (case-insensitive)
  *       - in: query
  *         name: pageSize
  *         schema:
@@ -209,7 +215,8 @@ router.get('/freelancers', apiRateLimiter, asyncHandler(async (req: Request, res
   const pageSizeParam = req.query['pageSize'] as string | undefined;
   const continuationToken = req.query['continuationToken'] as string | undefined;
 
-  // Parse skill IDs
+  // Parse skill IDs or skill names (profiles store skills by name; the service
+  // resolves IDs to names before matching)
   const skillIds = skillsParam 
     ? skillsParam.split(',').map(s => s.trim()).filter(s => s.length > 0)
     : undefined;

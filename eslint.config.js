@@ -36,7 +36,13 @@ export default [
             ...tseslint.configs.recommended.rules,
 
             // Custom rule overrides
-            '@typescript-eslint/no-unused-vars': ['warn', {
+            // Strict unused-vars gate (decision: 2026-08): dead imports, unused
+            // locals, and unused function args fail CI instead of warning, so
+            // `pnpm run lint` (already part of the CI typecheck job) catches them
+            // before merge. The intentional escape hatch is a `^_`-prefixed name
+            // (e.g. `_req` for an Express param the handler doesn't use). Test
+            // files are deliberately exempt — see the test-file block below.
+            '@typescript-eslint/no-unused-vars': ['error', {
                 argsIgnorePattern: '^_',
                 varsIgnorePattern: '^_',
                 caughtErrorsIgnorePattern: '^_',
@@ -86,6 +92,9 @@ export default [
         rules: {
             // Relaxed rules for test files
             '@typescript-eslint/no-explicit-any': 'off',
+            // Unused-vars stays off here: test files intentionally declare
+            // helpers/mocks that not every test path uses, and jest globals are
+            // exercised dynamically. Source files are the strict gate.
             '@typescript-eslint/no-unused-vars': 'off',
             'no-unused-vars': 'off',
         },

@@ -264,6 +264,8 @@ Multipart proposal submission with attachments is exposed at `/api/proposals` wi
 | PATCH | `/api/saved-searches/:id` | JWT | Update a saved search |
 | DELETE | `/api/saved-searches/:id` | JWT | Delete a saved search |
 | POST | `/api/saved-searches/:id/execute` | JWT | Run a saved search |
+
+Saved-search `filters` accept skill **IDs, names, or a mix** in the `skills` array for **both** `project` and `freelancer` searches (see [Saved Searches API](saved-searches.md)).
 | POST | `/api/favorites` | JWT | Add a favorite |
 | GET | `/api/favorites` | JWT | List favorites |
 | DELETE | `/api/favorites/:targetType/:targetId` | JWT | Remove a favorite |

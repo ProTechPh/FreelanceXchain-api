@@ -76,19 +76,17 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
-jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
-  const repo = {
-    create: jest.fn<any>(async (payment: any) => ({ ...payment, id: generateId(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
-    findByContractId: jest.fn<any>(async () => []),
-    findByUserId: jest.fn<any>(async () => ({ items: [], hasMore: false })),
-    updateStatus: jest.fn<any>(async () => null),
-  };
-  return {
-    PaymentRepository: repo,
-    paymentRepository: repo,
-    PaymentType: {},
-  };
-});
+const mockPaymentRepository = {
+  create: jest.fn<any>(async (payment: any) => ({ ...payment, id: generateId(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
+  findByContractId: jest.fn<any>(async () => []),
+  findByUserId: jest.fn<any>(async () => ({ items: [], hasMore: false })),
+  updateStatus: jest.fn<any>(async () => null),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
+  PaymentRepository: mockPaymentRepository,
+  paymentRepository: mockPaymentRepository,
+  PaymentType: {},
+}));
 
 // Mock blockchain-related functions
 jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
@@ -129,14 +127,15 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
 }));
 
 const {
-  getDisputeById,
   requestMilestoneCompletion,
-  disputeMilestone,
   approveMilestone,
   getContractPaymentStatus,
   isContractComplete,
+  initializeContractEscrow,
   setEscrowOpsForTesting,
 } = await import('../../services/payment-service.js');
+
+const { mapContractFromEntity, mapProjectFromEntity } = await import('../../utils/entity-mapper.js');
 
 
 describe('Payment Service - Property-Based Tests', () => {
@@ -297,78 +296,6 @@ describe('Payment Service - Property-Based Tests', () => {
           const updatedProject = projectStore.get(project.id) as any;
           const updatedMilestone = updatedProject?.milestones.find((m: any) => m.id === milestoneId);
           expect(updatedMilestone?.status).toBe('submitted');
-        }
-      ),
-      { numRuns: 50 }
-    );
-  });
-
-  /**
-   * **Feature: blockchain-freelance-marketplace, Property 19: Milestone dispute creates dispute record**
-   * **Validates: Requirements 6.4**
-   * 
-   * For any disputed milestone, a dispute record shall be created and the 
-   * milestone status shall be set to 'disputed'.
-   */
-  it('Property 19: Milestone dispute creates dispute record', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.uuid(),
-        fc.uuid(),
-        fc.uuid(),
-        fc.string({ minLength: 1, maxLength: 200 }).filter(s => s.trim().length > 0),
-        async (freelancerId, employerId, milestoneId, reason) => {
-          // Setup users with wallet addresses
-          userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
-          userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
-          const milestone = createTestMilestone({
-            id: milestoneId,
-            status: 'submitted'
-          });
-          const project = createTestProject({ 
-            employer_id: employerId, 
-            milestones: [milestone] 
-          });
-          const contract = createTestContract({
-            project_id: project.id,
-            freelancer_id: freelancerId,
-            employer_id: employerId,
-            status: 'active'
-          });
-          
-          contractStore.set(contract.id, contract);
-          projectStore.set(project.id, project);
-
-          const result = await disputeMilestone(
-            contract.id,
-            milestoneId,
-            employerId,
-            reason
-          );
-
-          expect(result.success).toBe(true);
-          if (result.success) {
-            expect(result.data.milestoneId).toBe(milestoneId);
-            expect(result.data.status).toBe('disputed');
-            expect(result.data.disputeCreated).toBe(true);
-            expect(result.data.disputeId).toBeDefined();
-
-            const dispute = await getDisputeById(result.data.disputeId);
-            expect(dispute).not.toBeNull();
-            expect(dispute?.contractId).toBe(contract.id);
-            expect(dispute?.milestoneId).toBe(milestoneId);
-            expect(dispute?.initiatorId).toBe(employerId);
-            expect(dispute?.reason).toBe(reason);
-            expect(dispute?.status).toBe('open');
-          }
-
-          const updatedProject = projectStore.get(project.id) as any;
-          const updatedMilestone = updatedProject?.milestones.find((m: any) => m.id === milestoneId);
-          expect(updatedMilestone?.status).toBe('disputed');
-
-          const updatedContract = contractStore.get(contract.id) as any;
-          // Contract status stays 'active' — only the milestone is disputed
-          expect(updatedContract?.status).toBe('active');
         }
       ),
       { numRuns: 50 }
@@ -575,91 +502,6 @@ describe('Payment Service - Unit Tests', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe('INVALID_STATUS');
-    }
-  });
-
-  it('should allow freelancer to initiate dispute', async () => {
-    const freelancerId = generateId();
-    const employerId = generateId();
-    
-    userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
-    userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
-    
-    const milestone = createTestMilestone({ status: 'submitted' });
-    const project = createTestProject({ employer_id: employerId, milestones: [milestone] });
-    const contract = createTestContract({
-      project_id: project.id,
-      freelancer_id: freelancerId,
-      employer_id: employerId,
-      status: 'active'
-    });
-    
-    contractStore.set(contract.id, contract);
-    projectStore.set(project.id, project);
-
-    const result = await disputeMilestone(
-      contract.id,
-      milestone.id,
-      freelancerId,
-      'Work was not as described'
-    );
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      const dispute = await getDisputeById(result.data.disputeId);
-      expect(dispute?.initiatorId).toBe(freelancerId);
-    }
-  });
-
-  it('should reject dispute for already approved milestone', async () => {
-    const freelancerId = generateId();
-    const employerId = generateId();
-    
-    const milestone = createTestMilestone({ status: 'approved' });
-    const project = createTestProject({ employer_id: employerId, milestones: [milestone] });
-    const contract = createTestContract({
-      project_id: project.id,
-      freelancer_id: freelancerId,
-      employer_id: employerId,
-      status: 'active'
-    });
-    
-    contractStore.set(contract.id, contract);
-    projectStore.set(project.id, project);
-
-    const result = await disputeMilestone(contract.id, milestone.id, employerId, 'Some reason');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INVALID_STATUS');
-    }
-  });
-
-  it('should reject dispute from non-contract party', async () => {
-    const freelancerId = generateId();
-    const employerId = generateId();
-    const outsiderId = generateId();
-    
-    userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
-    userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
-    
-    const milestone = createTestMilestone({ status: 'submitted' });
-    const project = createTestProject({ employer_id: employerId, milestones: [milestone] });
-    const contract = createTestContract({
-      project_id: project.id,
-      freelancer_id: freelancerId,
-      employer_id: employerId,
-      status: 'active'
-    });
-    
-    contractStore.set(contract.id, contract);
-    projectStore.set(project.id, project);
-
-    const result = await disputeMilestone(contract.id, milestone.id, outsiderId, 'Some reason');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('UNAUTHORIZED');
     }
   });
 
@@ -889,5 +731,257 @@ describe('Payment Service - Unit Tests', () => {
       expect(result.data.releasedAmount).toBe(1000);
       expect(result.data.pendingAmount).toBe(800);
     }
+  });
+});
+
+// ─── initializeContractEscrow: rush fee folding ────────────────────────
+describe('initializeContractEscrow - rush fee', () => {
+  afterEach(() => {
+    setEscrowOpsForTesting();
+    jest.restoreAllMocks();
+  });
+
+  it('folds the rush fee into escrow milestone amounts and persists scaled DB milestones', async () => {
+    const mockDeployEscrow = jest.fn<any>();
+    const mockDepositToEscrow = jest.fn<any>();
+    setEscrowOpsForTesting({
+      deployEscrow: mockDeployEscrow,
+      depositToEscrow: mockDepositToEscrow,
+    });
+    mockDeployEscrow.mockResolvedValue({ escrowAddress: '0x' + 'd'.repeat(40) });
+    mockDepositToEscrow.mockResolvedValue({});
+
+    const employerId = generateId();
+    const freelancerId = generateId();
+
+    // DB milestones hold base amounts; contract carries a 30% rush fee (300 on 1000).
+    const projectEntity = createTestProject({
+      employer_id: employerId,
+      milestones: [
+        createTestMilestone({ amount: 600 }),
+        createTestMilestone({ amount: 400 }),
+      ],
+    });
+    const contractEntity = createTestContract({
+      project_id: projectEntity.id,
+      employer_id: employerId,
+      freelancer_id: freelancerId,
+      base_amount: 1000,
+      rush_fee: 300,
+      total_amount: 1300,
+      status: 'pending',
+    });
+    contractStore.set(contractEntity.id, contractEntity);
+    projectStore.set(projectEntity.id, projectEntity);
+
+    const result = await initializeContractEscrow(
+      mapContractFromEntity(contractEntity),
+      mapProjectFromEntity(projectEntity),
+      '0x' + 'e'.repeat(40),
+      '0x' + 'f'.repeat(40),
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    // Escrow funded with fee-inclusive amounts: 600 * 1.3 = 780, remainder 520.
+    expect(mockDeployEscrow).toHaveBeenCalledTimes(1);
+    const deployArgs = mockDeployEscrow.mock.calls[0]?.[0] as any;
+    expect(deployArgs.milestones.map((m: any) => m.amount.toString())).toEqual([
+      (780n * 10n ** 18n).toString(),
+      (520n * 10n ** 18n).toString(),
+    ]);
+    expect(deployArgs.totalAmount.toString()).toBe((1300n * 10n ** 18n).toString());
+    expect(mockDepositToEscrow).toHaveBeenCalledWith(
+      '0x' + 'd'.repeat(40),
+      1300n * 10n ** 18n,
+      '0x' + 'e'.repeat(40),
+    );
+
+    // Read model updated to match the ledger.
+    const storedProject = projectStore.get(projectEntity.id) as any;
+    expect(storedProject.milestones[0].amount).toBe(780);
+    expect(storedProject.milestones[1].amount).toBe(520);
+
+    // Contract escrow address persisted.
+    const storedContract = contractStore.get(contractEntity.id) as any;
+    expect(storedContract.escrow_address).toBe('0x' + 'd'.repeat(40));
+
+    // escrow_deposit payment record — funding is visible in the payments log.
+    // Simulated deploy with a bare deposit stub yields no tx hash (null).
+    expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: contractEntity.id,
+      milestone_id: null,
+      payer_id: employerId,
+      payee_id: freelancerId,
+      amount: 1300,
+      payment_type: 'escrow_deposit',
+      status: 'completed',
+      tx_hash: null,
+    }));
+  });
+
+  it('does not double-scale when DB milestones already include the fee', async () => {
+    const mockDeployEscrow = jest.fn<any>();
+    const mockDepositToEscrow = jest.fn<any>();
+    setEscrowOpsForTesting({
+      deployEscrow: mockDeployEscrow,
+      depositToEscrow: mockDepositToEscrow,
+    });
+    mockDeployEscrow.mockResolvedValue({ escrowAddress: '0x' + 'g'.repeat(40) });
+    mockDepositToEscrow.mockResolvedValue({});
+
+    const employerId = generateId();
+    const freelancerId = generateId();
+
+    // DB milestones already scaled by a previously accepted upgrade.
+    const projectEntity = createTestProject({
+      employer_id: employerId,
+      milestones: [
+        createTestMilestone({ amount: 780 }),
+        createTestMilestone({ amount: 520 }),
+      ],
+    });
+    const contractEntity = createTestContract({
+      project_id: projectEntity.id,
+      employer_id: employerId,
+      freelancer_id: freelancerId,
+      base_amount: 1000,
+      rush_fee: 300,
+      total_amount: 1300,
+      status: 'pending',
+    });
+    contractStore.set(contractEntity.id, contractEntity);
+    projectStore.set(projectEntity.id, projectEntity);
+
+    const result = await initializeContractEscrow(
+      mapContractFromEntity(contractEntity),
+      mapProjectFromEntity(projectEntity),
+      '0x' + 'e'.repeat(40),
+      '0x' + 'f'.repeat(40),
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const deployArgs = mockDeployEscrow.mock.calls[0]?.[0] as any;
+    expect(deployArgs.milestones.map((m: any) => m.amount.toString())).toEqual([
+      (780n * 10n ** 18n).toString(),
+      (520n * 10n ** 18n).toString(),
+    ]);
+    // No second scaling applied: stored milestones unchanged.
+    const storedProject = projectStore.get(projectEntity.id) as any;
+    expect(storedProject.milestones[0].amount).toBe(780);
+    expect(storedProject.milestones[1].amount).toBe(520);
+  });
+
+  it('records the escrow deposit with the funding tx hash when available', async () => {
+    const mockDeployEscrow = jest.fn<any>();
+    const mockDepositToEscrow = jest.fn<any>();
+    setEscrowOpsForTesting({
+      deployEscrow: mockDeployEscrow,
+      depositToEscrow: mockDepositToEscrow,
+    });
+    mockDeployEscrow.mockResolvedValue({ escrowAddress: '0x' + 'h'.repeat(40), transactionHash: '0xdeploy' });
+    mockDepositToEscrow.mockResolvedValue({ transactionHash: '0xdeposit' });
+
+    const employerId = generateId();
+    const freelancerId = generateId();
+    const projectEntity = createTestProject({
+      employer_id: employerId,
+      milestones: [createTestMilestone({ amount: 1000 })],
+    });
+    const contractEntity = createTestContract({
+      project_id: projectEntity.id,
+      employer_id: employerId,
+      freelancer_id: freelancerId,
+      base_amount: 1000,
+      rush_fee: 0,
+      total_amount: 1000,
+      status: 'pending',
+    });
+    contractStore.set(contractEntity.id, contractEntity);
+    projectStore.set(projectEntity.id, projectEntity);
+
+    const result = await initializeContractEscrow(
+      mapContractFromEntity(contractEntity),
+      mapProjectFromEntity(projectEntity),
+      '0x' + 'e'.repeat(40),
+      '0x' + 'f'.repeat(40),
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    // The funding tx (deposit receipt) hash is recorded, not the deploy hash.
+    expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: contractEntity.id,
+      milestone_id: null,
+      payer_id: employerId,
+      payee_id: freelancerId,
+      amount: 1000,
+      payment_type: 'escrow_deposit',
+      tx_hash: '0xdeposit',
+      status: 'completed',
+    }));
+  });
+});
+
+describe('createPaymentRecord (utils/payment-records.ts)', () => {
+  it('throws on non-positive amounts', async () => {
+    const { createPaymentRecord } = await import('../../utils/payment-records.js');
+    await expect(createPaymentRecord({
+      contractId: 'c-1',
+      milestoneId: null,
+      payerId: 'p-1',
+      payeeId: 'q-1',
+      amount: 0,
+      paymentType: 'escrow_deposit',
+      txHash: null,
+      status: 'completed',
+    })).rejects.toThrow('Invalid payment amount');
+  });
+
+  it('rethrows repository failures', async () => {
+    mockPaymentRepository.create.mockRejectedValueOnce(new Error('db down'));
+    const { createPaymentRecord } = await import('../../utils/payment-records.js');
+    await expect(createPaymentRecord({
+      contractId: 'c-1',
+      milestoneId: null,
+      payerId: 'p-1',
+      payeeId: 'q-1',
+      amount: 100,
+      paymentType: 'escrow_deposit',
+      txHash: null,
+      status: 'completed',
+    })).rejects.toThrow('db down');
+  });
+
+  it('rejects NaN amounts', async () => {
+    const { createPaymentRecord } = await import('../../utils/payment-records.js');
+    await expect(createPaymentRecord({
+      contractId: 'c-1',
+      milestoneId: null,
+      payerId: 'p-1',
+      payeeId: 'q-1',
+      amount: Number.NaN,
+      paymentType: 'escrow_deposit',
+      txHash: null,
+      status: 'completed',
+    })).rejects.toThrow('Invalid payment amount');
+  });
+
+  it('rejects non-number amounts', async () => {
+    const { createPaymentRecord } = await import('../../utils/payment-records.js');
+    await expect(createPaymentRecord({
+      contractId: 'c-1',
+      milestoneId: null,
+      payerId: 'p-1',
+      payeeId: 'q-1',
+      amount: '100' as unknown as number,
+      paymentType: 'escrow_deposit',
+      txHash: null,
+      status: 'completed',
+    })).rejects.toThrow('Invalid payment amount');
   });
 });

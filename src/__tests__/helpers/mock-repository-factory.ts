@@ -516,10 +516,14 @@ export function createMockFreelancerProfileRepository(store: Map<string, any>) {
         total: filtered.length,
       };
     }),
-    searchBySkills: jest.fn(async (skillIds: string[], options?: any) => {
-      const skillIdSet = new Set(skillIds);
+    searchBySkills: jest.fn(async (skillNames: string[], options?: any) => {
+      // Mirrors the real repository: profiles store skills by NAME, matched
+      // case-insensitively (the service resolves skill IDs to names first).
+      const lowerSkillNameSet = new Set(skillNames.map((s: string) => s.toLowerCase()));
       const filtered = Array.from(store.values()).filter(profile =>
-        profile.skills?.some((skill: any) => skillIdSet.has(skill.skill_id))
+        profile.skills?.some((skill: any) =>
+          skill && skill.name && lowerSkillNameSet.has(String(skill.name).toLowerCase())
+        )
       );
       const limit = options?.limit || filtered.length;
       const offset = options?.offset || 0;

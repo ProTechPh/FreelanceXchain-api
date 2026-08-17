@@ -243,6 +243,31 @@ describe('SkillRepository', () => {
     });
   });
 
+  describe('findSkillsByIdsStrict', () => {
+    it('should return skills matching the ids', async () => {
+      const skills = [{ $id: 's1', name: 'React' }, { $id: 's2', name: 'Vue' }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: skills, total: 2 });
+      const result = await repo.findSkillsByIdsStrict(['s1', 's2']);
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('s1');
+      expect(result[0]!.name).toBe('React');
+      expect(mockDatabases.listDocuments.mock.calls[0]![2]).toEqual(
+        expect.arrayContaining([{ type: 'equal', field: '$id', value: ['s1', 's2'] }])
+      );
+    });
+
+    it('should return empty array when ids list is empty', async () => {
+      const result = await repo.findSkillsByIdsStrict([]);
+      expect(result).toEqual([]);
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    });
+
+    it('should REJECT on database error (unlike findSkillsByIds)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      await expect(repo.findSkillsByIdsStrict(['s1'])).rejects.toThrow('select failed');
+    });
+  });
+
   describe('cursor pagination (fetchAll)', () => {
     it('should keep paging with cursorAfter until a short page is returned', async () => {
       const page1 = Array.from({ length: 100 }, (_, i) => ({ $id: `s${i}`, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', name: `Skill ${i}`, description: 'd', category_id: 'c1', is_active: true }));

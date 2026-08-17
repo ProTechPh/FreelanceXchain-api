@@ -353,7 +353,7 @@ PORT=3001
 APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
 APPWRITE_PROJECT_ID=test-project-id
 APPWRITE_API_KEY=test-api-key
-JWT_SECRET=test-jwt-secret-key-for-testing-only
+# Auth is Appwrite-managed — no JWT signing secrets are needed.
 ```
 
 ### Cleanup Strategy

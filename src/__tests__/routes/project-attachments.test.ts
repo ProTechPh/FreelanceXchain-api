@@ -366,6 +366,7 @@ jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () =>
   approveMilestone: jest.fn(async () => ({ success: true })),
   disputeMilestone: jest.fn(async () => ({ success: true })),
   getContractPaymentStatus: jest.fn(async () => ({ success: true, data: {} })),
+  getContractPaymentHistory: jest.fn(async () => ({ success: true, data: { contractId: '', items: [] } })),
   isContractComplete: jest.fn(async () => false),
   getDisputeById: jest.fn(async () => null),
   getDisputesByContract: jest.fn(async () => []),

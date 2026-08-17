@@ -1716,6 +1716,96 @@
             "description": "Required when action is counter_offer"
           }
         }
+      },
+      "SavedSearch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "searchType": {
+            "type": "string",
+            "enum": [
+              "project",
+              "freelancer"
+            ]
+          },
+          "filters": {
+            "type": "object",
+            "description": "Search filters. For BOTH search types (project and freelancer), the `skills` array accepts skill document IDs, skill names, or a mix (case-insensitive). Project saved searches additionally support `keyword`, `minBudget`, and `maxBudget`; freelancer saved searches support `minHourlyRate` and `maxHourlyRate`.",
+            "properties": {
+              "skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Skill document IDs, skill names, or a mix — accepted for both project and freelancer saved searches (case-insensitive)."
+              }
+            },
+            "additionalProperties": true
+          },
+          "notifyOnNew": {
+            "type": "boolean"
+          },
+          "lastNotifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SavedSearchInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "searchType",
+          "filters"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "searchType": {
+            "type": "string",
+            "enum": [
+              "project",
+              "freelancer"
+            ]
+          },
+          "filters": {
+            "type": "object",
+            "description": "Search filters. For BOTH search types (project and freelancer), the `skills` array accepts skill document IDs, skill names, or a mix (case-insensitive). Project saved searches additionally support `keyword`, `minBudget`, and `maxBudget`; freelancer saved searches support `minHourlyRate` and `maxHourlyRate`.",
+            "properties": {
+              "skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Skill document IDs, skill names, or a mix — accepted for both project and freelancer saved searches (case-insensitive)."
+              }
+            },
+            "additionalProperties": true
+          },
+          "notifyOnNew": {
+            "type": "boolean"
+          }
+        }
       }
     }
   },
@@ -5766,6 +5856,256 @@
         }
       }
     },
+    "/api/saved-searches": {
+      "get": {
+        "summary": "List saved searches",
+        "description": "Lists the authenticated user's saved searches, optionally filtered by search type",
+        "tags": [
+          "Saved Searches"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "searchType",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "project",
+                "freelancer"
+              ]
+            },
+            "description": "Filter by search type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved searches retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedSearch"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create saved search",
+        "description": "Saves a search with its filters for later execution and notifications. The `filters.skills` array accepts skill IDs, names, or a mix for both search types.",
+        "tags": [
+          "Saved Searches"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved search created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/saved-searches/{id}": {
+      "patch": {
+        "summary": "Update saved search",
+        "description": "Updates a saved search owned by the authenticated user",
+        "tags": [
+          "Saved Searches"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Saved search ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved search updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not the owner)"
+          },
+          "404": {
+            "description": "Saved search not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete saved search",
+        "description": "Deletes a saved search owned by the authenticated user",
+        "tags": [
+          "Saved Searches"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Saved search ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved search deleted successfully"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not the owner)"
+          },
+          "404": {
+            "description": "Saved search not found"
+          }
+        }
+      }
+    },
+    "/api/saved-searches/{id}/execute": {
+      "post": {
+        "summary": "Execute saved search",
+        "description": "Runs a saved search and returns current matches. Skill IDs in the stored filters are resolved to names before matching for both search types.",
+        "tags": [
+          "Saved Searches"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Saved search ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "description": "Matching projects (for project searches) or freelancer profiles (for freelancer searches)",
+                      "items": {}
+                    },
+                    "count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not the owner)"
+          },
+          "404": {
+            "description": "Saved search not found"
+          }
+        }
+      }
+    },
     "/api/search/projects": {
       "get": {
         "summary": "Search projects",
@@ -5865,7 +6205,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated skill IDs to filter by"
+            "description": "Comma-separated skill IDs or skill names to filter by (case-insensitive)"
           },
           {
             "in": "query",

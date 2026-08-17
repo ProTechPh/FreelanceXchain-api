@@ -75,22 +75,10 @@ export const config = {
     apiUrl: getEnvVar('LLM_API_URL'),
     model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
   },
-  jwt: {
-    secret: getEnvVar('JWT_SECRET'),
-    refreshSecret: (() => {
-      const refreshSecret = getEnvVarOptional('JWT_REFRESH_SECRET');
-      if (!refreshSecret) {
-        const msg = 'JWT_REFRESH_SECRET not set — access and refresh tokens share the same signing key (insecure in production)';
-        if (getEnvVar('NODE_ENV', 'development') === 'production') {
-          throw new Error(msg);
-        }
-        console.warn(msg);
-      }
-      return refreshSecret ?? getEnvVar('JWT_SECRET');
-    })(),
-    expiresIn: getEnvVar('JWT_EXPIRES_IN', '1h'),
-    refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d'),
-  },
+  // NOTE: No JWT signing config here. Auth tokens are issued and validated by
+  // Appwrite (session JWTs via account.get/createSession) — the app never signs
+  // or verifies its own tokens, so JWT_SECRET-style env vars would be dead
+  // config that only confused operators (see auth-service.validateToken).
 
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),

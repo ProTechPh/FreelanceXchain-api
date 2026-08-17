@@ -1,5 +1,5 @@
-import { BaseRepository } from './base-repository.js';
-import { Query } from '../config/appwrite.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { normalizeSkillName } from '../utils/skill-utils.js';
 
 export type SkillCategoryEntity = {
@@ -137,6 +137,22 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
     if (ids.length === 0) return [];
     // listWithQueries already swallows database errors and returns [].
     return this.listWithQueries([Query.equal('$id', ids)]);
+  }
+
+  /**
+   * Like findSkillsByIds, but REJECTS on database errors instead of returning
+   * an empty array. Used by search paths that must distinguish "no skills
+   * matched" from "taxonomy lookup failed" so degraded matching is observable
+   * (the caller decides how to warn/fall back).
+   */
+  async findSkillsByIdsStrict(ids: string[]): Promise<SkillEntity[]> {
+    if (ids.length === 0) return [];
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [Query.equal('$id', ids)]
+    );
+    return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
   }
 }
 

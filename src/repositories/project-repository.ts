@@ -197,10 +197,21 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   }
 
   async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    // Keyword matching is title OR description. Separate `contains` queries are
+    // ANDed by Appwrite, so the OR is expressed as a single Query.or — one DB
+    // round-trip with real server-side pagination (no fetch-all + in-memory
+    // fallback). `contains` is case-insensitive, matching the app's search
+    // semantics. Requires Appwrite >= 1.5 (Cloud and current self-hosted).
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     return this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.contains('title', keyword)],
+      [
+        Query.equal('status', 'open'),
+        Query.or([
+          Query.contains('title', keyword),
+          Query.contains('description', keyword),
+        ]),
+      ],
       limit,
       offset,
       mapDoc

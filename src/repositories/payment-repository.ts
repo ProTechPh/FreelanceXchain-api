@@ -3,7 +3,7 @@ import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
 
 type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
-export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution';
+export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution' | 'rush_fee';
 
 type PaymentEntity = {
   id: string;

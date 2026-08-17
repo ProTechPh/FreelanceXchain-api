@@ -78,5 +78,5 @@ Note: `pnpm run dev` and `prod` override to `BLOCKCHAIN_MODE=real` — a normall
 - **tsx** for running TypeScript scripts in dev (not `ts-node`).
 - **cross-env** for cross-platform env vars in npm scripts.
 - **tsconfig.json** excludes tests; **tsconfig.test.json** includes them. Both use `NodeNext` module resolution.
-- **ESLint** uses flat config (`eslint.config.js`). Separate configs for source vs test files.
+- **ESLint** uses flat config (`eslint.config.js`). Separate configs for source vs test files. Source files treat unused variables as **errors** (strict CI gate — `pnpm run lint` fails on them); prefix intentionally-unused params with `_` to opt out. Test files keep the rule off.
 - **Docker**: multi-stage build. Production stage installs only `--prod` deps, then copies `dist/`.

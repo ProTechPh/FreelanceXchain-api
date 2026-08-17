@@ -122,7 +122,8 @@ router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId'])
 
     if (!result.success) {
       const errorResult = 'error' in result ? result.error : { code: 'FETCH_FAILED', message: 'Failed to get milestones' };
-      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, { requestId: getRequestId(req) });
+      const statusCode = errorResult.code === 'NOT_FOUND' ? 404 : errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
+      return sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);

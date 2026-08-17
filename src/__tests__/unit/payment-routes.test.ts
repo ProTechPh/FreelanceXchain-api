@@ -9,12 +9,14 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 const mockRequestMilestoneCompletion = jest.fn<any>();
 const mockApproveMilestone = jest.fn<any>();
 const mockGetContractPaymentStatus = jest.fn<any>();
+const mockGetContractPaymentHistory = jest.fn<any>();
 const mockDisputeMilestone = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
   requestMilestoneCompletion: mockRequestMilestoneCompletion,
   approveMilestone: mockApproveMilestone,
   getContractPaymentStatus: mockGetContractPaymentStatus,
+  getContractPaymentHistory: mockGetContractPaymentHistory,
   disputeMilestone: mockDisputeMilestone,
 }));
 
@@ -45,7 +47,7 @@ const paymentRouter = router;
 function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
 const ok = (data: any) => ({ success: true, data });
 const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
-const mockPaymentService = { requestMilestoneCompletion: mockRequestMilestoneCompletion, approveMilestone: mockApproveMilestone, getContractPaymentStatus: mockGetContractPaymentStatus, disputeMilestone: mockDisputeMilestone };
+const mockPaymentService = { requestMilestoneCompletion: mockRequestMilestoneCompletion, approveMilestone: mockApproveMilestone, getContractPaymentStatus: mockGetContractPaymentStatus, getContractPaymentHistory: mockGetContractPaymentHistory, disputeMilestone: mockDisputeMilestone };
 const mockDisputeService = { createDispute: mockCreateDispute };
 
 describe('Payment Routes', () => {
@@ -119,9 +121,9 @@ describe('Payment Routes', () => {
 
   describe('POST /milestones/:milestoneId/dispute', () => {
     it('should create dispute on success', async () => {
-      mockDisputeMilestone.mockResolvedValue({
+      mockCreateDispute.mockResolvedValue({
         success: true,
-        data: { disputeId: 'dispute-1' },
+        data: { id: 'dispute-1' },
       });
       const res = await request(app)
         .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
@@ -240,15 +242,21 @@ describe('payment-routes branch coverage', () => {
   });
 
   it('POST /milestones/:milestoneId/dispute NOT_FOUND returns 404', async () => {
-    mockDisputeMilestone.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    mockCreateDispute.mockResolvedValue(fail('NOT_FOUND', 'No'));
     const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/dispute UNAUTHORIZED returns 403', async () => {
-    mockDisputeMilestone.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    mockCreateDispute.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
     const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
     expect(res.status).toBe(403);
+  });
+
+  it('POST /milestones/:milestoneId/dispute DUPLICATE_DISPUTE returns 409', async () => {
+    mockCreateDispute.mockResolvedValue(fail('DUPLICATE_DISPUTE', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
+    expect(res.status).toBe(409);
   });
 
   it('GET /contracts/:contractId/status success', async () => {
@@ -268,6 +276,49 @@ describe('payment-routes branch coverage', () => {
     const res = await request(app).get('/api/payments/contracts/c1/status');
     expect(res.status).toBe(403);
   });
+
+  describe('GET /contracts/:contractId/history', () => {
+  it('returns the payments log on success', async () => {
+    mockGetContractPaymentHistory.mockResolvedValue({
+      success: true,
+      data: {
+        contractId: 'c-1',
+        items: [
+          {
+            id: 'p-1', milestoneId: null, payerId: 'emp-1', payeeId: 'free-1',
+            amount: 1000, currency: 'ETH', txHash: '0xdeposit', status: 'completed',
+            paymentType: 'escrow_deposit', createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+    });
+    const res = await request(app).get('/api/payments/contracts/c-1/history');
+    expect(res.status).toBe(200);
+    expect(res.body.contractId).toBe('c-1');
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].paymentType).toBe('escrow_deposit');
+    expect(res.body.items[0].txHash).toBe('0xdeposit');
+    expect(mockGetContractPaymentHistory).toHaveBeenCalledWith('c-1', 'user-1', 'employer');
+  });
+
+  it('returns 404 when contract not found', async () => {
+    mockGetContractPaymentHistory.mockResolvedValue(fail('NOT_FOUND', 'Contract not found'));
+    const res = await request(app).get('/api/payments/contracts/c-1/history');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 when the user is not a contract party', async () => {
+    mockGetContractPaymentHistory.mockResolvedValue(fail('UNAUTHORIZED', 'Only contract parties can view payment history'));
+    const res = await request(app).get('/api/payments/contracts/c-1/history');
+    expect(res.status).toBe(403);
+  });
+
+    it('returns 400 on generic fetch failures', async () => {
+      mockGetContractPaymentHistory.mockResolvedValue(fail('FETCH_FAILED', 'Failed to fetch payment history'));
+      const res = await request(app).get('/api/payments/contracts/c-1/history');
+      expect(res.status).toBe(400);
+    });
+  });
 });
 
 describe('payment-routes.ts - Branch Coverage', () => {
@@ -276,6 +327,7 @@ describe('payment-routes.ts - Branch Coverage', () => {
   const mockApproveMilestone = jest.fn<any>();
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
+  const mockGetContractPaymentHistory = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -284,6 +336,7 @@ describe('payment-routes.ts - Branch Coverage', () => {
       requestMilestoneCompletion: mockRequestMilestoneCompletion,
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
+      getContractPaymentHistory: mockGetContractPaymentHistory,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -313,7 +366,7 @@ describe('payment-routes.ts - Branch Coverage', () => {
   });
 
   it('L323: POST dispute', async () => {
-    mockDisputeMilestone.mockResolvedValueOnce({ success: true, data: { disputeId: 'd1' } });
+    mockCreateDispute.mockResolvedValueOnce({ success: true, data: { id: 'd1' } });
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad' });
     expect(res.status).toBe(200);
@@ -337,6 +390,7 @@ describe('payment-routes - UUID validation for contractId query param', () => {
   const mockApproveMilestone = jest.fn<any>();
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
+  const mockGetContractPaymentHistory = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -345,6 +399,7 @@ describe('payment-routes - UUID validation for contractId query param', () => {
       requestMilestoneCompletion: mockRequestMilestoneCompletion,
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
+      getContractPaymentHistory: mockGetContractPaymentHistory,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -413,6 +468,7 @@ describe('payment-routes - ?? nullish fallback branches', () => {
   const mockApproveMilestone = jest.fn<any>();
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
+  const mockGetContractPaymentHistory = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -430,6 +486,7 @@ describe('payment-routes - ?? nullish fallback branches', () => {
       requestMilestoneCompletion: mockRequestMilestoneCompletion,
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
+      getContractPaymentHistory: mockGetContractPaymentHistory,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -459,7 +516,7 @@ describe('payment-routes - ?? nullish fallback branches', () => {
   });
 
   it('L339: POST dispute with nullish milestoneId', async () => {
-    mockDisputeMilestone.mockResolvedValueOnce({ success: true, data: { id: 'd1' } });
+    mockCreateDispute.mockResolvedValueOnce({ success: true, data: { id: 'd1' } });
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
     expect(res.status).toBe(200);
@@ -485,6 +542,7 @@ describe('payment-routes - generic error code 400 branches', () => {
   const mockApproveMilestone = jest.fn<any>();
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
+  const mockGetContractPaymentHistory = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -498,6 +556,7 @@ describe('payment-routes - generic error code 400 branches', () => {
       requestMilestoneCompletion: mockRequestMilestoneCompletion,
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
+      getContractPaymentHistory: mockGetContractPaymentHistory,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -520,7 +579,7 @@ describe('payment-routes - generic error code 400 branches', () => {
   });
 
   it('L382: POST dispute with generic error code returns 400', async () => {
-    mockDisputeMilestone.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Cannot dispute' } });
+    mockCreateDispute.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Cannot dispute' } });
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
     expect(res.status).toBe(400);
