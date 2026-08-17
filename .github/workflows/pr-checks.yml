@@ -12,7 +12,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.20.1
+        uses: step-security/harden-runner@v2.21.0
         with:
           egress-policy: audit
 
@@ -27,7 +27,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.20.1
+        uses: step-security/harden-runner@v2.21.0
         with:
           egress-policy: audit
 
