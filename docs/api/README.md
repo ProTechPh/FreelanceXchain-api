@@ -18,6 +18,7 @@
 | [Proposal API](proposals.md) | Proposal submission, acceptance, rejection, retrieval, employer history, and withdrawal |
 | [Reputation API](reputation.md) | Reputation scores, rating submission, and work history |
 | [Search API](search.md) | Freelancer and project search with filtering |
+| [Saved Searches API](saved-searches.md) | Saving search filters and re-running them; skills accept IDs or names for both search types |
 
 ## Quick Reference
 

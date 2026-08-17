@@ -116,6 +116,16 @@ const mockBlockchainAdapter = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Payment records: dispute resolutions write one 'dispute_resolution' record per
+// payee so the payments log matches the ledger (audit Finding 2-4).
+const mockPaymentRepo = {
+  create: jest.fn<any>(async (payment: any) => ({ ...payment })),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
+  paymentRepository: mockPaymentRepo,
+  PaymentType: {},
+}));
+
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: mockDisputeRepo,
@@ -156,8 +166,10 @@ jest.unstable_mockModule(resolveModule('src/services/dispute-registry.ts'), () =
 
 // Mock agreement-contract
 const mockDisputeAgreement = jest.fn<any>().mockResolvedValue(undefined);
+const mockCompleteAgreement = jest.fn<any>().mockResolvedValue({ agreement: {}, receipt: {} });
 jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
   disputeAgreement: mockDisputeAgreement,
+  completeAgreement: mockCompleteAgreement,
 }));
 
 // Mock audit-log repository (admin dispute-resolution audit trail, BLF-12.2)
@@ -595,6 +607,16 @@ describe('Dispute Service - Unit Tests', () => {
         milestoneId: milestone.id,
       }),
     }));
+    // employer_favor: the full milestone amount returns to the employer (one record).
+    expect(mockPaymentRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: contract.id,
+      milestone_id: milestone.id,
+      payer_id: contract.freelancer_id,
+      payee_id: contract.employer_id,
+      amount: 500,
+      payment_type: 'dispute_resolution',
+      status: 'completed',
+    }));
   });
 
   it('should update contract status when resolving dispute', async () => {
@@ -627,6 +649,16 @@ describe('Dispute Service - Unit Tests', () => {
     const updatedContract = contractStore.get(contract.id) as any;
     // Contract status should remain as it was set (disputed -> active after resolution)
     expect(['active', 'completed']).toContain(updatedContract?.status);
+    // freelancer_favor: the full milestone amount is paid to the freelancer (one record).
+    expect(mockPaymentRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: contract.id,
+      milestone_id: milestone.id,
+      payer_id: contract.employer_id,
+      payee_id: contract.freelancer_id,
+      amount: 500,
+      payment_type: 'dispute_resolution',
+      status: 'completed',
+    }));
   });
 
   it('should send notifications when creating dispute', async () => {
@@ -907,6 +939,15 @@ describe('Dispute Service - Direct Branch Coverage', () => {
     // Default split ratio is 50/50 (5000 bps)
     expect(mockBlockchainAdapter.resolveDispute).toHaveBeenCalledWith('0xescrow', 0, 5000);
     if (result.success) expect(result.data.resolution?.decision).toBe('split');
+    // Split resolution writes one payment record per payee (50/50 of the 100 milestone).
+    expect(mockPaymentRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: 'c1', milestone_id: 'm1', payer_id: 'e1', payee_id: 'f1',
+      amount: 50, payment_type: 'dispute_resolution', tx_hash: '0xtx', status: 'completed',
+    }));
+    expect(mockPaymentRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: 'c1', milestone_id: 'm1', payer_id: 'f1', payee_id: 'e1',
+      amount: 50, payment_type: 'dispute_resolution', tx_hash: '0xtx', status: 'completed',
+    }));
   });
 
   it('should handle resolveDispute with split decision and explicit freelancerBps', async () => {
@@ -936,6 +977,106 @@ describe('Dispute Service - Direct Branch Coverage', () => {
     });
     expect(result.success).toBe(true);
     expect(mockBlockchainAdapter.resolveDispute).toHaveBeenCalledWith('0xescrow', 0, 7500);
+  });
+
+  it('still resolves when the payment record write fails (best-effort log)', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [], resolution: null,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({ transactionHash: '0xtx' });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [],
+      resolution: { decision: 'split', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+    });
+    mockPaymentRepo.create.mockRejectedValueOnce(new Error('db down'));
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'split', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+
+    // The resolution itself is unaffected — the funds already moved on-chain.
+    expect(result.success).toBe(true);
+    expect(mockDisputeRepository.updateDispute).toHaveBeenCalled();
+  });
+
+  it('completes the on-chain agreement when the employer has a wallet (audit Finding 5)', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [], resolution: null,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({ transactionHash: '0xtx' });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [],
+      resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+    });
+    // The employer lookup (real userRepository -> appwrite getDocument) returns a wallet.
+    const mockDbs = (globalThis as any).__mockDatabases;
+    mockDbs.getDocument.mockResolvedValueOnce({
+      $id: 'e1', wallet_address: '0xemployer', name: 'Employer', role: 'employer',
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+
+    expect(result.success).toBe(true);
+    // Single milestone resolved in the freelancer's favour -> contract completed,
+    // and the on-chain agreement registry is completed to match (best-effort).
+    expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c1', { status: 'completed' });
+    expect(mockCompleteAgreement).toHaveBeenCalledWith('c1', '0xemployer');
+  });
+
+  it('still resolves when completing the agreement fails (best-effort, audit Finding 5)', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [], resolution: null,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({ transactionHash: '0xtx' });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [],
+      resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+    });
+    const mockDbs = (globalThis as any).__mockDatabases;
+    mockDbs.getDocument.mockResolvedValueOnce({
+      $id: 'e1', wallet_address: '0xemployer', name: 'Employer', role: 'employer',
+    });
+    mockCompleteAgreement.mockRejectedValueOnce(new Error('Agreement not found'));
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+
+    // The failed agreement write is logged, never fails the resolution.
+    expect(result.success).toBe(true);
+    expect(mockDisputeRepository.updateDispute).toHaveBeenCalled();
   });
 
   it('should reject split decisions with invalid freelancerBps (0 or 10000)', async () => {
@@ -1823,8 +1964,10 @@ describe('Dispute Service - Coverage Gaps', () => {
         resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
       });
 
-      // Mock global Appwrite to return resolver with wallet_address
+      // Mock global Appwrite: employer lookup first (no wallet -> skip agreement
+      // completion), then resolver with wallet_address for the on-chain recording.
       const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument.mockResolvedValueOnce({ $id: 'e1' });
       mockDbs.getDocument.mockResolvedValueOnce({
         $id: 'admin-1', wallet_address: '0x' + 'a'.repeat(40), name: 'Admin', role: 'admin',
       });
@@ -1858,8 +2001,10 @@ describe('Dispute Service - Coverage Gaps', () => {
         resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
       });
 
-      // Mock global Appwrite to return resolver with wallet_address
+      // Mock global Appwrite: employer lookup first (no wallet -> skip agreement
+      // completion), then resolver with wallet_address for the on-chain recording.
       const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument.mockResolvedValueOnce({ $id: 'e1' });
       mockDbs.getDocument.mockResolvedValueOnce({
         $id: 'admin-1', wallet_address: '0x' + 'a'.repeat(40), name: 'Admin', role: 'admin',
       });

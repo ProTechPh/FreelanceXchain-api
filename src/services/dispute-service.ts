@@ -16,13 +16,14 @@ import {
   resolveDisputeOnBlockchain,
 } from './dispute-registry.js';
 import { getBlockchainAdapter } from './blockchain/factory.js';
-import { disputeAgreement } from './agreement-contract.js';
+import { disputeAgreement, completeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendDisputeCreatedEmail } from './email-delivery-service.js';
+import { createPaymentRecord } from '../utils/payment-records.js';
 
 type DisputeServiceResult<T> = ServiceResult<T>;
 
@@ -454,7 +455,64 @@ type ProcessDisputeEscrowPaymentInput = {
   escrowAddress: string;
   milestoneIndex: number;
   freelancerBps?: number;
+  employerId: string;
+  freelancerId: string;
 };
+
+/**
+ * Record the dispute resolution disbursement in the payments log — one record
+ * per payee so every ledger movement is traceable. A split resolution awards
+ * the freelancer their bps share and returns the remainder to the employer
+ * (payer/payee are inverted for the employer's share, mirroring a refund).
+ * Best-effort: a failed record write never fails the resolution — the funds
+ * already moved on-chain.
+ */
+async function recordDisputeResolutionPayments(params: {
+  disputeId: string;
+  contractId: string;
+  milestoneId: string;
+  employerId: string;
+  freelancerId: string;
+  decision: 'freelancer_favor' | 'employer_favor' | 'split';
+  milestoneAmount: number;
+  resolvedBps: number;
+  txHash: string | null;
+}): Promise<void> {
+  try {
+    const freelancerShare = Math.round((params.milestoneAmount * params.resolvedBps) / 100) / 100;
+    const employerShare = Math.round((params.milestoneAmount - freelancerShare) * 100) / 100;
+    if (freelancerShare > 0) {
+      await createPaymentRecord({
+        contractId: params.contractId,
+        milestoneId: params.milestoneId,
+        payerId: params.employerId,
+        payeeId: params.freelancerId,
+        amount: freelancerShare,
+        paymentType: 'dispute_resolution',
+        txHash: params.txHash,
+        status: 'completed',
+      });
+    }
+    if (employerShare > 0) {
+      await createPaymentRecord({
+        contractId: params.contractId,
+        milestoneId: params.milestoneId,
+        payerId: params.freelancerId,
+        payeeId: params.employerId,
+        amount: employerShare,
+        paymentType: 'dispute_resolution',
+        txHash: params.txHash,
+        status: 'completed',
+      });
+    }
+  } catch (recordError) {
+    logger.error('Failed to record dispute resolution payment (payments log may diverge from ledger)', {
+      error: recordError,
+      disputeId: params.disputeId,
+      decision: params.decision,
+    });
+  }
+}
 
 /**
  * Process escrow payment for dispute resolution (release or refund).
@@ -469,7 +527,7 @@ async function processDisputeEscrowPayment(
   | { error: DisputeServiceResult<Dispute> }
   | { success: true }
 > {
-  const { disputeId, disputeEntity, decision, milestoneEntity, escrowAddress, milestoneIndex, freelancerBps } = input;
+  const { disputeId, disputeEntity, decision, milestoneEntity, escrowAddress, milestoneIndex, freelancerBps, employerId, freelancerId } = input;
 
   // BLF-10.1: Do NOT bypass payment when the escrow address is missing — return an error
   // instead. Bypassing would mark the dispute resolved without moving funds, causing financial loss.
@@ -504,7 +562,19 @@ async function processDisputeEscrowPayment(
       return { error: errorResult('INVALID_SPLIT_BPS', 'freelancerBps must be between 1 and 9999 for a split decision.') };
     }
 
-    await adapter.resolveDispute(escrowAddress, milestoneIndex, resolvedBps);
+    const resolutionResult = await adapter.resolveDispute(escrowAddress, milestoneIndex, resolvedBps);
+
+    await recordDisputeResolutionPayments({
+      disputeId,
+      contractId: disputeEntity.contract_id,
+      milestoneId: disputeEntity.milestone_id,
+      employerId,
+      freelancerId,
+      decision,
+      milestoneAmount: Number(milestoneEntity.amount ?? 0),
+      resolvedBps,
+      txHash: resolutionResult.transactionHash ?? null,
+    });
 
     // On-chain, a split-resolved milestone is marked Approved (partial credit via
     // pull-payment to each party), so map both freelancer_favor and split to 'approved'.
@@ -561,6 +631,20 @@ async function updateDisputeStatuses(
     );
     if (allMilestonesDone) {
       await contractRepository.updateContract(disputeEntity.contract_id, { status: 'completed' });
+      // Mirror the approval path (payment-service.completeContractIfAllMilestonesDone):
+      // complete the on-chain agreement registry best-effort so it matches the DB
+      // contract completion. A failed agreement write never fails the resolution.
+      try {
+        const employer = await userRepository.getUserById(contract.employerId);
+        if (employer?.wallet_address) {
+          await completeAgreement(disputeEntity.contract_id, employer.wallet_address);
+        }
+      } catch (error) {
+        logger.error('Failed to complete agreement on blockchain after dispute resolution', {
+          error,
+          disputeId,
+        });
+      }
     } else {
       await contractRepository.updateContract(disputeEntity.contract_id, { status: 'active' });
     }
@@ -642,6 +726,8 @@ export async function resolveDispute(
       milestoneEntity,
       escrowAddress: contractEntity.escrow_address,
       milestoneIndex,
+      employerId: contract.employerId,
+      freelancerId: contract.freelancerId,
       ...(input.freelancerBps !== undefined ? { freelancerBps: input.freelancerBps } : {}),
     });
     if ('error' in paymentResult) return paymentResult.error;

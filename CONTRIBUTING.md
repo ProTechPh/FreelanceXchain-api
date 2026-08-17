@@ -231,6 +231,19 @@ function getUser(id: string): Promise<User> {
 }
 ```
 
+### Lint Rules (strict unused-vars gate)
+
+Unused imports, locals, and function arguments are treated as **lint errors**, not
+warnings. `pnpm run lint` runs in the CI typecheck job, so an unused variable
+fails the build instead of slipping through as a warning.
+
+- Prefix an intentionally-unused parameter or catch variable with `_` (e.g.
+  `_req`) to opt out of the rule.
+- Test files are exempt by design (mocks/helpers are often declared for use
+  across tests); the strict rule applies to source files under `src/`.
+- Companion guardrails, also errors: `max-lines-per-function` (100) and
+  `max-params` (4).
+
 ### File Organization
 
 #### Naming Conventions

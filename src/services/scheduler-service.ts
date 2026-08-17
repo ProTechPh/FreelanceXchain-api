@@ -4,6 +4,7 @@ import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
 import { sendWeeklyDigestEmail } from './email-delivery-service.js';
 import { filterProjectsBySavedSearch, filterFreelancersBySavedSearch } from './saved-search-service.js';
+import { resolveSkillFilterToNames } from './search-service.js';
 import { projectRepository, type ProjectEntity, type ProjectStatus } from '../repositories/project-repository.js';
 import { contractRepository, type ContractEntity } from '../repositories/contract-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
@@ -227,7 +228,16 @@ async function executeSavedSearches(): Promise<void> {
             .filter(p => new Date(p.created_at).getTime() > sinceTimestamp)
             .map(p => ({ id: p.id, title: p.title, created_at: p.created_at }));
         } else {
-          const filtered = filterFreelancersBySavedSearch(allProfiles, filters);
+          // Profiles store skills by name, but saved-search filters may contain
+          // skill IDs — resolve them to names so ID-based searches match here
+          // exactly as they do in the live search API (and executeSavedSearch).
+          const resolvedFilters = { ...filters };
+          if (Array.isArray(resolvedFilters.skills)) {
+            resolvedFilters.skills = await resolveSkillFilterToNames(
+              resolvedFilters.skills.map((s: unknown) => String(s))
+            );
+          }
+          const filtered = filterFreelancersBySavedSearch(allProfiles, resolvedFilters);
           matches = filtered
             .filter(fp => new Date(fp.created_at).getTime() > sinceTimestamp)
             .map(fp => ({ id: fp.id, title: fp.name || 'Freelancer', created_at: fp.created_at }));

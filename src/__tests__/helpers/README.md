@@ -73,14 +73,10 @@ Handle test authentication:
 
 ```typescript
 // helpers/auth.ts
-export const generateTestToken = (userId: string, role: string) => {
-  return jwt.sign({ userId, role }, process.env.JWT_SECRET!, {
-    expiresIn: '1h',
-  });
-};
-
+// Auth is Appwrite-managed: the app never signs its own JWTs. Use the
+// Appwrite session secret from the mocked account (see jest.setup.ts).
 export const createAuthenticatedRequest = (userId: string, role: string) => {
-  const token = generateTestToken(userId, role);
+  const token = 'test-session-secret';
   return {
     headers: {
       authorization: `Bearer ${token}`,

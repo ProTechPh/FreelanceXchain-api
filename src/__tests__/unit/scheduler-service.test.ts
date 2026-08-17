@@ -1015,6 +1015,60 @@ describe('Scheduler Service - Integration Coverage', () => {
     }
   });
 
+  // Skill IDs in freelancer saved-search filters are resolved to names before
+  // matching (same semantics as the live search API and executeSavedSearch).
+  it('executeSavedSearches resolves skill IDs to names for freelancer searches', async () => {
+    const { initializeScheduler } = await importScheduler();
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 */6 * * *');
+
+    const now = new Date().toISOString();
+    mockDatabases.listDocuments
+      // saved searches with search_type: 'freelancer' and a skill ID filter
+      .mockResolvedValueOnce({
+        documents: [{
+          $id: 's1',
+          user_id: 'u1',
+          search_type: 'freelancer',
+          filters: '{"skills":["skill-1"]}',
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+        }],
+        total: 1,
+      })
+      // open projects page — empty (candidates fetched once per type)
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // freelancer_profiles page — a React profile newer than the search
+      .mockResolvedValueOnce({
+        documents: [{
+          $id: 'fp1',
+          name: 'Jane',
+          skills: [{ name: 'react' }],
+          hourly_rate: 50,
+          created_at: now,
+        }],
+        total: 1,
+      })
+      // skills taxonomy lookup — resolves skill-1 → react
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'skill-1', name: 'react' }],
+        total: 1,
+      });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.createDocument).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          user_id: 'u1',
+          type: 'saved_search_match',
+        })
+      );
+    }
+  });
+
   // Line 80: full_name || name || 'User' fallback chain
   it('sendWeeklyDigests falls back to name then User when full_name missing', async () => {
     const { initializeScheduler } = await importScheduler();

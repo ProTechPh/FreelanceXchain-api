@@ -14,6 +14,7 @@ import { FileAttachment, validateAttachments } from '../utils/file-validator.js'
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
+import { rescaleMilestoneAmounts } from '../utils/milestone-amounts.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendProposalAcceptedEmail, sendContractCreatedEmail } from './email-delivery-service.js';
 
@@ -472,6 +473,31 @@ export async function acceptProposal(
 
     const { proposalEntity: validatedProposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
 
+    // Rush proposals carry a fee on top of the proposal rate. Fold that fee into
+    // the project milestone amounts BEFORE the contract is created, so the escrow
+    // (deployed from project milestones) is funded with base + fee and the DB read
+    // model matches the on-chain ledger. Without this, validateEscrowAmounts fails
+    // with AMOUNT_MISMATCH and a rush contract can never be activated.
+    let rushProject = project;
+    if (isRush && rushFee > 0 && project.milestones.length > 0) {
+      const scaledAmounts = rescaleMilestoneAmounts(
+        project.milestones.map(m => m.amount),
+        proposalRate,
+        rushFee,
+      );
+      const scaledMilestones = project.milestones.map((m, i) => ({
+        ...m,
+        amount: scaledAmounts[i] ?? m.amount,
+      }));
+      const scaledEntityMilestones: MilestoneEntity[] = project.milestones.map((m, i) => ({
+        ...m,
+        due_date: m.dueDate,
+        amount: scaledAmounts[i] ?? m.amount,
+      }));
+      await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
+      rushProject = { ...project, milestones: scaledMilestones };
+    }
+
     const created = await createContractFromProposal({
       proposalId,
       proposalEntity: validatedProposal,
@@ -496,7 +522,7 @@ export async function acceptProposal(
     try {
       await initializeEscrowForContract({
         contract: createdContract,
-        project,
+        project: rushProject,
         proposalEntity: validatedProposal,
         totalAmount,
         rushFee,

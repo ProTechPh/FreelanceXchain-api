@@ -3,9 +3,8 @@ import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import { paymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
-import { generateId } from '../utils/id.js';
+import { paymentRepository } from '../repositories/payment-repository.js';
 import {
   deployEscrow,
   depositToEscrow,
@@ -16,7 +15,6 @@ import {
   notifyMilestoneSubmitted,
   notifyMilestoneApproved,
   notifyPaymentReleased,
-  notifyDisputeCreated,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
 import { parseUnits } from 'ethers';
@@ -31,6 +29,8 @@ import { approveMilestone as approveOnChainMilestone, deployEscrowContract as de
 import { isWeb3Available } from './web3-client.js';
 import { getBlockchainMode } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
+import { rescaleMilestoneAmounts } from '../utils/milestone-amounts.js';
+import { createPaymentRecord } from '../utils/payment-records.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
@@ -53,40 +53,6 @@ export function setEscrowOpsForTesting(overrides?: Partial<typeof escrowOps>): v
   escrowOps.getEscrowByContractId = overrides?.getEscrowByContractId ?? getEscrowByContractId;
 }
 
-async function createPaymentRecord(params: {
-  contractId: string;
-  milestoneId: string | null;
-  payerId: string;
-  payeeId: string;
-  amount: number;
-  paymentType: PaymentType;
-  txHash: string | null;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
-}): Promise<void> {
-  if (typeof params.amount !== 'number' || !isFinite(params.amount) || params.amount <= 0) {
-    logger.error('Invalid payment amount rejected', { amount: params.amount, contractId: params.contractId });
-    throw new Error(`Invalid payment amount: ${params.amount}`);
-  }
-  try {
-    await paymentRepository.create({
-      id: generateId(),
-      contract_id: params.contractId,
-      milestone_id: params.milestoneId,
-      payer_id: params.payerId,
-      payee_id: params.payeeId,
-      amount: params.amount,
-      currency: 'ETH',
-      tx_hash: params.txHash,
-      status: params.status,
-      payment_type: params.paymentType,
-    });
-  } catch (error) {
-    logger.error('Failed to create payment record', { error });
-    throw error;
-  }
-}
-
-
 export type MilestoneCompletionResult = {
   milestoneId: string;
   status: MilestoneStatus;
@@ -99,13 +65,6 @@ export type MilestoneApprovalResult = {
   paymentReleased: boolean;
   transactionHash?: string | undefined;
   contractCompleted: boolean;
-};
-
-export type MilestoneDisputeResult = {
-  milestoneId: string;
-  status: MilestoneStatus;
-  disputeId: string;
-  disputeCreated: boolean;
 };
 
 export type ContractPaymentStatus = {
@@ -742,153 +701,6 @@ export async function approveMilestone(
   });
 }
 
-type MilestoneDisputeContext = {
-  contract: Contract;
-  project: Project;
-  projectEntity: ProjectEntity;
-  milestone: NonNullable<Project['milestones'][number]>;
-  milestoneIndex: number;
-};
-
-/**
- * Validate that a milestone can be disputed by the initiator.
- * Returns the resolved context or a ServiceResult error.
- */
-async function validateMilestoneDispute(
-  contractId: string,
-  milestoneId: string,
-  initiatorId: string,
-): Promise<
-  | { error: ServiceResult<MilestoneDisputeResult> }
-  | MilestoneDisputeContext
-> {
-  const contractEntity = await contractRepository.getContractById(contractId);
-  if (!contractEntity) {
-    return { error: errorResult('NOT_FOUND', 'Contract not found') };
-  }
-  const contract = mapContractFromEntity(contractEntity);
-
-  if (contract.status !== 'active') {
-    return { error: errorResult('INVALID_STATUS', `Cannot dispute milestone on a ${contract.status} contract`) };
-  }
-
-  if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
-    return { error: errorResult('UNAUTHORIZED', 'Only contract parties can dispute milestones') };
-  }
-
-  const projectEntity = await projectRepository.findProjectById(contract.projectId);
-  if (!projectEntity) {
-    return { error: errorResult('NOT_FOUND', 'Project not found') };
-  }
-  const project = mapProjectFromEntity(projectEntity);
-
-  const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
-  const milestone = project.milestones.find(m => m.id === milestoneId);
-  if (!milestone || milestoneIndex === -1) {
-    return { error: errorResult('NOT_FOUND', 'Milestone not found') };
-  }
-
-  if (milestone.status !== 'submitted') {
-    return { error: errorResult('INVALID_STATUS', milestone.status === 'approved'
-             ? 'Cannot dispute an already approved milestone'
-             : milestone.status === 'disputed'
-             ? 'Milestone is already under dispute'
-             : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`) };
-  }
-
-  return { contract, project, projectEntity, milestone, milestoneIndex };
-}
-
-/**
- * Create the dispute record and mark the milestone disputed (immutable pattern).
- * Returns the generated dispute ID.
- */
-async function createMilestoneDispute(
-  context: MilestoneDisputeContext,
-  input: { contractId: string; milestoneId: string; initiatorId: string; reason: string },
-): Promise<string> {
-  const { project, projectEntity, milestoneIndex } = context;
-  const { contractId, milestoneId, initiatorId, reason } = input;
-
-  const disputeId = generateId();
-
-  await disputeRepository.createDispute({
-    id: disputeId,
-    contract_id: contractId,
-    milestone_id: milestoneId,
-    initiator_id: initiatorId,
-    reason,
-    evidence: [],
-    status: 'open',
-    resolution: null,
-  });
-
-  const updatedMilestones = projectEntity.milestones.map((m, i) =>
-    i === milestoneIndex ? { ...m, status: 'disputed' as const } : m
-  );
-
-  await projectRepository.updateProject(project.id, {
-    milestones: updatedMilestones,
-  });
-
-  // Do NOT update contract status — only the specific milestone is disputed
-  // Other milestones can still be worked on and approved
-
-  return disputeId;
-}
-
-/**
- * Dispute milestone
- * Called by a contract party to dispute a milestone completion
- *
- * - Contract must be 'active' status
- * - Only milestones with status 'submitted' can be disputed
- */
-export async function disputeMilestone(
-  contractId: string,
-  milestoneId: string,
-  initiatorId: string,
-  reason: string
-): Promise<ServiceResult<MilestoneDisputeResult>> {
-  // BLF-2.1: Serialize concurrent dispute+approve attempts using the same lock key
-  // as approveMilestone to prevent the race where both succeed simultaneously
-  return withLock(`milestone-approve:${milestoneId}`, async () => {
-    const validated = await validateMilestoneDispute(contractId, milestoneId, initiatorId);
-    if ('error' in validated) return validated.error;
-
-    const { contract, project, milestone } = validated;
-    const disputeId = await createMilestoneDispute(validated, { contractId, milestoneId, initiatorId, reason });
-
-    await notifyDisputeCreated({
-      userId: contract.freelancerId,
-      disputeId,
-      milestoneId,
-      milestoneTitle: milestone.title,
-      projectId: project.id,
-      projectTitle: project.title,
-      contractId,
-    });
-
-    await notifyDisputeCreated({
-      userId: contract.employerId,
-      disputeId,
-      milestoneId,
-      milestoneTitle: milestone.title,
-      projectId: project.id,
-      projectTitle: project.title,
-      contractId,
-    });
-
-    return successResult({
-      milestoneId,
-      status: 'disputed',
-      disputeId,
-      disputeCreated: true,
-    });
-  });
-}
-
-
 export async function getContractPaymentStatus(
   contractId: string,
   userId: string,
@@ -939,6 +751,68 @@ export async function getContractPaymentStatus(
   });
   }
 
+/**
+ * A single entry in the contract payments log — every ledger money movement
+ * (escrow deposit, milestone release, refund, dispute resolution, rush fee)
+ * is recorded via createPaymentRecord, so this is the reconcilable audit trail.
+ */
+export type PaymentHistoryRecord = {
+  id: string;
+  milestoneId: string | null;
+  payerId: string;
+  payeeId: string;
+  amount: number;
+  currency: string;
+  txHash: string | null;
+  status: string;
+  paymentType: string;
+  createdAt: string;
+};
+
+/**
+ * Get the payments log for a contract (newest first). Contract parties can view
+ * their own contract; admins may view any contract for oversight.
+ */
+export async function getContractPaymentHistory(
+  contractId: string,
+  userId: string,
+  role?: string
+): Promise<ServiceResult<{ contractId: string; items: PaymentHistoryRecord[] }>> {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
+    return errorResult('NOT_FOUND', 'Contract not found');
+  }
+  const contract = mapContractFromEntity(contractEntity);
+
+  // Same authorization as getContractPaymentStatus: contract parties, or admins.
+  if (contract.employerId !== userId && contract.freelancerId !== userId) {
+    if (role !== 'admin') {
+      return errorResult('UNAUTHORIZED', 'Only contract parties can view payment history');
+    }
+  }
+
+  try {
+    const payments = await paymentRepository.findByContractId(contractId);
+    return successResult({
+      contractId,
+      items: payments.map((p) => ({
+        id: p.id,
+        milestoneId: p.milestone_id,
+        payerId: p.payer_id,
+        payeeId: p.payee_id,
+        amount: p.amount,
+        currency: p.currency,
+        txHash: p.tx_hash,
+        status: p.status,
+        paymentType: p.payment_type,
+        createdAt: p.created_at,
+      })),
+    });
+  } catch (error) {
+    return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch payment history');
+  }
+}
+
 export async function isContractComplete(contractId: string): Promise<boolean> {
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -985,12 +859,44 @@ type EscrowDeploymentInput = {
   freelancerWalletAddress: string;
 };
 
-function buildEscrowMilestones(project: Project): EscrowMilestone[] {
-  return project.milestones.map(m => ({
-    id: m.id,
-    amount: toWei(m.amount),
-    status: 'pending' as const,
-  }));
+/**
+ * Build the milestone amounts the escrow must be funded with.
+ *
+ * A contract carrying a rush fee must fund the escrow with base + fee, but the
+ * DB milestones may still hold base amounts (initial rush proposals, or legacy
+ * contracts created before the fee was folded into milestones). In that case
+ * the amounts are scaled proportionally so the escrow ledger matches the
+ * contract total. When the DB milestones already include the fee (rush accepted
+ * before deployment), they are used as-is — never scaled twice.
+ */
+function buildEscrowMilestones(project: Project, contract: Contract): {
+  milestones: EscrowMilestone[];
+  amounts: number[];
+  scaled: boolean;
+} {
+  const baseAmounts = project.milestones.map(m => m.amount ?? 0);
+  let amounts = baseAmounts;
+  let scaled = false;
+
+  if (contract.rushFee > 0) {
+    const base = contract.baseAmount > 0 ? contract.baseAmount : contract.totalAmount - contract.rushFee;
+    const milestoneSum = baseAmounts.reduce((sum, amount) => sum + amount, 0);
+    const alreadyScaled = Math.abs(milestoneSum - contract.totalAmount) < 0.01;
+    if (base > 0 && !alreadyScaled && Math.abs(milestoneSum - base) < 0.01) {
+      amounts = rescaleMilestoneAmounts(baseAmounts, base, contract.rushFee);
+      scaled = true;
+    }
+  }
+
+  return {
+    milestones: project.milestones.map((m, i) => ({
+      id: m.id,
+      amount: toWei(amounts[i] ?? 0),
+      status: 'pending' as const,
+    })),
+    amounts,
+    scaled,
+  };
 }
 
 /**
@@ -1009,7 +915,7 @@ function validateEscrowAmounts(
  * Deploy the escrow on the real blockchain (Ganache), also saving a simulated
  * escrow record for status tracking (non-critical).
  */
-async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promise<string> {
+async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promise<{ escrowAddress: string; transactionHash: string | null }> {
   const { contract, project, escrowMilestones, contractTotalAmount, employerWalletAddress, freelancerWalletAddress } = input;
 
   const milestoneAmounts = escrowMilestones.map(m => m.amount);
@@ -1052,10 +958,10 @@ async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promis
     logger.error('Failed to save simulated escrow state (non-critical)', { error: simError });
   }
 
-  return realDeployment.escrowAddress;
+  return { escrowAddress: realDeployment.escrowAddress, transactionHash: realDeployment.transactionHash };
 }
 
-async function deploySimulatedEscrow(input: EscrowDeploymentInput): Promise<string> {
+async function deploySimulatedEscrow(input: EscrowDeploymentInput): Promise<{ escrowAddress: string; transactionHash: string | null }> {
   const { contract, escrowMilestones, contractTotalAmount, employerWalletAddress, freelancerWalletAddress } = input;
 
   const deployment = await escrowOps.deployEscrow({
@@ -1066,13 +972,18 @@ async function deploySimulatedEscrow(input: EscrowDeploymentInput): Promise<stri
     milestones: escrowMilestones,
   });
 
-  await escrowOps.depositToEscrow(
+  const depositReceipt = await escrowOps.depositToEscrow(
     deployment.escrowAddress,
     contractTotalAmount,
     employerWalletAddress
   );
 
-  return deployment.escrowAddress;
+  // The deposit is the funding tx (deploy itself moves no funds); fall back to
+  // the deployment hash when no deposit receipt is available (e.g. tests).
+  return {
+    escrowAddress: deployment.escrowAddress,
+    transactionHash: depositReceipt?.transactionHash ?? deployment.transactionHash ?? null,
+  };
 }
 
 async function persistEscrowAddress(contract: Contract, escrowAddress: string): Promise<void> {
@@ -1096,7 +1007,7 @@ export async function initializeContractEscrow(
       return errorResult('INVALID_CONTRACT_AMOUNT', 'Contract total amount must be greater than zero');
     }
 
-    const escrowMilestones = buildEscrowMilestones(project);
+    const { milestones: escrowMilestones, amounts: scaledAmounts, scaled } = buildEscrowMilestones(project, contract);
 
     const contractTotalAmount = validateEscrowAmounts(escrowMilestones, contract.totalAmount);
     if (contractTotalAmount === null) {
@@ -1112,13 +1023,58 @@ export async function initializeContractEscrow(
       freelancerWalletAddress,
     };
 
-    const escrowAddress = getBlockchainMode() === 'real' && isWeb3Available()
+    const deployment = getBlockchainMode() === 'real' && isWeb3Available()
       ? await deployRealEscrowIfAvailable(deploymentInput)
       : await deploySimulatedEscrow(deploymentInput);
 
-    await persistEscrowAddress(contract, escrowAddress);
+    await persistEscrowAddress(contract, deployment.escrowAddress);
 
-    return successResult({ escrowAddress });
+    // escrow_deposit payment record — the escrow was funded with the full
+    // contract amount at deploy; record it so the payments log matches the
+    // ledger. Best-effort: a failed record write never fails the deployment
+    // (the funds already moved on-chain).
+    try {
+      await createPaymentRecord({
+        contractId: contract.id,
+        milestoneId: null,
+        payerId: contract.employerId,
+        payeeId: contract.freelancerId,
+        // contractTotalAmount is wei; contract.totalAmount is the same value in
+        // ETH units (validated equal via toWei) and matches the read model.
+        amount: contract.totalAmount,
+        paymentType: 'escrow_deposit',
+        txHash: deployment.transactionHash,
+        status: 'completed',
+      });
+    } catch (recordError) {
+      logger.error('Failed to record escrow deposit payment (payments log may diverge from ledger)', {
+        error: recordError,
+        contractId: contract.id,
+      });
+    }
+
+    // If the escrow was funded with scaled (fee-inclusive) amounts while the DB
+    // milestones still held base amounts, persist the scaled amounts so the read
+    // model (released/pending totals, payment records) matches the escrow ledger.
+    if (scaled) {
+      try {
+        await projectRepository.updateProject(project.id, {
+          milestones: project.milestones.map((m, i) => ({
+            ...m,
+            due_date: m.dueDate,
+            amount: scaledAmounts[i] ?? m.amount,
+          })),
+        });
+      } catch (scaleError) {
+        logger.error('Failed to persist scaled milestone amounts after escrow deployment (read model may diverge)', {
+          error: scaleError,
+          contractId: contract.id,
+          projectId: project.id,
+        });
+      }
+    }
+
+    return successResult({ escrowAddress: deployment.escrowAddress });
   } catch (error) {
     return errorResult('ESCROW_DEPLOYMENT_FAILED', error instanceof Error ? error.message : 'Failed to deploy escrow');
   }

@@ -25,7 +25,6 @@ describe('Env Config', () => {
     delete process.env.BASE_URL;
     delete process.env.SPACE_ID;
     delete process.env.ENABLE_API_DOCS;
-    delete process.env.JWT_REFRESH_SECRET;
     delete process.env.TRUST_PROXY_HOPS;
   });
 
@@ -33,7 +32,6 @@ describe('Env Config', () => {
     process.env.APPWRITE_ENDPOINT = 'https://cloud.appwrite.io/v1';
     process.env.APPWRITE_PROJECT_ID = 'test-project-id';
     process.env.APPWRITE_API_KEY = 'test-api-key';
-    process.env.JWT_SECRET = 'test-jwt-secret';
     process.env.LLM_API_URL = 'http://localhost:5000';
   };
 
@@ -131,20 +129,6 @@ describe('Env Config', () => {
       expect(config.server.enableApiDocs).toBe(false);
     });
 
-    it('should set jwt secret', async () => {
-      setupRequiredEnv();
-      process.env.JWT_SECRET = 'my-secret';
-      const { config } = await importModule();
-      expect(config.jwt.secret).toBe('my-secret');
-    });
-
-    it('should set jwt expiresIn', async () => {
-      setupRequiredEnv();
-      process.env.JWT_EXPIRES_IN = '2h';
-      const { config } = await importModule();
-      expect(config.jwt.expiresIn).toBe('2h');
-    });
-
     it('should set blockchain mode', async () => {
       setupRequiredEnv();
       process.env.BLOCKCHAIN_MODE = 'real';
@@ -164,13 +148,6 @@ describe('Env Config', () => {
       process.env.BLOCKCHAIN_PRIVATE_KEY = '0xabc';
       const { config } = await importModule();
       expect(config.blockchain.privateKey).toBe('0xabc');
-    });
-
-    it('should fallback jwt refreshSecret to jwt secret', async () => {
-      setupRequiredEnv();
-      delete process.env.JWT_REFRESH_SECRET;
-      const { config } = await importModule();
-      expect(config.jwt.refreshSecret).toBe('test-jwt-secret');
     });
 
     it('should use default LLM_MODEL', async () => {
@@ -221,19 +198,5 @@ describe('Env Config', () => {
       await expect(importModule()).rejects.toThrow('Environment variable ENABLE_API_DOCS must be "true" or "false"');
     });
 
-    it('should throw when JWT_REFRESH_SECRET is missing in production', async () => {
-      setupRequiredEnv();
-      process.env.NODE_ENV = 'production';
-      delete process.env.JWT_REFRESH_SECRET;
-      await expect(importModule()).rejects.toThrow('JWT_REFRESH_SECRET not set');
-    });
-
-    it('should not throw when JWT_REFRESH_SECRET is set in production', async () => {
-      setupRequiredEnv();
-      process.env.NODE_ENV = 'production';
-      process.env.JWT_REFRESH_SECRET = 'refresh-secret';
-      const { config } = await importModule();
-      expect(config.jwt.refreshSecret).toBe('refresh-secret');
-    });
   });
 });

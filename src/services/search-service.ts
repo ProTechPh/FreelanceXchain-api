@@ -1,6 +1,7 @@
 import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
+import { skillRepository } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult } from '../types/service-result.js';
@@ -20,6 +21,7 @@ export type ProjectSearchFilters = {
 
 export type FreelancerSearchFilters = {
   keyword?: string;
+  /** Skill document IDs, skill names, or a mix — both are accepted (see resolveSkillFilterToNames). */
   skillIds?: string[];
 };
 
@@ -90,6 +92,8 @@ export async function searchProjects(
   // If multiple filters are provided, we need to apply them in memory
   // For single filters, we can use the optimized repository methods
   if (hasKeyword && !hasSkills && !hasBudgetRange) {
+    // Keyword-only: the repository matches title OR description via a single
+    // Query.or, so pagination happens server-side — no fetch-all fallback.
     entityResult = await projectRepository.searchProjects(filters.keyword!, queryOptions);
   } else if (hasSkills && !hasKeyword && !hasBudgetRange) {
     entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, queryOptions);
@@ -101,25 +105,20 @@ export async function searchProjects(
     // No filters - return all open projects
     entityResult = await projectRepository.getAllOpenProjects(queryOptions);
   } else {
-    // Multiple filters - build a combined query to push ALL filters to the database
-    // causing missing results, wrong hasMore, and inconsistent page sizes.
-    // Now we apply all filters in a single DB query before pagination.
-    
-    // Appwrite can't combine a fulltext/contains search with range/array filters
-    // in one query, so apply the first filter at the database level (narrowing
-    // the candidate set via the indexes) and the rest in memory on that bounded
-    // result. The first filter is the one with the highest-cardinality index.
+    // Multiple filters: the first filter runs at the database level (narrowing
+    // the candidate set via the indexes) and the rest refine in memory on that
+    // bounded result. The keyword first-filter uses the same title-OR-description
+    // Query.or as the keyword-only path, so description-only matches are found
+    // in combined searches too. The first filter is the one with the
+    // highest-cardinality index.
     const firstFilterOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
     if (hasKeyword) {
       entityResult = await projectRepository.searchProjects(filters.keyword!, firstFilterOptions);
-    } else if (hasSkills) {
-      entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions);
     } else {
-      entityResult = await projectRepository.getProjectsByBudgetRange(
-        filters.minBudget ?? 0,
-        filters.maxBudget ?? Number.MAX_SAFE_INTEGER,
-        firstFilterOptions
-      );
+      // Multi-filter is only reached when keyword or skills is present (a
+      // budget-only request matches the single-filter branch above), so the
+      // remaining first-filter option here is always skills.
+      entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions);
     }
 
     if (entityResult.items.length >= SEARCH_FALLBACK_LIMIT) {
@@ -127,16 +126,6 @@ export async function searchProjects(
     }
 
     let filteredItems = entityResult.items;
-
-    // Apply keyword filter
-    if (hasKeyword) {
-      const keyword = filters.keyword!.toLowerCase();
-      filteredItems = filteredItems.filter(
-        project =>
-          project.title.toLowerCase().includes(keyword) ||
-          project.description.toLowerCase().includes(keyword)
-      );
-    }
 
     // Apply skill filter
     if (hasSkills) {
@@ -171,7 +160,38 @@ export async function searchProjects(
 
 
 /**
- * Search freelancers with skill filters
+ * Normalize a freelancer-search skill filter into lowercase skill names.
+ *
+ * Freelancer profiles store skills by name (not ID), so incoming values may be
+ * either skill document IDs or literal names. Values that resolve to a skill in
+ * the taxonomy are converted to that skill's canonical name; anything that
+ * isn't a known ID passes through as a literal name. Both the raw values and
+ * the resolved names are kept, so a value that happens to be both a skill ID
+ * and a name still matches. The lookup uses the strict repository variant so a
+ * taxonomy read failure is distinguishable from "no matches" — it is logged as
+ * a warning and matching degrades to name-only rather than failing the search.
+ */
+export async function resolveSkillFilterToNames(values: string[]): Promise<string[]> {
+  const normalized = new Set(values.map(value => value.toLowerCase()));
+  try {
+    const resolved = await skillRepository.findSkillsByIdsStrict(values);
+    for (const skill of resolved) {
+      normalized.add(skill.name.toLowerCase());
+    }
+  } catch (error) {
+    // Taxonomy lookup failed — skill IDs in the filter can't be resolved to
+    // names. Fall back to name-only matching so the search still runs, but
+    // surface the degradation instead of silently returning no matches.
+    logger.warn('Skill ID resolution failed — degrading to name-only matching', {
+      error: error instanceof Error ? error.message : String(error),
+      skillFilterValues: values,
+    });
+  }
+  return [...normalized];
+}
+
+/**
+ * Search freelancers with keyword and skill filters
  */
 export async function searchFreelancers(
   filters: FreelancerSearchFilters,
@@ -180,13 +200,19 @@ export async function searchFreelancers(
   const pageSize = normalizePageSize(pagination?.pageSize);
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
-  let entityResult: PaginatedResult<FreelancerProfileEntity>;
-
   const hasKeyword = filters.keyword && filters.keyword.trim().length > 0;
   const hasSkills = filters.skillIds && filters.skillIds.length > 0;
 
+  // Resolve the skill filter (IDs and/or names) to lowercase names once; the
+  // repository and the in-memory refine both match profiles by skill name.
+  const skillNameValues = hasSkills
+    ? await resolveSkillFilterToNames(filters.skillIds!)
+    : undefined;
+
+  let entityResult: PaginatedResult<FreelancerProfileEntity>;
+
   if (hasSkills && !hasKeyword) {
-    entityResult = await freelancerProfileRepository.searchBySkills(filters.skillIds!, queryOptions);
+    entityResult = await freelancerProfileRepository.searchBySkills(skillNameValues!, queryOptions);
   } else if (hasKeyword && !hasSkills) {
     entityResult = await freelancerProfileRepository.searchByKeyword(filters.keyword!, queryOptions);
   } else if (!hasKeyword && !hasSkills) {
@@ -212,7 +238,7 @@ export async function searchFreelancers(
 
     // Apply skill filter using case-insensitive skill name matching
     if (hasSkills) {
-      const skillNameSet = new Set(filters.skillIds?.map(s => s.toLowerCase()));
+      const skillNameSet = new Set(skillNameValues);
       filteredItems = filteredItems.filter(profile =>
         profile.skills.some(skill => skillNameSet.has(skill.name.toLowerCase()))
       );

@@ -53,7 +53,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 
 #### Dependencies
 
-- **Production:** Express, Appwrite, Ethers.js, JWT, Redis, etc.
+- **Production:** Express, Appwrite, Ethers.js, Redis, etc.
 - **Development:** TypeScript, Jest, Hardhat, ESLint, tsx, etc.
 
 ### Common Commands
@@ -214,7 +214,7 @@ jest.setTimeout(30000);
 
 // Mock environment variables
 process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = 'test-secret';
+process.env.APPWRITE_PROJECT_ID = 'test-project';
 
 // Global test utilities
 global.testUtils = {
@@ -554,9 +554,8 @@ APPWRITE_MILESTONE_DELIVERABLES_BUCKET=milestone-deliverables
 #### Authentication
 
 ```env
-JWT_SECRET=your-secret-min-32-chars
-JWT_EXPIRES_IN=1h
-JWT_REFRESH_EXPIRES_IN=7d
+# Auth is Appwrite-managed: session JWTs are issued and validated by Appwrite,
+# so no JWT signing secrets are needed. See the Authentication section.
 ```
 
 #### Blockchain

@@ -157,6 +157,22 @@ describe('search-routes - maxBudget validation and continuationToken', () => {
     expect(res.body.error.message).toBe('maxBudget must be a valid number');
   });
 
+  it('GET /projects returns 400 when minBudget exceeds maxBudget', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?minBudget=2000&maxBudget=1000');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.message).toBe('minBudget must be less than or equal to maxBudget');
+  });
+
+  it('GET /projects accepts an equal minBudget and maxBudget', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?minBudget=1000&maxBudget=1000');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({ minBudget: 1000, maxBudget: 1000 }, {});
+  });
+
   it('L156-158: GET /projects parses continuationToken as offset', async () => {
     mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
     const request = (await import('supertest')).default;

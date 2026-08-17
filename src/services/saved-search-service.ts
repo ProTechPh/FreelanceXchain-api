@@ -6,6 +6,7 @@ import { savedSearchRepository, type SavedSearchEntity } from '../repositories/s
 import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, type FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { safeJsonParse } from '../utils/index.js';
+import { resolveSkillFilterToNames } from './search-service.js';
 
 /**
  * Fetch ALL open projects using offset pagination (no 1000-row truncation).
@@ -66,8 +67,11 @@ export function filterProjectsBySavedSearch(
 
   if (filters.skills && Array.isArray(filters.skills)) {
     const filterSkillSet = new Set(filters.skills.map((s: unknown) => String(s).toLowerCase()));
+    // Projects store both the skill document ID and its name on each
+    // required-skill ref, so accept either (the live search API documents IDs).
     filtered = filtered.filter(p =>
-      p.required_skills?.some((s: { skill_name?: string; name?: string }) =>
+      p.required_skills?.some((s: { skill_id?: string; skill_name?: string; name?: string }) =>
+        filterSkillSet.has((s.skill_id || '').toLowerCase()) ||
         filterSkillSet.has((s.skill_name || s.name || '').toLowerCase())
       )
     );
@@ -267,7 +271,16 @@ export async function executeSavedSearch(
     }
 
     const allProfiles = await fetchAllProfiles();
-    const filtered = filterFreelancersBySavedSearch(allProfiles, filters);
+    // Profiles store skills by name, but saved-search filters may contain skill
+    // IDs (the live search API accepts both) — resolve IDs to names first so a
+    // saved search with IDs matches instead of silently returning nothing.
+    const resolvedFilters = { ...filters };
+    if (Array.isArray(resolvedFilters.skills)) {
+      resolvedFilters.skills = await resolveSkillFilterToNames(
+        resolvedFilters.skills.map((s: unknown) => String(s))
+      );
+    }
+    const filtered = filterFreelancersBySavedSearch(allProfiles, resolvedFilters);
 
     filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
     const results = filtered.slice(0, 50);

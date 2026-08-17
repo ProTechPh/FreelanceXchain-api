@@ -26,6 +26,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
     contains: jest.fn((...args: any[]) => ({ type: 'contains', args })),
     between: jest.fn((...args: any[]) => ({ type: 'between', args })),
+    or: jest.fn((...args: any[]) => ({ type: 'or', args })),
     cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   DatabasesIndexType: { Key: 'key', Unique: 'unique', Fulltext: 'fulltext' },
@@ -555,7 +556,7 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
   });
 
   describe('searchProjects', () => {
-    it('should search titles at the database level with the status filter', async () => {
+    it('should search titles OR descriptions in a single Query.or with the status filter', async () => {
       mockListDocuments.mockResolvedValueOnce({
         documents: [
           {
@@ -581,9 +582,14 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.title).toBe('Build a React Website');
       const queries = mockListDocuments.mock.calls[0][2] as any[];
-      const contains = queries.find(q => q.type === 'contains');
-      expect(contains).toBeDefined();
-      expect(contains.args).toEqual(['title', 'react']);
+      const orQuery = queries.find(q => q.type === 'or');
+      expect(orQuery).toBeDefined();
+      // Query.or is called with a single array argument, so args[0] holds the nested queries.
+      const containsQueries = orQuery.args[0] as any[];
+      expect(containsQueries).toEqual([
+        { type: 'contains', args: ['title', 'react'] },
+        { type: 'contains', args: ['description', 'react'] },
+      ]);
       expect(queries.some(q => q.type === 'equal' && q.args[0] === 'status' && q.args[1] === 'open')).toBe(true);
     });
 
@@ -619,7 +625,9 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
       const result = await projectRepository.searchProjects('react');
       expect(result.items).toHaveLength(1);
-      expect(mockListDocuments.mock.calls[0][2].some((q: any) => q.type === 'contains' && q.args[1] === 'react')).toBe(true);
+      const orQuery = mockListDocuments.mock.calls[0][2].find((q: any) => q.type === 'or');
+      expect(orQuery).toBeDefined();
+      expect(orQuery.args[0].some((q: any) => q.type === 'contains' && q.args[1] === 'react')).toBe(true);
     });
 
     it('should respect limit and offset in search results', async () => {

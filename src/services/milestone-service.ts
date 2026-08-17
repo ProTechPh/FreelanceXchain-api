@@ -438,11 +438,11 @@ export async function getContractMilestones(
       return errorResult('NOT_FOUND', 'Contract not found');
     }
 
-    // BLF-8.1: Verify user is a party to the contract before returning milestones
-    if (userId) {
-      if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
-        return errorResult('UNAUTHORIZED', 'You are not authorized to view these milestones');
-      }
+    // BLF-8.1: The party check is UNCONDITIONAL — an absent userId must fail
+    // closed rather than skip authorization, so a future caller that forgets to
+    // pass the authenticated user can never silently widen access.
+    if (!userId || (contract.employer_id !== userId && contract.freelancer_id !== userId)) {
+      return errorResult('UNAUTHORIZED', 'You are not authorized to view these milestones');
     }
 
     const project = await projectRepository.findProjectById(contract.project_id);

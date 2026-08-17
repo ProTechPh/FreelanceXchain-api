@@ -41,12 +41,21 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
   freelancerProfileRepository: mockFreelancerProfileRepository,
 }));
 
+const mockSkillRepository = {
+  findSkillsByIds: jest.fn<any>(),
+  findSkillsByIdsStrict: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
+  skillRepository: mockSkillRepository,
+}));
+
 const {
   createSavedSearch,
   getUserSavedSearches,
   updateSavedSearch,
   deleteSavedSearch,
   executeSavedSearch,
+  filterProjectsBySavedSearch,
 } = await import('../../services/saved-search-service.js');
 
 const mockSavedSearchRow = {
@@ -63,6 +72,7 @@ const mockSavedSearchRow = {
 describe('Saved Search Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSkillRepository.findSkillsByIdsStrict.mockResolvedValue([]);
   });
 
   describe('createSavedSearch', () => {
@@ -405,6 +415,54 @@ describe('Saved Search Service', () => {
         expect(result.data.count).toBe(1);
         expect(result.data.results[0].id).toBe('fp-1');
       }
+    });
+
+    it('should resolve skill IDs to names when executing a freelancer search', async () => {
+      const freelancerSearch = {
+        ...mockSavedSearchRow,
+        search_type: 'freelancer',
+        filters: JSON.stringify({ skills: ['skill-1'] }),
+      };
+      mockSavedSearchRepository.getById.mockResolvedValueOnce(freelancerSearch);
+      mockSkillRepository.findSkillsByIdsStrict.mockResolvedValueOnce([
+        { id: 'skill-1', name: 'react' },
+      ]);
+      mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+        items: [
+          { id: 'fp-1', skills: [{ name: 'react' }], hourly_rate: 50, created_at: '2025-01-01' },
+          { id: 'fp-2', skills: [{ name: 'python' }], hourly_rate: 60, created_at: '2025-01-02' },
+        ],
+        total: 2,
+        hasMore: false,
+      });
+
+      const result = await executeSavedSearch('search-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.count).toBe(1);
+        expect(result.data.results[0].id).toBe('fp-1');
+      }
+    });
+
+    it('should filter projects by skill ID as well as skill name', async () => {
+      const filtered = filterProjectsBySavedSearch(
+        [
+          {
+            id: 'proj-1', title: 'React App', budget: 300,
+            required_skills: [{ skill_id: 'skill-1', skill_name: 'react' }],
+            created_at: '2025-01-01', description: 'Test',
+          },
+          {
+            id: 'proj-2', title: 'Vue App', budget: 400,
+            required_skills: [{ skill_id: 'skill-2', skill_name: 'vue' }],
+            created_at: '2025-01-02', description: 'Test 2',
+          },
+        ],
+        { skills: ['skill-1'] }
+      );
+
+      expect(filtered.map((p: any) => p.id)).toEqual(['proj-1']);
     });
 
     it('should filter freelancers by hourly rate', async () => {

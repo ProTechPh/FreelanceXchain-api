@@ -87,6 +87,16 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
+// Payment records: refunds write one 'refund' record per refunded milestone so
+// the payments log matches the ledger (audit Finding 2-4).
+const mockPaymentRepository = {
+  create: jest.fn<any>(async (payment: any) => ({ ...payment })),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
+  paymentRepository: mockPaymentRepository,
+  PaymentType: {},
+}));
+
 const now = () => new Date().toISOString();
 
 function makeProject(milestones, overrides = {}) {
@@ -464,6 +474,18 @@ describe('Escrow Refund Service', () => {
           escrowAddress: '0xescrow',
         }),
       }));
+      // Audit Finding 2-4: the refund is recorded in the payments log — one
+      // 'refund' record per refunded milestone, money returning to the employer.
+      expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        contract_id: 'c-1',
+        milestone_id: 'm1',
+        payer_id: 'freelancer-1',
+        payee_id: 'employer-1',
+        amount: 1000,
+        payment_type: 'refund',
+        tx_hash: '0xrefund',
+        status: 'completed',
+      }));
     });
 
     it('should refund only the requested milestones for a partial refund and keep the contract active (BLF-3.6)', async () => {
@@ -501,6 +523,16 @@ describe('Escrow Refund Service', () => {
       const updateCall = mockProjectRepository.updateProject.mock.calls[0];
       expect(updateCall[1].milestones.map(m => m.status)).toEqual(['refunded', 'refunded', 'pending']);
       expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
+      // One record per refunded milestone, each with its own per-milestone tx hash.
+      expect(mockPaymentRepository.create).toHaveBeenCalledTimes(2);
+      expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        contract_id: 'c-1', milestone_id: 'm1', payer_id: 'freelancer-1', payee_id: 'employer-1',
+        amount: 1000, payment_type: 'refund', tx_hash: '0xrefund-ms', status: 'completed',
+      }));
+      expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        contract_id: 'c-1', milestone_id: 'm2', payer_id: 'freelancer-1', payee_id: 'employer-1',
+        amount: 1000, payment_type: 'refund', tx_hash: '0xrefund-ms', status: 'completed',
+      }));
     });
 
     it('should cancel the contract when a partial refund covers every pending milestone (BLF-3.6)', async () => {
@@ -602,6 +634,30 @@ describe('Escrow Refund Service', () => {
       const updateCall = mockProjectRepository.updateProject.mock.calls[0];
       expect(updateCall[1].milestones.map((m: any) => m.status)).toEqual(['refunded', 'refunded']);
       // All refundable milestones settled -> contract cancelled
+      expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c-1', { status: 'cancelled' });
+      // Both milestones are recorded; the skipped (already-refunded) one has no
+      // new tx hash (idempotent retry — the funds moved in the failed attempt).
+      expect(mockPaymentRepository.create).toHaveBeenCalledTimes(2);
+      expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        contract_id: 'c-1', milestone_id: 'm1', payer_id: 'freelancer-1', payee_id: 'employer-1',
+        amount: 1000, payment_type: 'refund', tx_hash: null, status: 'completed',
+      }));
+      expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        contract_id: 'c-1', milestone_id: 'm2', payer_id: 'freelancer-1', payee_id: 'employer-1',
+        amount: 1000, payment_type: 'refund', tx_hash: '0xrefund-ms', status: 'completed',
+      }));
+    });
+
+    it('still succeeds when the payment record write fails (best-effort log)', async () => {
+      const { approveRefund } = await importModule();
+
+      setupHappyPath();
+      mockPaymentRepository.create.mockRejectedValueOnce(new Error('db down'));
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      // The refund itself is unaffected — the funds already moved on-chain.
+      expect(result.success).toBe(true);
       expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c-1', { status: 'cancelled' });
     });
 

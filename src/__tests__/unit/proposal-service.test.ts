@@ -1376,6 +1376,56 @@ describe('Proposal Service - Additional Branch Coverage', () => {
     }
   });
 
+  it('folds the rush fee into project milestone amounts at contract creation', async () => {
+    const employerId = 'employer-rush-scale';
+    const freelancerId = 'freelancer-rush-scale';
+
+    // Two milestones summing to the 1000 proposal rate; 30% rush fee = 300.
+    const milestones = [
+      createTestMilestone({ id: 'ms-scale-1', title: 'M1', amount: 600, status: 'pending' }),
+      createTestMilestone({ id: 'ms-scale-2', title: 'M2', amount: 400, status: 'pending' }),
+    ];
+    const project = createTestProject({
+      id: 'rush-scale-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      is_rush: true,
+      rush_fee_percentage: 30,
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({
+      id: employerId,
+      wallet_address: '0x5555555555555555555555555555555555555555',
+    });
+    userStore.set(employer.id, employer);
+
+    const freelancer = createTestUser({
+      id: freelancerId,
+      wallet_address: '0x6666666666666666666666666666666666666666',
+    });
+    userStore.set(freelancer.id, freelancer);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 1000,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // Milestones must be scaled to base + fee (1300) so the escrow deployed from
+    // them passes validateEscrowAmounts and the read model matches the ledger.
+    const storedProject = projectStore.get(project.id) as any;
+    expect(storedProject.milestones[0].amount).toBe(780); // 600 * 1.3
+    expect(storedProject.milestones[1].amount).toBe(520); // remainder: 1300 - 780
+    expect(storedProject.milestones[0].amount + storedProject.milestones[1].amount).toBe(1300);
+  });
+
   it('rush fee defaults and isRush false via acceptProposal (lines 308-310, 415-418)', async () => {
     const employerId = 'employer-no-rush';
     const freelancerId = 'freelancer-no-rush';

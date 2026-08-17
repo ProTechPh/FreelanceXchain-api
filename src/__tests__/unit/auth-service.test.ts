@@ -3,7 +3,6 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
 import jwt from 'jsonwebtoken';
-import { config } from '../../config/env.js';
 import { UserEntity } from '../../repositories/user-repository.js';
 import { UserRole } from '../../models/user.js';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../../services/auth-types.js';
@@ -213,7 +212,7 @@ describe('Auth Service - Registration Properties', () => {
             expect(authResult.accessToken).toBeDefined();
             expect(authResult.refreshToken).toBeDefined();
             // Verify access token contains claims (email comes from mock Appwrite session)
-            const decoded = jwt.verify(authResult.accessToken, config.jwt.secret) as {
+            const decoded = jwt.verify(authResult.accessToken, 'test-secret') as {
               userId: string;
               email: string;
               role: UserRole;

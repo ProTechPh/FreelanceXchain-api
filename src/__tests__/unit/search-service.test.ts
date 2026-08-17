@@ -29,6 +29,43 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
   freelancerProfileRepository: mockFreelancerRepo,
 }));
 
+// Skill ID → canonical name map used by the mocked skill repository.
+const skillIdToName: Record<string, string> = {
+  'skill-react': 'React',
+  'skill-python': 'Python',
+  'skill-node': 'Node.js',
+  'skill-js': 'JavaScript',
+  'skill-vue': 'Vue',
+};
+
+const mockSkillRepo = {
+  findSkillsByIds: jest.fn(async (ids: string[]) =>
+    ids
+      .map(id => (skillIdToName[id] ? { id, name: skillIdToName[id] } : null))
+      .filter((skill: { id: string; name: string } | null): skill is { id: string; name: string } => skill !== null)
+  ),
+  findSkillsByIdsStrict: jest.fn(async (ids: string[]) =>
+    ids
+      .map(id => (skillIdToName[id] ? { id, name: skillIdToName[id] } : null))
+      .filter((skill: { id: string; name: string } | null): skill is { id: string; name: string } => skill !== null)
+  ),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
+  skillRepository: mockSkillRepo,
+}));
+
+const mockLogger = {
+  error: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  debug: jest.fn(),
+};
+
+jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
+  logger: mockLogger,
+}));
+
 const {
   searchProjects,
   searchFreelancers,
@@ -466,7 +503,9 @@ describe('Search Service - Extended Coverage', () => {
         createTestProject({ title: 'Keyword Project', status: 'open', required_skills: [] }),
       );
 
-      mockProjectRepo.getAllOpenProjects.mockResolvedValueOnce({
+      // The multi-filter path narrows via projectRepository.searchProjects first,
+      // so that is the call to stub with an at-limit result set.
+      mockProjectRepo.searchProjects.mockResolvedValueOnce({
         items: largeResultSet,
         hasMore: false,
         total: 1000,
@@ -475,6 +514,81 @@ describe('Search Service - Extended Coverage', () => {
       const results = await searchProjects({ keyword: 'Keyword', minBudget: 0 });
 
       expect(results.success).toBe(true);
+    });
+
+    it('should combine skills and budget filters without a keyword (skills-first DB pass)', async () => {
+      const skillId = 'skill-node';
+
+      const inRange = createTestProject({
+        title: 'Node API Project',
+        status: 'open',
+        budget: 1500,
+        required_skills: [
+          { skill_id: skillId, skill_name: 'Node.js', category_id: 'cat-1', years_of_experience: 3 },
+        ],
+      });
+      const wrongSkill = createTestProject({
+        title: 'Vue Project',
+        status: 'open',
+        budget: 1500,
+        required_skills: [
+          { skill_id: 'skill-vue', skill_name: 'Vue', category_id: 'cat-1', years_of_experience: 1 },
+        ],
+      });
+      const outOfBudget = createTestProject({
+        title: 'Node Quick Fix',
+        status: 'open',
+        budget: 200,
+        required_skills: [
+          { skill_id: skillId, skill_name: 'Node.js', category_id: 'cat-1', years_of_experience: 2 },
+        ],
+      });
+
+      projectStore.set(inRange.id, inRange);
+      projectStore.set(wrongSkill.id, wrongSkill);
+      projectStore.set(outOfBudget.id, outOfBudget);
+
+      const results = await searchProjects({ skillIds: [skillId], minBudget: 1000, maxBudget: 2000 });
+
+      expect(results.success).toBe(true);
+      if (!results.success) return;
+
+      const ids = results.data.items.map(p => p.id);
+      expect(ids).toContain(inRange.id);
+      expect(ids).not.toContain(wrongSkill.id);
+      expect(ids).not.toContain(outOfBudget.id);
+    });
+
+    it('should include description-only matches in keyword-only search and paginate them', async () => {
+      const descriptionMatch = createTestProject({
+        title: 'Website Project',
+        description: 'Needs a developer with TypeScript experience',
+        status: 'open',
+      });
+      const titleMatch = createTestProject({
+        title: 'TypeScript Backend',
+        description: 'Generic description',
+        status: 'open',
+      });
+      const unrelated = createTestProject({
+        title: 'Mobile App',
+        description: 'No keywords here',
+        status: 'open',
+      });
+
+      projectStore.set(descriptionMatch.id, descriptionMatch);
+      projectStore.set(titleMatch.id, titleMatch);
+      projectStore.set(unrelated.id, unrelated);
+
+      const results = await searchProjects({ keyword: 'TypeScript' });
+
+      expect(results.success).toBe(true);
+      if (!results.success) return;
+
+      const ids = results.data.items.map(p => p.id);
+      expect(ids).toContain(descriptionMatch.id);
+      expect(ids).toContain(titleMatch.id);
+      expect(ids).not.toContain(unrelated.id);
     });
   });
 
@@ -501,6 +615,85 @@ describe('Search Service - Extended Coverage', () => {
 
       expect(results.data.items.some(f => f.userId === reactDev.user_id)).toBe(true);
       expect(results.data.items.some(f => f.userId === pythonDev.user_id)).toBe(false);
+    });
+
+    it('should resolve skill IDs to names before matching profiles', async () => {
+      const reactDev = createTestFreelancerProfile({
+        bio: 'React specialist',
+        skills: [{ skill_id: 'skill-react', name: 'React', category_id: 'cat-1', years_of_experience: 3 }] as any,
+      });
+      const pythonDev = createTestFreelancerProfile({
+        bio: 'Python specialist',
+        skills: [{ skill_id: 'skill-python', name: 'Python', category_id: 'cat-2', years_of_experience: 5 }] as any,
+      });
+
+      freelancerStore.set(reactDev.user_id, reactDev);
+      freelancerStore.set(pythonDev.user_id, pythonDev);
+
+      // 'skill-react' is an ID, not the profile's stored name 'React'.
+      const results = await searchFreelancers({ skillIds: ['skill-react'] });
+
+      expect(results.success).toBe(true);
+      if (!results.success) return;
+
+      expect(mockSkillRepo.findSkillsByIdsStrict).toHaveBeenCalledWith(['skill-react']);
+      const ids = results.data.items.map(f => f.userId);
+      expect(ids).toContain(reactDev.user_id);
+      expect(ids).not.toContain(pythonDev.user_id);
+    });
+
+    it('should warn and degrade to name-only matching when the taxonomy lookup fails', async () => {
+      const reactDev = createTestFreelancerProfile({
+        bio: 'React specialist',
+        skills: [{ skill_id: 'skill-react', name: 'React', category_id: 'cat-1', years_of_experience: 3 }] as any,
+      });
+      freelancerStore.set(reactDev.user_id, reactDev);
+
+      // The taxonomy lookup blows up — ID resolution is impossible.
+      mockSkillRepo.findSkillsByIdsStrict.mockRejectedValueOnce(new Error('DB down'));
+
+      const results = await searchFreelancers({ skillIds: ['skill-react'] });
+
+      expect(results.success).toBe(true);
+      if (!results.success) return;
+
+      // Degrades gracefully: 'skill-react' stays a literal name, so the
+      // profile storing 'React' does not match, and a warning is emitted.
+      expect(results.data.items).toHaveLength(0);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Skill ID resolution failed'),
+        expect.objectContaining({ skillFilterValues: ['skill-react'] })
+      );
+    });
+
+    it('should accept a mix of skill IDs and skill names in the filter', async () => {
+      const reactDev = createTestFreelancerProfile({
+        bio: 'React specialist',
+        skills: [{ skill_id: 'skill-react', name: 'React', category_id: 'cat-1', years_of_experience: 3 }] as any,
+      });
+      const vueDev = createTestFreelancerProfile({
+        bio: 'Vue specialist',
+        skills: [{ skill_id: 'skill-vue', name: 'Vue', category_id: 'cat-1', years_of_experience: 2 }] as any,
+      });
+      const pythonDev = createTestFreelancerProfile({
+        bio: 'Python specialist',
+        skills: [{ skill_id: 'skill-python', name: 'Python', category_id: 'cat-2', years_of_experience: 5 }] as any,
+      });
+
+      freelancerStore.set(reactDev.user_id, reactDev);
+      freelancerStore.set(vueDev.user_id, vueDev);
+      freelancerStore.set(pythonDev.user_id, pythonDev);
+
+      // 'skill-react' resolves to 'React'; 'Vue' is already a name.
+      const results = await searchFreelancers({ skillIds: ['skill-react', 'Vue'] });
+
+      expect(results.success).toBe(true);
+      if (!results.success) return;
+
+      const ids = results.data.items.map(f => f.userId);
+      expect(ids).toContain(reactDev.user_id);
+      expect(ids).toContain(vueDev.user_id);
+      expect(ids).not.toContain(pythonDev.user_id);
     });
 
     it('should apply keyword and skill filters in multi-filter mode', async () => {

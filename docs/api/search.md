@@ -64,7 +64,7 @@ Search for freelancers with keyword and skill filters.
 | Parameter | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `keyword` | string | No | - | Case-insensitive search on freelancer bio |
-| `skills` | string | No | - | Comma-separated skill IDs to filter by |
+| `skills` | string | No | - | Comma-separated skill IDs or skill names to filter by (case-insensitive) |
 | `pageSize` | integer | No | 20 | Results per page (1-100) |
 | `continuationToken` | string | No | - | Pagination offset token |
 
@@ -155,6 +155,8 @@ GET /api/search/freelancers?keyword=senior+developer&skills=skill-id-1&pageSize=
 | `updatedAt` | string (ISO 8601) | Last update timestamp |
 
 ## Search Filters
+
+> Saved searches store the same filters — see [Saved Searches API](saved-searches.md#search-filters). For **both** search types, `skills` accepts skill IDs, skill names, or a mix.
 
 Both endpoints use the same general approach to filtering:
 
