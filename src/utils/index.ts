@@ -62,6 +62,27 @@ export function safeJsonParse<T = unknown>(value: string | T): T {
  * @param max - Maximum allowed value (default: 100)
  * @returns A safe integer between 1 and max
  */
+// Payment amounts: milestone_release records store the escrow milestone amount
+// in wei (as a Number — readEscrowRecordedAmount returns
+// Number(escrowMilestone.amount)); every other record type stores ETH units.
+// Any amount above this threshold cannot be a realistic ETH-unit amount, so it
+// is treated as wei. Shared by the payment-repository totals and the escrow
+// reconciliation job so both interpret the payments log the same way.
+const WEI_SCALE_THRESHOLD = 1e12;
+const WEI_PER_ETH = 1e18;
+
+/**
+ * Normalize a stored payment amount to ETH units. `milestone_release` amounts
+ * are wei-as-Number and get divided by 1e18; all other record types are already
+ * ETH units and pass through unchanged.
+ */
+export function toEthUnits(amount: number, paymentType: string): number {
+  if (paymentType === 'milestone_release' && amount > WEI_SCALE_THRESHOLD) {
+    return amount / WEI_PER_ETH;
+  }
+  return amount;
+}
+
 export function clampLimit(raw: number | undefined | null, defaultVal = 20, max = 100): number {
   if (raw === undefined || raw === null || isNaN(raw) || !isFinite(raw)) return defaultVal;
   return Math.max(1, Math.min(Math.floor(raw), max));

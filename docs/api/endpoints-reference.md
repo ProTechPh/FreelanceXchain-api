@@ -151,6 +151,9 @@ Multipart proposal submission with attachments is exposed at `/api/proposals` wi
 | POST | `/api/payments/milestones/:milestoneId/approve` | JWT (employer) | Approve milestone & release payment |
 | POST | `/api/payments/milestones/:milestoneId/dispute` | JWT | Dispute a milestone |
 | GET | `/api/payments/contracts/:contractId/status` | JWT | Contract payment status |
+| GET | `/api/payments/contracts/:contractId/history` | JWT | Payments log for a contract — every ledger money movement (escrow deposit, milestone release, refund, dispute resolution, rush fee), newest first |
+| GET | `/api/payments/me` | JWT | The user's payments across all contracts (payer or payee), newest first, with `totalEarnings`/`totalSpent` lifetime summaries (null when their query fails); `limit` (1–100, default 20) and `offset` query params |
+| GET | `/api/payments/summary` | JWT | Lifetime `totalEarnings`/`totalSpent` with an `available` flag (false when a totals query failed — show "unavailable", not a misleading zero) |
 | GET | `/api/milestones/:id` | JWT | Get milestone details |
 | GET | `/api/milestones/contract/:contractId` | JWT | List milestones for a contract |
 | POST | `/api/milestones/:id/upload-deliverables` | JWT (freelancer) | Upload milestone deliverables |

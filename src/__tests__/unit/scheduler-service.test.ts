@@ -30,6 +30,11 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendWeeklyDigestEmail: mockSendWeeklyDigestEmail,
 }));
 
+const mockReconcileContractPayments = jest.fn();
+jest.unstable_mockModule(resolveModule('src/services/escrow-reconciliation-service.ts'), () => ({
+  reconcileContractPayments: mockReconcileContractPayments,
+}));
+
 const importScheduler = async () => import('../../services/scheduler-service.js');
 
 describe('Scheduler Service', () => {
@@ -1317,5 +1322,26 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         })
       );
     }
+  });
+
+  describe('reconcileContractPayments', () => {
+    it('schedules the hourly escrow reconciliation job', async () => {
+      const { initializeScheduler } = await importScheduler();
+      initializeScheduler();
+      expect(mockCronSchedule).toHaveBeenCalledWith('0 * * * *', expect.any(Function));
+    });
+
+    it('runs the reconciliation job on schedule', async () => {
+      const { initializeScheduler } = await importScheduler();
+      initializeScheduler();
+      const callback = scheduledCallbacks.get('0 * * * *');
+
+      if (callback) {
+        callback();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(mockReconcileContractPayments).toHaveBeenCalled();
+        expect(mockLogger.info).toHaveBeenCalledWith('Running scheduled job: Reconcile contract payments with escrow ledger');
+      }
+    });
   });
 });

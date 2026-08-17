@@ -813,6 +813,92 @@ export async function getContractPaymentHistory(
   }
 }
 
+/**
+ * A payment in the user-wide log — same shape as PaymentHistoryRecord plus the
+ * contract it belongs to (the log spans multiple contracts).
+ */
+export type MyPaymentRecord = PaymentHistoryRecord & { contractId: string };
+
+/**
+ * Get all payments where the user is the payer (money out) or payee (money in),
+ * across every contract, newest first. Paginated via limit/offset, with
+ * totalEarnings/totalSpent lifetime summaries (completed records, ETH units)
+ * on top of the page. The summaries are null (not 0) when their queries fail,
+ * so the UI can show "unavailable" instead of a misleading zero.
+ */
+export async function getMyPayments(
+  userId: string,
+  options: { limit?: number; offset?: number } = {}
+): Promise<ServiceResult<{
+  items: MyPaymentRecord[];
+  total: number;
+  hasMore: boolean;
+  totalEarnings: number | null;
+  totalSpent: number | null;
+}>> {
+  try {
+    const [{ items, total, hasMore }, totalEarnings, totalSpent] = await Promise.all([
+      paymentRepository.findByUserId(userId, options),
+      paymentRepository.getTotalEarnings(userId),
+      paymentRepository.getTotalSpent(userId),
+    ]);
+    return successResult({
+      items: items.map((p) => ({
+        id: p.id,
+        contractId: p.contract_id,
+        milestoneId: p.milestone_id,
+        payerId: p.payer_id,
+        payeeId: p.payee_id,
+        amount: p.amount,
+        currency: p.currency,
+        txHash: p.tx_hash,
+        status: p.status,
+        paymentType: p.payment_type,
+        createdAt: p.created_at,
+      })),
+      total,
+      hasMore,
+      totalEarnings,
+      totalSpent,
+    });
+  } catch (error) {
+    return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch payments');
+  }
+}
+
+/**
+ * Lifetime payment totals for the authenticated user. `available` is false
+ * when either totals query failed, so a widget can show "unavailable" instead
+ * of a misleading zero (the totals themselves stay null in that case).
+ */
+export type PaymentSummary = {
+  totalEarnings: number | null;
+  totalSpent: number | null;
+  available: boolean;
+};
+
+/**
+ * Get the payment summary for the authenticated user: lifetime completed
+ * totals (ETH units, escrow deposits excluded — see payment-repository).
+ */
+export async function getPaymentSummary(
+  userId: string
+): Promise<ServiceResult<PaymentSummary>> {
+  try {
+    const [totalEarnings, totalSpent] = await Promise.all([
+      paymentRepository.getTotalEarnings(userId),
+      paymentRepository.getTotalSpent(userId),
+    ]);
+    return successResult({
+      totalEarnings,
+      totalSpent,
+      available: totalEarnings !== null && totalSpent !== null,
+    });
+  } catch (error) {
+    return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch payment summary');
+  }
+}
+
 export async function isContractComplete(contractId: string): Promise<boolean> {
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {

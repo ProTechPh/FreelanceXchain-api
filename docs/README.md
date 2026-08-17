@@ -58,6 +58,7 @@ Appwrite schema, indexes, and security measures.
 Service-level objectives, error budget, and recovery targets.
 
 - [SLO & Error Budget](reliability/slo.md) - SLI definitions, latency budgets (dashboard/contracts), RPO/RTO, named error-budget owner
+- [Escrow Reconciliation Runbook](reliability/escrow-reconciliation.md) - the hourly ledger-vs-DB reconciliation job, issue codes, and operator responses
 
 ## Deployment & Guides
 
