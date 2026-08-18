@@ -629,6 +629,23 @@ const COLLECTIONS = [
       { key: 'user_id_is_read', type: DatabasesIndexType.Key, attributes: ['user_id', 'is_read'] },
     ],
   },
+  {
+    id: 'email_delivery_failures',
+    name: 'Email Delivery Failures',
+    description: 'Inbound emails the API permanently rejected (unknown user / invalid recipient), recorded so ops can see undelivered mail.',
+    attributes: [
+      { name: 'message_id', type: 'string', size: 255, required: true },
+      { name: 'from_address', type: 'string', size: 320, required: true },
+      { name: 'to_address', type: 'string', size: 320, required: true },
+      { name: 'subject', type: 'string', size: 998, required: true },
+      { name: 'failure_code', type: 'string', size: 50, required: true },
+      { name: 'failure_message', type: 'string', size: 2000, required: false },
+      { name: 'received_at', type: 'string', size: 30, required: true },
+    ],
+    indexes: [
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
+    ],
+  },
 ];
 
 // ─── Index Definitions ───────────────────────────────────────────────────────

@@ -61,16 +61,28 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
   async getProposalsByProject(projectId: string, options?: QueryOptions): Promise<PaginatedResult<ProposalEntity>> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    return this.paginatedWithQueries<ProposalEntity>(
-      [
+
+    try {
+      // fetchAll + in-memory slice instead of paginatedWithQueries' Query.limit:
+      // the accept flow counted accepted proposals and rejected pending ones
+      // from a 1000-cap slice — an older accepted proposal was invisible, so a
+      // full project never transitioned to in_progress (the limit(1000)
+      // truncation class).
+      const all = await this.fetchAll([
         Query.equal('project_id', projectId),
         Query.notEqual('status', 'withdrawn'),
         Query.orderDesc('$createdAt'),
-      ],
-      limit,
-      offset,
-      mapDoc
-    );
+      ]);
+      const total = all.length;
+      const items = all.slice(offset, offset + limit).map(mapDoc);
+      return {
+        items,
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
+    }
   }
 
   async getProposalsByFreelancer(freelancerId: string): Promise<ProposalEntity[]> {

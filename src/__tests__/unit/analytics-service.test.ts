@@ -54,6 +54,30 @@ describe('analytics-service – branch coverage', () => {
     expect(result).toBeDefined();
   });
 
+  it('should include earnings beyond the old 1000-cap (no truncation)', async () => {
+    // 250 completed contracts across 3 cursor pages, 1 ETH each — the old
+    // Query.limit(1000) slice reported totalEarnings of only the newest 1000.
+    const contracts = Array.from({ length: 250 }, (_, i) => ({
+      $id: `c${i}`,
+      freelancer_id: 'user1',
+      status: 'completed',
+      total_amount: 1,
+    }));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: contracts.slice(0, 100), total: 250 })
+      .mockResolvedValueOnce({ documents: contracts.slice(100, 200), total: 250 })
+      .mockResolvedValueOnce({ documents: contracts.slice(200), total: 250 })
+      .mockResolvedValue({ documents: [], total: 0 });
+
+    const { getFreelancerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getFreelancerAnalytics('user1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalEarnings).toBe(250);
+      expect(result.data.projectsCompleted).toBe(250);
+    }
+  });
+
   it('L273: getPlatformMetrics handles contracts with missing total_amount', async () => {
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'a@b.com' }], total: 1 })

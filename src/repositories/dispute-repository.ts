@@ -176,22 +176,21 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
     try {
       const queries: string[] = [
         Query.orderDesc('created_at'),
-        Query.limit(limit),
-        Query.offset(offset),
       ];
       if (options?.status) {
         queries.unshift(Query.equal('status', options.status));
       }
 
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        queries
-      );
+      // fetchAll + in-memory slice instead of Query.limit(1000): the admin
+      // dispute dashboard computed total/pendingCount/resolvedCount from a
+      // truncated 1000-cap slice (the limit(1000) truncation class).
+      const all = await this.fetchAll(queries);
+      const total = all.length;
+      const items = all.slice(offset, offset + limit).map(mapDispute);
       return {
-        items: response.documents.map(mapDispute),
-        hasMore: response.documents.length === limit,
-        total: response.total,
+        items,
+        hasMore: offset + limit < total,
+        total,
       };
     } catch {
       return { items: [], hasMore: false, total: 0 };

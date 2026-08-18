@@ -198,6 +198,47 @@ describe('Scheduler Service', () => {
       }
     });
 
+    it('should execute ALL notify-enabled saved searches beyond the old 100-cap', async () => {
+      const { initializeScheduler } = await importScheduler();
+      initializeScheduler();
+      const callback = scheduledCallbacks.get('0 */6 * * *');
+
+      const now = new Date().toISOString();
+      const searches = Array.from({ length: 250 }, (_, i) => ({
+        $id: `s${i}`,
+        user_id: 'u1',
+        name: `Search ${i}`,
+        search_type: 'project',
+        filters: '{}',
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+      }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: searches.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: searches.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: searches.slice(200), total: 250 })
+        // open projects page (fresh, so every search matches)
+        .mockResolvedValueOnce({
+          documents: [{
+            $id: 'p1',
+            title: 'React Dev',
+            description: 'Build a React app',
+            budget: 1000,
+            required_skills: [{ skill_name: 'React' }],
+            status: 'open',
+            created_at: now,
+          }],
+          total: 1,
+        });
+
+      if (callback) {
+        callback();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        // All 250 searches ran — the old raw Query.limit(100) executed only 100.
+        expect(mockDatabases.createDocument).toHaveBeenCalledTimes(250);
+        expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(250);
+      }
+    });
+
     it('should not notify again when matches are older than last_notified_at', async () => {
       const { initializeScheduler } = await importScheduler();
       initializeScheduler();

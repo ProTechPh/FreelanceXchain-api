@@ -103,13 +103,13 @@ describe('ProposalRepository', () => {
 
     it('should handle custom options and hasMore=true', async () => {
       db().listDocuments.mockResolvedValue({
-        documents: [{ $id: 'p1', project_id: 'pr1' }],
-        total: 5,
+        documents: [{ $id: 'p1', project_id: 'pr1' }, { $id: 'p2', project_id: 'pr1' }],
+        total: 2,
       });
       const result = await repo.getProposalsByProject('pr1', { limit: 1, offset: 0 });
       expect(result.items).toHaveLength(1);
       expect(result.hasMore).toBe(true);
-      expect(result.total).toBe(5);
+      expect(result.total).toBe(2);
     });
 
     it('should handle empty results', async () => {
@@ -121,6 +121,24 @@ describe('ProposalRepository', () => {
       expect(result.items).toEqual([]);
       expect(result.hasMore).toBe(false);
       expect(result.total).toBe(0);
+    });
+
+    it('should reach proposals beyond the old 1000-cap (no truncation)', async () => {
+      // 250 proposals across 3 cursor pages; page 3 (offset 200) must be
+      // reachable — the old Query.limit(1000) hid older accepted/pending
+      // proposals, so the accept flow miscounted slots.
+      const docs = Array.from({ length: 250 }, (_, i) => ({ $id: `p${i}`, project_id: 'pr1', status: 'pending' }));
+      db().listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.getProposalsByProject('pr1', { limit: 100, offset: 200 });
+      expect(result.total).toBe(250);
+      expect(result.items).toHaveLength(50);
+      expect(result.items[0]!.id).toBe('p200');
+      expect(result.items[49]!.id).toBe('p249');
+      expect(result.hasMore).toBe(false);
     });
 
     it('should handle database error gracefully', async () => {
@@ -301,22 +319,22 @@ describe('ProposalRepository - Additional Branch Coverage', () => {
   describe('getProposalsByProject - hasMore calculation', () => {
     it('should return hasMore=true when more items available', async () => {
       db().listDocuments.mockResolvedValue({
-        documents: [{ $id: 'p1', project_id: 'pr1' }],
-        total: 5,
+        documents: [{ $id: 'p1', project_id: 'pr1' }, { $id: 'p2', project_id: 'pr1' }],
+        total: 2,
       });
       const result = await repo.getProposalsByProject('pr1', { limit: 1, offset: 0 });
       expect(result.items).toHaveLength(1);
       expect(result.hasMore).toBe(true);
-      expect(result.total).toBe(5);
+      expect(result.total).toBe(2);
     });
 
-    it('should return hasMore=true when documents.length equals limit (more may exist)', async () => {
+    it('should return hasMore=false when the fetched set is fully shown', async () => {
       db().listDocuments.mockResolvedValue({
         documents: [{ $id: 'p1', project_id: 'pr1' }],
         total: 1,
       });
       const result = await repo.getProposalsByProject('pr1', { limit: 1, offset: 0 });
-      expect(result.hasMore).toBe(true);
+      expect(result.hasMore).toBe(false);
     });
 
     it('should handle empty count and return hasMore=false', async () => {
@@ -339,7 +357,7 @@ describe('ProposalRepository - Additional Branch Coverage', () => {
       });
       const result = await repo.getProposalsByProject('pr1', { limit: 1, offset: 0 });
       expect(result.items).toHaveLength(1);
-      expect(result.hasMore).toBe(true);
+      expect(result.hasMore).toBe(false);
     });
 
     it('should handle offset beyond total count', async () => {

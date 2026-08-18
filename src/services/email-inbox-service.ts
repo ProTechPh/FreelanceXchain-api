@@ -8,6 +8,10 @@ import {
   type EmailFolder,
 } from '../repositories/email-inbox-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import {
+  emailDeliveryFailureRepository,
+} from '../repositories/email-delivery-failure-repository.js';
+import type { EmailDeliveryFailureEntity } from '../models/email-delivery-failure.js';
 import type { PaginatedResult } from '../repositories/base-repository.js';
 import crypto from 'crypto';
 
@@ -70,6 +74,41 @@ function extractUsername(toAddress: string): string | null {
 export function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
+}
+
+/**
+ * Best-effort record of a permanently rejected inbound email (INVALID_RECIPIENT
+ * / USER_NOT_FOUND). These can never succeed on retry, so they are recorded
+ * for ops visibility instead of relying on Cloudflare's bounce alone. A failed
+ * record write is logged and swallowed — recording must never break the
+ * webhook response path.
+ */
+export async function recordInboundDeliveryFailure(
+  payload: InboundEmailPayload,
+  failureCode: string,
+  failureMessage: string
+): Promise<void> {
+  try {
+    await emailDeliveryFailureRepository.createFailure({
+      id: '',
+      message_id: payload.messageId,
+      from_address: payload.from,
+      to_address: payload.to,
+      subject: payload.subject,
+      failure_code: failureCode,
+      failure_message: failureMessage,
+      received_at: payload.receivedAt,
+    });
+  } catch (error) {
+    logger.error('Failed to record inbound email delivery failure', { error, failureCode });
+  }
+}
+
+/**
+ * Most recent inbound delivery failures for the admin ops view.
+ */
+export async function getRecentDeliveryFailures(limit = 50): Promise<EmailDeliveryFailureEntity[]> {
+  return emailDeliveryFailureRepository.findRecent(limit);
 }
 
 export async function processInboundEmail(

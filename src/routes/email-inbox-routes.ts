@@ -7,6 +7,8 @@ import { getEmailWebhookSecret } from '../config/env.js';
 import {
   processInboundEmail,
   verifyWebhookSignature,
+  recordInboundDeliveryFailure,
+  getRecentDeliveryFailures,
   listEmails,
   getEmail,
   updateEmail,
@@ -56,6 +58,13 @@ router.post('/webhook', webhookRateLimiter, asyncHandler(async (req: Request, re
   const result = await processInboundEmail(payload);
 
   if (!result.success) {
+    // Permanent rejections can never succeed on retry — record them so ops can
+    // see undelivered mail instead of relying on Cloudflare's bounce alone.
+    // Best-effort: recording never blocks the response.
+    if (result.error.code === 'INVALID_RECIPIENT' || result.error.code === 'USER_NOT_FOUND') {
+      await recordInboundDeliveryFailure(payload, result.error.code, result.error.message);
+    }
+
     sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
@@ -82,6 +91,11 @@ router.get('/', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandl
   }
 
   res.status(200).json(result.data);
+}));
+
+router.get('/delivery-failures', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
+  const failures = await getRecentDeliveryFailures(50);
+  res.status(200).json({ items: failures, total: failures.length });
 }));
 
 router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {

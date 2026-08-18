@@ -12,6 +12,34 @@ import {
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
+/**
+ * Fetch ALL documents matching the queries using cursor-based pagination (the
+ * base-repository.fetchAll pattern, for this service's raw collection scans).
+ * The old Query.limit(1000) silently undercounted: a user with more than 1000
+ * completed contracts saw truncated earnings/spend totals (the limit(1000)
+ * truncation class). Errors propagate to the caller.
+ */
+async function fetchAllCollection(collectionId: string, baseQueries: string[], pageSize = 100): Promise<Models.DefaultDocument[]> {
+  const allDocs: Models.DefaultDocument[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const queries = [...baseQueries, Query.limit(pageSize)];
+    if (lastId) {
+      queries.push(Query.cursorAfter(lastId));
+    }
+
+    const response = await databases.listDocuments(DATABASE_ID, collectionId, queries);
+    allDocs.push(...response.documents);
+
+    if (response.documents.length < pageSize) break;
+    lastId = response.documents[response.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return allDocs;
+}
+
 interface DateRangeOptions {
   startDate?: string;
   endDate?: string;
@@ -68,9 +96,10 @@ interface AdminAnalytics {
  * Get freelancer analytics
  *
  * Cached per user + date range for 60s — this scans contracts, reviews, and
- * proposals (limit 1000 each) plus per-project lookups, so a frequently-polled
- * dashboard shouldn't re-scan on every request. Only successful results are
- * cached; a failed computation is re-attempted on the next request.
+ * proposals (full cursor fetch each) plus per-project lookups, so a
+ * frequently-polled dashboard shouldn't re-scan on every request. Only
+ * successful results are cached; a failed computation is re-attempted on the
+ * next request.
  */
 export async function getFreelancerAnalytics(
   userId: string,
@@ -85,17 +114,10 @@ export async function getFreelancerAnalytics(
   try {
     const { startDate, endDate } = options;
 
-    const contractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('freelancer_id', userId),
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]
-    );
-
-    let contracts = contractsResponse.documents;
+    let contracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('freelancer_id', userId),
+      Query.equal('status', 'completed'),
+    ]);
     if (startDate) {
       contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
     }
@@ -106,31 +128,19 @@ export async function getFreelancerAnalytics(
     const totalEarnings = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
-    const reviewsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.limit(1000),
-      ]
-    );
-
-    const reviews = reviewsResponse.documents;
+    const reviews = await fetchAllCollection(COLLECTIONS.REVIEWS, [
+      Query.equal('reviewee_id', userId),
+    ]);
     const averageRating = reviews.length > 0
       ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length
       : 0;
 
-    const proposalsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROPOSALS,
-      [
-        Query.equal('freelancer_id', userId),
-        Query.limit(1000),
-      ]
-    );
-    
-    const totalProposals = proposalsResponse.documents.length;
-    const acceptedProposals = proposalsResponse.documents.filter(p => p.status === 'accepted').length;
+    const proposals = await fetchAllCollection(COLLECTIONS.PROPOSALS, [
+      Query.equal('freelancer_id', userId),
+    ]);
+
+    const totalProposals = proposals.length;
+    const acceptedProposals = proposals.filter(p => p.status === 'accepted').length;
     const proposalAcceptanceRate = totalProposals > 0 ? (acceptedProposals / totalProposals) * 100 : 0;
 
     const earningsByMonth = calculateEarningsByMonth(contracts);
@@ -156,8 +166,9 @@ export async function getFreelancerAnalytics(
  * Get employer analytics
  *
  * Cached per user + date range for 60s — this scans projects and contracts
- * (limit 1000 each) plus per-project lookups, so a frequently-polled dashboard
- * shouldn't re-scan on every request. Only successful results are cached.
+ * (full cursor fetch each) plus per-project lookups, so a frequently-polled
+ * dashboard shouldn't re-scan on every request. Only successful results are
+ * cached.
  */
 export async function getEmployerAnalytics(
   userId: string,
@@ -172,16 +183,11 @@ export async function getEmployerAnalytics(
   try {
     const { startDate, endDate } = options;
 
-    const postedResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [
-        Query.equal('employer_id', userId),
-        Query.limit(1000),
-      ]
-    );
+    const posted = await fetchAllCollection(COLLECTIONS.PROJECTS, [
+      Query.equal('employer_id', userId),
+    ]);
 
-    let projectsPostedData = postedResponse.documents;
+    let projectsPostedData = posted;
     if (startDate) {
       projectsPostedData = projectsPostedData.filter(p => new Date(p.created_at) >= new Date(startDate));
     }
@@ -194,17 +200,10 @@ export async function getEmployerAnalytics(
     /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects */
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
-    const contractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('employer_id', userId),
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]
-    );
-
-    let contracts = contractsResponse.documents;
+    let contracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('employer_id', userId),
+      Query.equal('status', 'completed'),
+    ]);
     if (startDate) {
       contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
     }

@@ -249,6 +249,7 @@ Multipart proposal submission with attachments is exposed at `/api/proposals` wi
 | POST | `/api/inbox/webhook` | No | Email inbound webhook (HMAC-verified) |
 | GET | `/api/inbox` | JWT | List inbox emails |
 | GET | `/api/inbox/unread-count` | JWT | Unread emails count |
+| GET | `/api/inbox/delivery-failures` | JWT (admin) | Permanently rejected inbound emails (ops view) |
 | GET | `/api/inbox/:id` | JWT | Get an email |
 | PATCH | `/api/inbox/:id` | JWT | Update an email (read flag) |
 | DELETE | `/api/inbox/:id` | JWT | Delete an email |

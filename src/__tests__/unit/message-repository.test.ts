@@ -195,6 +195,20 @@ describe('MessageRepository', () => {
       await expect(messageRepository.markMessagesAsRead('c1', 'u2')).resolves.toBeUndefined();
     });
 
+    it('should mark ALL unread messages read even beyond 1000', async () => {
+      // 250 unread messages across 3 cursor pages — the old Query.limit(1000)
+      // left the rest unread, so the badge never cleared.
+      const docs = Array.from({ length: 250 }, (_, i) => ({ $id: `m${i}`, conversation_id: 'c1', receiver_id: 'u2', is_read: false }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+      mockDatabases.updateDocument.mockResolvedValue({ $id: 'm' });
+
+      await expect(messageRepository.markMessagesAsRead('c1', 'u2')).resolves.toBeUndefined();
+      expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(250);
+    });
+
     it('should not throw on database errors', async () => {
       mockDatabases.listDocuments.mockRejectedValue(new Error('update failed'));
       await expect(messageRepository.markMessagesAsRead('c1', 'u2')).resolves.toBeUndefined();

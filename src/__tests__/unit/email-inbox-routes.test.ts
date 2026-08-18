@@ -16,10 +16,14 @@ const mockDeleteEmail = jest.fn<any>();
 const mockSendNewEmail = jest.fn<any>();
 const mockReplyToEmail = jest.fn<any>();
 const mockGetUnreadCount = jest.fn<any>();
+const mockRecordInboundDeliveryFailure = jest.fn<any>();
+const mockGetRecentDeliveryFailures = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/email-inbox-service.ts'), () => ({
   processInboundEmail: mockProcessInboundEmail,
   verifyWebhookSignature: mockVerifyWebhookSignature,
+  recordInboundDeliveryFailure: mockRecordInboundDeliveryFailure,
+  getRecentDeliveryFailures: mockGetRecentDeliveryFailures,
   listEmails: mockListEmails,
   getEmail: mockGetEmail,
   updateEmail: mockUpdateEmail,
@@ -157,6 +161,44 @@ describe('Email Inbox Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_RECIPIENT');
     });
+
+    it('should record a permanent rejection (INVALID_RECIPIENT) for ops visibility', async () => {
+      mockVerifyWebhookSignature.mockReturnValueOnce(true);
+      mockProcessInboundEmail.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_RECIPIENT', message: 'Recipient not on platform domain: x@other.com' } });
+      await request(app)
+        .post('/api/emails/webhook')
+        .set('x-webhook-signature', 'validsig')
+        .send({ messageId: 'test', from: 'a@b.com', to: 'x@other.com', subject: 'Hi' });
+      expect(mockRecordInboundDeliveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ messageId: 'test', from: 'a@b.com', to: 'x@other.com', subject: 'Hi' }),
+        'INVALID_RECIPIENT',
+        'Recipient not on platform domain: x@other.com'
+      );
+    });
+
+    it('should record a permanent rejection (USER_NOT_FOUND)', async () => {
+      mockVerifyWebhookSignature.mockReturnValueOnce(true);
+      mockProcessInboundEmail.mockResolvedValueOnce({ success: false, error: { code: 'USER_NOT_FOUND', message: 'No user found' } });
+      await request(app)
+        .post('/api/emails/webhook')
+        .set('x-webhook-signature', 'validsig')
+        .send({ messageId: 'test' });
+      expect(mockRecordInboundDeliveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ messageId: 'test' }),
+        'USER_NOT_FOUND',
+        'No user found'
+      );
+    });
+
+    it('should NOT record transient/internal failures (INBOUND_EMAIL_FAILED)', async () => {
+      mockVerifyWebhookSignature.mockReturnValueOnce(true);
+      mockProcessInboundEmail.mockResolvedValueOnce({ success: false, error: { code: 'INBOUND_EMAIL_FAILED', message: 'DB error' } });
+      await request(app)
+        .post('/api/emails/webhook')
+        .set('x-webhook-signature', 'validsig')
+        .send({ messageId: 'test' });
+      expect(mockRecordInboundDeliveryFailure).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET / (list emails)', () => {
@@ -214,6 +256,25 @@ describe('Email Inbox Routes', () => {
       mockGetUnreadCount.mockResolvedValueOnce({ success: false, error: { code: 'UNREAD_COUNT_FAILED', message: 'err' } });
       const res = await request(app).get('/api/emails/unread-count');
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /delivery-failures', () => {
+    it('should return recent delivery failures', async () => {
+      mockGetRecentDeliveryFailures.mockResolvedValueOnce([{ id: 'f1', failure_code: 'USER_NOT_FOUND' }]);
+      const res = await request(app).get('/api/emails/delivery-failures');
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.total).toBe(1);
+      expect(mockGetRecentDeliveryFailures).toHaveBeenCalledWith(50);
+    });
+
+    it('should return empty list when no failures recorded', async () => {
+      mockGetRecentDeliveryFailures.mockResolvedValueOnce([]);
+      const res = await request(app).get('/api/emails/delivery-failures');
+      expect(res.status).toBe(200);
+      expect(res.body.items).toEqual([]);
+      expect(res.body.total).toBe(0);
     });
   });
 

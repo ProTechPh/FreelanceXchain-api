@@ -48,6 +48,37 @@ async function fetchAllConversations(queries: string[], pageSize = 100): Promise
   return allDocs;
 }
 
+/**
+ * Fetch ALL message documents matching the queries using cursor-based
+ * pagination — same pattern as fetchAllConversations, for the messages
+ * collection (used by markMessagesAsRead so >1000 unread messages all get
+ * marked read).
+ */
+async function fetchAllMessages(queries: string[], pageSize = 100): Promise<Record<string, unknown>[]> {
+  const allDocs: Record<string, unknown>[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const pageQueries = [...queries, Query.limit(pageSize)];
+    if (lastId) {
+      pageQueries.push(Query.cursorAfter(lastId));
+    }
+
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      MESSAGES_COLLECTION,
+      pageQueries
+    );
+    allDocs.push(...response.documents);
+
+    if (response.documents.length < pageSize) break;
+    lastId = response.documents[response.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return allDocs;
+}
+
 export const messageRepository = {
   async createConversation(participant1Id: string, participant2Id: string): Promise<ConversationEntity> {
     const now = new Date().toISOString();
@@ -158,19 +189,17 @@ export const messageRepository = {
 
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        MESSAGES_COLLECTION,
-        [
-          Query.equal('conversation_id', conversationId),
-          Query.equal('receiver_id', userId),
-          Query.equal('is_read', false),
-          Query.limit(1000),
-        ]
-      );
+      // fetchAllMessages (cursor pagination) instead of Query.limit(1000): with
+      // more than 1000 unread messages in a conversation the rest stayed unread
+      // and the unread badge never cleared (the limit(1000) truncation class).
+      const unreadMessages = await fetchAllMessages([
+        Query.equal('conversation_id', conversationId),
+        Query.equal('receiver_id', userId),
+        Query.equal('is_read', false),
+      ]);
       await Promise.all(
-        response.documents.map(doc =>
-          databases.updateDocument(DATABASE_ID, MESSAGES_COLLECTION, doc.$id, { is_read: true })
+        unreadMessages.map(doc =>
+          databases.updateDocument(DATABASE_ID, MESSAGES_COLLECTION, doc.$id as string, { is_read: true })
         )
       );
     } catch {

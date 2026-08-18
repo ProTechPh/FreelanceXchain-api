@@ -172,21 +172,55 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
   }
 
   async getContractsByFreelancer(freelancerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
-    return this.paginatedWithQueries<ContractEntity>(
-      [Query.equal('freelancer_id', freelancerId), Query.orderDesc('$createdAt')],
-      options?.limit ?? 20,
-      options?.offset ?? 0,
-      mapDoc
-    );
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    try {
+      // fetchAll (cursor pagination) + in-memory slice instead of
+      // paginatedWithQueries' Query.limit(limit): a contract past the first
+      // 1000 was unreachable (the limit(1000) truncation class) — milestone
+      // lookups reported NOT_FOUND for milestones on older contracts.
+      const all = await this.fetchAll([
+        Query.equal('freelancer_id', freelancerId),
+        Query.orderDesc('$createdAt'),
+      ]);
+
+      const total = all.length;
+      const items = all.slice(offset, offset + limit);
+
+      return {
+        items,
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
+    }
   }
 
   async getContractsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
-    return this.paginatedWithQueries<ContractEntity>(
-      [Query.equal('employer_id', employerId), Query.orderDesc('$createdAt')],
-      options?.limit ?? 20,
-      options?.offset ?? 0,
-      mapDoc
-    );
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    try {
+      // fetchAll (cursor pagination) + in-memory slice — same truncation-class
+      // fix as getContractsByFreelancer.
+      const all = await this.fetchAll([
+        Query.equal('employer_id', employerId),
+        Query.orderDesc('$createdAt'),
+      ]);
+
+      const total = all.length;
+      const items = all.slice(offset, offset + limit);
+
+      return {
+        items,
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
+    }
   }
 
   async getContractsByProject(projectId: string): Promise<ContractEntity[]> {

@@ -38,6 +38,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: mockUserRepository,
 }));
 
+const mockEmailDeliveryFailureRepository = {
+  createFailure: jest.fn<any>(),
+  findRecent: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/email-delivery-failure-repository.ts'), () => ({
+  emailDeliveryFailureRepository: mockEmailDeliveryFailureRepository,
+}));
+
 const {
   verifyWebhookSignature,
   processInboundEmail,
@@ -48,6 +56,8 @@ const {
   sendNewEmail,
   replyToEmail,
   getUnreadCount,
+  recordInboundDeliveryFailure,
+  getRecentDeliveryFailures,
 } = await import('../../services/email-inbox-service.js');
 
 describe('Email Inbox Service', () => {
@@ -60,6 +70,48 @@ describe('Email Inbox Service', () => {
 
   afterEach(() => {
     process.env = originalEnv;
+  });
+
+  describe('recordInboundDeliveryFailure', () => {
+    const payload = {
+      messageId: 'm1',
+      from: 'a@b.com',
+      to: 'x@other.com',
+      subject: 'Hi',
+      textBody: '',
+      htmlBody: '',
+      attachments: [],
+      inReplyTo: null,
+      references: null,
+      receivedAt: '2025-01-01T00:00:00Z',
+    };
+
+    it('should record a permanent failure via the repository', async () => {
+      mockEmailDeliveryFailureRepository.createFailure.mockResolvedValueOnce({ id: 'f1' });
+      await recordInboundDeliveryFailure(payload as any, 'INVALID_RECIPIENT', 'Bad recipient');
+      expect(mockEmailDeliveryFailureRepository.createFailure).toHaveBeenCalledWith(expect.objectContaining({
+        message_id: 'm1',
+        from_address: 'a@b.com',
+        to_address: 'x@other.com',
+        subject: 'Hi',
+        failure_code: 'INVALID_RECIPIENT',
+        failure_message: 'Bad recipient',
+      }));
+    });
+
+    it('should swallow repository errors (best-effort recording)', async () => {
+      mockEmailDeliveryFailureRepository.createFailure.mockRejectedValueOnce(new Error('insert failed'));
+      await expect(recordInboundDeliveryFailure(payload as any, 'USER_NOT_FOUND', 'No user')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('getRecentDeliveryFailures', () => {
+    it('should return recent failures from the repository', async () => {
+      mockEmailDeliveryFailureRepository.findRecent.mockResolvedValueOnce([{ id: 'f1' }]);
+      const result = await getRecentDeliveryFailures();
+      expect(result).toHaveLength(1);
+      expect(mockEmailDeliveryFailureRepository.findRecent).toHaveBeenCalledWith(50);
+    });
   });
 
   describe('verifyWebhookSignature', () => {

@@ -11,6 +11,7 @@ import { userRepository } from '../repositories/user-repository.js';
 import { messageRepository } from '../repositories/message-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import { emailPreferenceRepository } from '../repositories/email-preference-repository.js';
+import { savedSearchRepository } from '../repositories/saved-search-repository.js';
 import type { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { fromAppwriteDoc } from '../repositories/base-repository.js';
 import { parseField } from '../utils/index.js';
@@ -184,17 +185,12 @@ async function sendWeeklyDigests(): Promise<void> {
 /* eslint-disable max-lines-per-function -- batch saved-search matcher; refactor follow-up */
 async function executeSavedSearches(): Promise<void> {
   try {
-    // Get saved searches with notifications enabled
-    const searchesResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.SAVED_SEARCHES,
-      [
-        Query.equal('notify_on_new', true),
-        Query.limit(100),
-      ]
-    );
+    // Get saved searches with notifications enabled — via the repository's
+    // fetchAll. The old raw Query.limit(100) here bypassed the repository fix
+    // and the 101st+ notify-enabled search was never executed.
+    const searches = await savedSearchRepository.findAllWithNotifyEnabled();
 
-    if (searchesResponse.documents.length === 0) {
+    if (searches.length === 0) {
       return;
     }
 
@@ -203,7 +199,7 @@ async function executeSavedSearches(): Promise<void> {
     const allProjects = await fetchAllProjectDocs();
     const allProfiles = await fetchAllProfileDocs();
 
-    for (const search of searchesResponse.documents) {
+    for (const search of searches) {
 
       try {
         const filters: Record<string, unknown> = typeof search.filters === 'string'
@@ -215,9 +211,8 @@ async function executeSavedSearches(): Promise<void> {
           ? new Date(search.last_notified_at).getTime()
           : 0;
         // Never notified yet → only surface matches newer than the saved search
-        // itself. Note raw Appwrite docs carry $createdAt, not created_at, so
-        // fall back to $createdAt when the attribute is absent.
-        const searchCreatedAt = search.created_at ?? search.$createdAt;
+        // itself. The repository mapper always sets created_at.
+        const searchCreatedAt = search.created_at;
         const sinceTimestamp = lastNotifiedAt > 0
           ? lastNotifiedAt
           : (searchCreatedAt ? new Date(searchCreatedAt).getTime() : 0);
@@ -261,7 +256,7 @@ async function executeSavedSearches(): Promise<void> {
             title: `New matches for "${search.name || 'saved search'}"`,
             message: `${matches.length} new ${searchType === 'project' ? 'project' : 'freelancer'}(s) match your saved search`,
             data: JSON.stringify({
-              savedSearchId: search.$id,
+              savedSearchId: search.id,
               searchType,
               matchIds,
               matchCount: matches.length,
@@ -276,16 +271,16 @@ async function executeSavedSearches(): Promise<void> {
         await databases.updateDocument(
           DATABASE_ID,
           COLLECTIONS.SAVED_SEARCHES,
-          search.$id,
+          search.id,
           {
             last_notified_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }
         );
 
-        logger.info(`Notified user ${search.user_id} of ${matches.length} new match(es) for saved search ${search.$id}`);
+        logger.info(`Notified user ${search.user_id} of ${matches.length} new match(es) for saved search ${search.id}`);
       } catch (error) {
-        logger.error(`Failed to execute saved search ${search.$id}:`, error);
+        logger.error(`Failed to execute saved search ${search.id}:`, error);
       }
     }
   } catch (error) {
