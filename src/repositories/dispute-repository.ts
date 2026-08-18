@@ -89,16 +89,13 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
 
   async getAllDisputesByContract(contractId: string): Promise<DisputeEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('contract_id', contractId),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(mapDispute);
+      // fetchAll (cursor pagination) instead of Query.limit(1000): a cap here
+      // silently dropped dispute history past the first 1000 (the limit(1000)
+      // truncation class fixed in base-repository).
+      return await this.fetchAll([
+        Query.equal('contract_id', contractId),
+        Query.orderDesc('created_at'),
+      ]);
     } catch {
       return [];
     }

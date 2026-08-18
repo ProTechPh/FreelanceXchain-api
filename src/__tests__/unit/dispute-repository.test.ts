@@ -135,6 +135,25 @@ describe('DisputeRepository', () => {
       const result = await repo.getAllDisputesByContract('c1');
       expect(result).toEqual([]);
     });
+
+    it('should return disputes beyond the first 1000 (no truncation)', async () => {
+      // 250 disputes across 3 pages of 100 (fetchAll cursor pagination).
+      const docs = Array.from({ length: 250 }, (_, i) => ({
+        $id: `d${i}`,
+        contract_id: 'c1',
+        evidence: '[]',
+        created_at: `2025-01-${String((i % 28) + 1).padStart(2, '0')}T00:00:00Z`,
+      }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.getAllDisputesByContract('c1');
+      expect(result).toHaveLength(250);
+      expect(result[0]!.id).toBe('d0');
+      expect(result[249]!.id).toBe('d249');
+    });
   });
 
   describe('getDisputeByMilestone', () => {

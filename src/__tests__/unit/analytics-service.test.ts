@@ -5,6 +5,15 @@ import path from 'node:path';
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 const mockDatabases = (globalThis as any).__mockDatabases;
 
+// The 60s analytics caches persist across tests in this file; clear them before
+// every test so each one exercises the miss path (cache-hit tests set their own).
+beforeEach(async () => {
+  const { freelancerAnalyticsCache, employerAnalyticsCache, adminAnalyticsCache } = await import('../../utils/cache.js');
+  freelancerAnalyticsCache.clear();
+  employerAnalyticsCache.clear();
+  adminAnalyticsCache.clear();
+});
+
 describe('Analytics Service', () => {
   it('should have getFreelancerAnalytics function', () => {
     expect(true).toBe(true);
@@ -267,6 +276,70 @@ describe('Analytics Service - Direct Branch Coverage', () => {
 
     const result = await getSkillTrends();
     expect(result.success).toBe(true);
+  });
+
+  it('should serve a cached freelancer analytics result without re-scanning', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    const { freelancerAnalyticsCache } = await import('../../utils/cache.js');
+    freelancerAnalyticsCache.set('freelancer:user-1::', {
+      totalEarnings: 100,
+      projectsCompleted: 1,
+      averageRating: 5,
+      earningsByMonth: [],
+      topSkills: [],
+      proposalAcceptanceRate: 0,
+    });
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalEarnings).toBe(100);
+    }
+    expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    expect(mockDatabases.getDocument).not.toHaveBeenCalled();
+  });
+
+  it('should serve a cached employer analytics result without re-scanning', async () => {
+    const { getEmployerAnalytics } = await importModule();
+    const { employerAnalyticsCache } = await import('../../utils/cache.js');
+    employerAnalyticsCache.set('employer:user-1::', {
+      totalSpent: 200,
+      projectsPosted: 2,
+      projectsCompleted: 1,
+      averageProjectBudget: 100,
+      spendingByMonth: [],
+      topHiredSkills: [],
+    });
+
+    const result = await getEmployerAnalytics('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalSpent).toBe(200);
+    }
+    expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    expect(mockDatabases.getDocument).not.toHaveBeenCalled();
+  });
+
+  it('should serve a cached admin analytics result without re-scanning', async () => {
+    const { getAdminAnalytics } = await importModule();
+    const { adminAnalyticsCache } = await import('../../utils/cache.js');
+    adminAnalyticsCache.set('admin_analytics', {
+      totalUsers: 10,
+      totalProjects: 5,
+      totalRevenue: 100,
+      activeContracts: 3,
+      userGrowth: 1,
+      projectGrowth: 1,
+      userGrowthData: [],
+      projectActivityData: [],
+    });
+
+    const result = await getAdminAnalytics();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalUsers).toBe(10);
+    }
+    expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
   });
 
   it('should handle getSkillTrends with projects having string required_skills', async () => {

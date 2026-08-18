@@ -2,7 +2,13 @@ import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { Models } from 'node-appwrite';
 import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
-import { platformMetricsCache, skillTrendsCache } from '../utils/cache.js';
+import {
+  platformMetricsCache,
+  skillTrendsCache,
+  freelancerAnalyticsCache,
+  employerAnalyticsCache,
+  adminAnalyticsCache,
+} from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
@@ -60,11 +66,22 @@ interface AdminAnalytics {
 
 /**
  * Get freelancer analytics
+ *
+ * Cached per user + date range for 60s — this scans contracts, reviews, and
+ * proposals (limit 1000 each) plus per-project lookups, so a frequently-polled
+ * dashboard shouldn't re-scan on every request. Only successful results are
+ * cached; a failed computation is re-attempted on the next request.
  */
 export async function getFreelancerAnalytics(
   userId: string,
   options: DateRangeOptions = {}
 ): Promise<ServiceResult<FreelancerAnalytics>> {
+  const cacheKey = `freelancer:${userId}:${options.startDate ?? ''}:${options.endDate ?? ''}`;
+  const cached = freelancerAnalyticsCache.get(cacheKey);
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const { startDate, endDate } = options;
 
@@ -119,14 +136,16 @@ export async function getFreelancerAnalytics(
     const earningsByMonth = calculateEarningsByMonth(contracts);
     const topSkills = await calculateTopSkills(userId, 'freelancer');
 
-    return successResult({
+    const data: FreelancerAnalytics = {
       totalEarnings,
       projectsCompleted,
       averageRating: Math.round(averageRating * 10) / 10,
       earningsByMonth,
       topSkills,
       proposalAcceptanceRate: Math.round(proposalAcceptanceRate * 10) / 10,
-    });
+    };
+    freelancerAnalyticsCache.set(cacheKey, data);
+    return successResult(data);
       } catch (error) {
       logger.error('Failed to get freelancer analytics', { error, userId });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
@@ -135,11 +154,21 @@ export async function getFreelancerAnalytics(
 
 /**
  * Get employer analytics
+ *
+ * Cached per user + date range for 60s — this scans projects and contracts
+ * (limit 1000 each) plus per-project lookups, so a frequently-polled dashboard
+ * shouldn't re-scan on every request. Only successful results are cached.
  */
 export async function getEmployerAnalytics(
   userId: string,
   options: DateRangeOptions = {}
 ): Promise<ServiceResult<EmployerAnalytics>> {
+  const cacheKey = `employer:${userId}:${options.startDate ?? ''}:${options.endDate ?? ''}`;
+  const cached = employerAnalyticsCache.get(cacheKey);
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const { startDate, endDate } = options;
 
@@ -189,14 +218,16 @@ export async function getEmployerAnalytics(
     const spendingByMonth = calculateEarningsByMonth(contracts);
     const topHiredSkills = await calculateTopSkills(userId, 'employer');
 
-    return successResult({
+    const data: EmployerAnalytics = {
       totalSpent,
       projectsPosted,
       projectsCompleted,
       averageProjectBudget: Math.round(averageProjectBudget * 100) / 100,
       spendingByMonth,
       topHiredSkills,
-    });
+    };
+    employerAnalyticsCache.set(cacheKey, data);
+    return successResult(data);
       } catch (error) {
       logger.error('Failed to get employer analytics', { error, userId });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
@@ -282,8 +313,17 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
 
 /**
  * Get admin analytics
+ *
+ * Cached globally for 60s — this scans users, projects, contracts, and audit
+ * logs (limit 1000 each), so the admin dashboard shouldn't re-scan on every
+ * poll. Only successful results are cached.
  */
 export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>> {
+  const cached = adminAnalyticsCache.get('admin_analytics');
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const [
       usersResponse,
@@ -344,7 +384,7 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       allProjectsResponse.documents.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
     );
 
-    return successResult({
+    const data: AdminAnalytics = {
       totalUsers,
       totalProjects,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
@@ -353,7 +393,9 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       projectGrowth,
       userGrowthData,
       projectActivityData,
-    });
+    };
+    adminAnalyticsCache.set('admin_analytics', data);
+    return successResult(data);
       } catch (error) {
       logger.error('Failed to get admin analytics', { error });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');

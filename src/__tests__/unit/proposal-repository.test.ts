@@ -1618,6 +1618,8 @@ describe('Analytics Service — branch coverage', () => {
     jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
       platformMetricsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
       skillTrendsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
+      freelancerAnalyticsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
+      employerAnalyticsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
       adminAnalyticsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
     }));
   });

@@ -34,6 +34,7 @@ import { createPaymentRecord } from '../utils/payment-records.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
+import { paymentSummaryCache } from '../utils/cache.js';
 
 const escrowOps = {
   deployEscrow,
@@ -880,20 +881,34 @@ export type PaymentSummary = {
 /**
  * Get the payment summary for the authenticated user: lifetime completed
  * totals (ETH units, escrow deposits excluded — see payment-repository).
+ *
+ * Cached per user for 60s — the totals scan every completed payment record, so
+ * a frequently-polled widget shouldn't re-scan on every request. Only
+ * available results are cached; an unavailable (failed) summary is re-fetched
+ * on the next request so recovery isn't masked by a stale failure.
  */
 export async function getPaymentSummary(
   userId: string
 ): Promise<ServiceResult<PaymentSummary>> {
+  const cached = paymentSummaryCache.get(userId);
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const [totalEarnings, totalSpent] = await Promise.all([
       paymentRepository.getTotalEarnings(userId),
       paymentRepository.getTotalSpent(userId),
     ]);
-    return successResult({
+    const data: PaymentSummary = {
       totalEarnings,
       totalSpent,
       available: totalEarnings !== null && totalSpent !== null,
-    });
+    };
+    if (data.available) {
+      paymentSummaryCache.set(userId, data);
+    }
+    return successResult(data);
   } catch (error) {
     return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch payment summary');
   }

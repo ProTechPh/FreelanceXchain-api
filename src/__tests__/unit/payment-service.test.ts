@@ -81,6 +81,8 @@ const mockPaymentRepository = {
   findByContractId: jest.fn<any>(async () => []),
   findByUserId: jest.fn<any>(async () => ({ items: [], hasMore: false })),
   updateStatus: jest.fn<any>(async () => null),
+  getTotalEarnings: jest.fn<any>(async () => 0),
+  getTotalSpent: jest.fn<any>(async () => 0),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
   PaymentRepository: mockPaymentRepository,
@@ -134,6 +136,8 @@ const {
   initializeContractEscrow,
   setEscrowOpsForTesting,
 } = await import('../../services/payment-service.js');
+
+const { paymentSummaryCache } = await import('../../utils/cache.js');
 
 const { mapContractFromEntity, mapProjectFromEntity } = await import('../../utils/entity-mapper.js');
 
@@ -983,5 +987,93 @@ describe('createPaymentRecord (utils/payment-records.ts)', () => {
       txHash: null,
       status: 'completed',
     })).rejects.toThrow('Invalid payment amount');
+  });
+});
+
+describe('getPaymentSummary - caching', () => {
+  beforeEach(() => {
+    paymentSummaryCache.clear();
+    mockPaymentRepository.getTotalEarnings.mockReset().mockResolvedValue(1200);
+    mockPaymentRepository.getTotalSpent.mockReset().mockResolvedValue(300);
+  });
+
+  it('fetches totals on a cache miss and serves the cached summary on subsequent calls', async () => {
+    const { getPaymentSummary } = await import('../../services/payment-service.js');
+
+    const first = await getPaymentSummary('user-1');
+    expect(first.success).toBe(true);
+    if (first.success) {
+      expect(first.data).toEqual({ totalEarnings: 1200, totalSpent: 300, available: true });
+    }
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(1);
+    expect(mockPaymentRepository.getTotalSpent).toHaveBeenCalledTimes(1);
+
+    // Cache hit — the completed-records scan is not repeated
+    const second = await getPaymentSummary('user-1');
+    expect(second.success).toBe(true);
+    if (second.success) {
+      expect(second.data).toEqual({ totalEarnings: 1200, totalSpent: 300, available: true });
+    }
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(1);
+    expect(mockPaymentRepository.getTotalSpent).toHaveBeenCalledTimes(1);
+
+    // A different user is a separate cache key
+    await getPaymentSummary('user-2');
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(2);
+    expect(mockPaymentRepository.getTotalSpent).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache an unavailable (failed) summary so the next request retries', async () => {
+    const { getPaymentSummary } = await import('../../services/payment-service.js');
+
+    mockPaymentRepository.getTotalEarnings.mockResolvedValue(null);
+    mockPaymentRepository.getTotalSpent.mockResolvedValue(null);
+
+    const result = await getPaymentSummary('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ totalEarnings: null, totalSpent: null, available: false });
+    }
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(1);
+
+    // Not cached — the next call re-queries instead of serving a stale failure
+    await getPaymentSummary('user-1');
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-fetches after the cached entry expires', async () => {
+    const { getPaymentSummary } = await import('../../services/payment-service.js');
+
+    await getPaymentSummary('user-1');
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(1);
+
+    // Backdate the entry so it is already expired (negative TTL)
+    paymentSummaryCache.set('user-1', { totalEarnings: 999, totalSpent: 999, available: true }, -1);
+
+    const result = await getPaymentSummary('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ totalEarnings: 1200, totalSpent: 300, available: true });
+    }
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(2);
+    expect(mockPaymentRepository.getTotalSpent).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns FETCH_FAILED when a totals query throws, without caching the failure', async () => {
+    const { getPaymentSummary } = await import('../../services/payment-service.js');
+
+    mockPaymentRepository.getTotalEarnings.mockRejectedValue(new Error('db down'));
+
+    const result = await getPaymentSummary('user-1');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FETCH_FAILED');
+    }
+
+    // A failed fetch is not cached — the next request retries
+    mockPaymentRepository.getTotalEarnings.mockResolvedValue(1200);
+    const retry = await getPaymentSummary('user-1');
+    expect(retry.success).toBe(true);
+    expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(2);
   });
 });

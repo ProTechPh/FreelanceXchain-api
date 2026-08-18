@@ -47,10 +47,16 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
 const mockSkillCache = { get: jest.fn(), set: jest.fn() };
 const mockPlatformMetricsCache = { get: jest.fn(), set: jest.fn() };
 const mockSkillTrendsCache = { get: jest.fn(), set: jest.fn() };
+const mockFreelancerAnalyticsCache = { get: jest.fn(), set: jest.fn() };
+const mockEmployerAnalyticsCache = { get: jest.fn(), set: jest.fn() };
+const mockAdminAnalyticsCache = { get: jest.fn(), set: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
   skillCache: mockSkillCache,
   platformMetricsCache: mockPlatformMetricsCache,
   skillTrendsCache: mockSkillTrendsCache,
+  freelancerAnalyticsCache: mockFreelancerAnalyticsCache,
+  employerAnalyticsCache: mockEmployerAnalyticsCache,
+  adminAnalyticsCache: mockAdminAnalyticsCache,
   LRUCache: jest.fn().mockImplementation(() => ({ get: jest.fn(), set: jest.fn() })),
 }));
 
@@ -321,6 +327,12 @@ function resetAllMocks() {
   mockPlatformMetricsCache.set.mockReset();
   mockSkillTrendsCache.get.mockReset().mockReturnValue(undefined);
   mockSkillTrendsCache.set.mockReset();
+  mockFreelancerAnalyticsCache.get.mockReset().mockReturnValue(undefined);
+  mockFreelancerAnalyticsCache.set.mockReset();
+  mockEmployerAnalyticsCache.get.mockReset().mockReturnValue(undefined);
+  mockEmployerAnalyticsCache.set.mockReset();
+  mockAdminAnalyticsCache.get.mockReset().mockReturnValue(undefined);
+  mockAdminAnalyticsCache.set.mockReset();
   // Reset default repo mocks
   mockNotificationRepo.createNotification.mockImplementation(async (entity: any) => ({
     ...entity,

@@ -226,6 +226,45 @@ describe('Transaction Service', () => {
       }
     });
 
+    it('paginates across the FULL transaction list (no 200-record cap)', async () => {
+      const { getUserTransactions } = await importModule();
+
+      // 250 transactions, newest first — the repository emulates the real
+      // findByUser behavior of truncating to the requested limit. With the old
+      // hardcoded limit-200 fetch, page 3 (offset 200) was unreachable and
+      // total was capped at 200.
+      const transactions = Array.from({ length: 250 }, (_, i) => ({
+        id: `tx-${i}`,
+        from_user_id: 'user-1',
+        to_user_id: 'user-2',
+        amount: i + 1,
+        type: 'payment',
+        status: 'completed',
+        created_at: new Date(Date.UTC(2025, 0, 1, 0, 0, i)).toISOString(),
+        updated_at: '',
+      }));
+
+      mockTransactionRepository.findByUser.mockImplementation(async (_userId: string, options?: { limit?: number; offset?: number }) => {
+        const limit = options?.limit ?? 20;
+        const offset = options?.offset ?? 0;
+        return {
+          items: transactions.slice(offset, offset + limit),
+          total: transactions.length,
+          hasMore: offset + limit < transactions.length,
+        };
+      });
+
+      const result = await getUserTransactions('user-1', { page: 3, limit: 100 });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(50); // records 201-250 — previously unreachable
+        expect(result.data.total).toBe(250);
+        expect(result.data.hasMore).toBe(false);
+        expect(result.data.items[0]?.id).toBe('tx-200');
+      }
+    });
+
     it('should handle hasMore correctly when on last page', async () => {
       const { getUserTransactions } = await importModule();
 

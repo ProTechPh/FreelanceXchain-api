@@ -21,6 +21,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     limit: jest.fn().mockImplementation((n: number) => ({ type: 'limit', value: n })),
     offset: jest.fn().mockImplementation((n: number) => ({ type: 'offset', value: n })),
     orderDesc: mockOrderDesc,
+    cursorAfter: jest.fn().mockImplementation((id: string) => ({ type: 'cursorAfter', id })),
   },
   ID: { unique: jest.fn(() => 'mock-unique-id') },
 }));
@@ -108,6 +109,25 @@ describe('MessageRepository', () => {
       const result = await messageRepository.getUserConversations('u1', 10, 0);
       expect(result.items).toEqual([]);
       expect(result.total).toBe(0);
+    });
+
+    it('returns conversations beyond the first 1000 per participant slot (no truncation)', async () => {
+      // 250 conversations in slot 1 (user is participant1) crossing 3 pages of 100.
+      const slot1Convs = Array.from({ length: 250 }, (_, i) => ({
+        $id: `c${i}`,
+        participant1_id: 'u1',
+        participant2_id: `u${i + 2}`,
+        last_message_at: `2025-01-${String((i % 28) + 1).padStart(2, '0')}`,
+      }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: slot1Convs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: slot1Convs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: slot1Convs.slice(200), total: 250 })
+        .mockResolvedValueOnce({ documents: [], total: 0 }); // slot 2: no conversations
+
+      const result = await messageRepository.getUserConversations('u1', 50, 200);
+      expect(result.items).toHaveLength(50); // records 201-250 — previously unreachable
+      expect(result.total).toBe(250);
     });
 
     it('should handle conversations with null/undefined last_message_at (|| fallback)', async () => {
