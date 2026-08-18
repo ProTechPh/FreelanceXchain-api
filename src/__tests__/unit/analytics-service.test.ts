@@ -78,6 +78,75 @@ describe('analytics-service – branch coverage', () => {
     }
   });
 
+  it('should include platform transaction volume beyond the old 1000-cap (no truncation)', async () => {
+    // 250 completed contracts across 3 cursor pages, 1 ETH each — the old
+    // Query.limit(1000) slice undercounted totalTransactionVolume.
+    const contracts = Array.from({ length: 250 }, (_, i) => ({
+      $id: `c${i}`,
+      status: 'completed',
+      total_amount: 1,
+    }));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 5 }) // users count
+      .mockResolvedValueOnce({ documents: [], total: 3 }) // projects count
+      .mockResolvedValueOnce({ documents: [], total: 2 }) // contracts count
+      .mockResolvedValueOnce({ documents: [], total: 250 }) // completed count
+      .mockResolvedValueOnce({ documents: contracts.slice(0, 100), total: 250 })
+      .mockResolvedValueOnce({ documents: contracts.slice(100, 200), total: 250 })
+      .mockResolvedValueOnce({ documents: contracts.slice(200), total: 250 });
+
+    const { getPlatformMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getPlatformMetrics();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalTransactionVolume).toBe(250);
+    }
+  });
+
+  it('should include admin user growth beyond the old 1000-cap (no truncation)', async () => {
+    const now = new Date().toISOString();
+    const users = Array.from({ length: 250 }, (_, i) => ({ $id: `u${i}`, created_at: now }));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 5 }) // users count
+      .mockResolvedValueOnce({ documents: [], total: 3 }) // projects count
+      .mockResolvedValueOnce({ documents: [], total: 1 }) // active count
+      .mockResolvedValueOnce({ documents: [], total: 250 }) // completed (empty)
+      .mockResolvedValueOnce({ documents: users.slice(0, 100), total: 250 })
+      .mockResolvedValueOnce({ documents: users.slice(100, 200), total: 250 })
+      .mockResolvedValueOnce({ documents: users.slice(200), total: 250 });
+
+    const { getAdminAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getAdminAnalytics();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.userGrowth).toBe(250);
+      expect(result.data.userGrowthData).toHaveLength(1);
+    }
+  });
+
+  it('should include skill demand beyond the old 1000-cap (no truncation)', async () => {
+    const now = new Date().toISOString();
+    const projects = Array.from({ length: 250 }, (_, i) => ({
+      $id: `p${i}`,
+      status: 'open',
+      budget: 10,
+      created_at: now,
+      required_skills: [{ skill_name: 'React' }],
+    }));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: projects.slice(0, 100), total: 250 })
+      .mockResolvedValueOnce({ documents: projects.slice(100, 200), total: 250 })
+      .mockResolvedValueOnce({ documents: projects.slice(200), total: 250 });
+
+    const { getSkillTrends } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const react = result.data.find(t => t.skillName === 'React');
+      expect(react?.projectCount).toBe(250);
+    }
+  });
+
   it('L273: getPlatformMetrics handles contracts with missing total_amount', async () => {
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'a@b.com' }], total: 1 })
@@ -1055,7 +1124,9 @@ describe('Analytics Service - Targeted Branch Coverage', () => {
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 5 });
     // 2nd: projects
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 3 });
-    // 3rd: completed contracts with falsy total_amount
+    // 3rd: active contracts
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
+    // 4th: completed contracts with falsy total_amount (full cursor fetch)
     mockDb.listDocuments.mockResolvedValueOnce({
       documents: [
         { total_amount: null },
@@ -1065,8 +1136,6 @@ describe('Analytics Service - Targeted Branch Coverage', () => {
       ],
       total: 4,
     });
-    // 4th: active contracts
-    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
     // 5th: all users (growth)
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
     // 6th: all projects (growth)
@@ -1086,6 +1155,7 @@ describe('Analytics Service - Targeted Branch Coverage', () => {
 
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 5 });
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 3 });
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
     mockDb.listDocuments.mockResolvedValueOnce({
       documents: [
         { total_amount: 1000 },
@@ -1093,7 +1163,6 @@ describe('Analytics Service - Targeted Branch Coverage', () => {
       ],
       total: 2,
     });
-    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
     mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 

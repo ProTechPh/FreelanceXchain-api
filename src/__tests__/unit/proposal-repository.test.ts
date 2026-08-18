@@ -1955,13 +1955,18 @@ describe('Analytics Service — branch coverage', () => {
     const { getAdminAnalytics } = await import('../../services/analytics-service.js');
 
     mockDatabases.listDocuments
+      // Call 1: USERS (total count)
       .mockResolvedValueOnce({ documents: [], total: 100 })
+      // Call 2: PROJECTS (total count)
       .mockResolvedValueOnce({ documents: [], total: 50 })
+      // Call 3: CONTRACTS (active count)
+      .mockResolvedValueOnce({ documents: [], total: 10 })
+      // Call 4: CONTRACTS (completed, full fetch for revenue)
       .mockResolvedValueOnce({
         documents: [{ total_amount: 10000 }, { total_amount: 20000 }],
         total: 2,
       })
-      .mockResolvedValueOnce({ documents: [], total: 10 })
+      // Call 5: USERS (full fetch for growth)
       .mockResolvedValueOnce({
         documents: [
           { created_at: new Date().toISOString() },
@@ -1969,6 +1974,7 @@ describe('Analytics Service — branch coverage', () => {
         ],
         total: 2,
       })
+      // Call 6: PROJECTS (full fetch for growth)
       .mockResolvedValueOnce({
         documents: [
           { created_at: new Date().toISOString() },

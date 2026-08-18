@@ -248,7 +248,6 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
       projectsResponse,
       contractsResponse,
       completedContractsResponse,
-      auditLogsResponse,
     ] = await Promise.all([
       databases.listDocuments(DATABASE_ID, COLLECTIONS.USERS, [Query.limit(1)]),
       databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, [Query.limit(1)]),
@@ -257,9 +256,6 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
         Query.equal('status', 'completed'),
         Query.limit(1),
       ]),
-      databases.listDocuments(DATABASE_ID, COLLECTIONS.AUDIT_LOG_ENTRIES, [
-        Query.limit(1000),
-      ]),
     ]);
 
     const totalUsers = usersResponse.total;
@@ -267,23 +263,22 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     const totalContracts = contractsResponse.total;
     const completedContracts = completedContractsResponse.total;
 
-    const completedDocs = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]
-    );
-    const totalTransactionVolume = completedDocs.documents.reduce(
+    // Full cursor fetches — the old Query.limit(1000) undercounted volume and
+    // active users past 1000 records (the limit(1000) truncation class).
+    const completedDocs = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('status', 'completed'),
+    ]);
+    const totalTransactionVolume = completedDocs.reduce(
       (sum, c) => sum + Number(c.total_amount || 0), 0
     );
+
+    const auditLogs = await fetchAllCollection(COLLECTIONS.AUDIT_LOG_ENTRIES, []);
 
     // Count active users (those with audit log entries in last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const activeUserIds = new Set<string>();
-    for (const log of auditLogsResponse.documents) {
+    for (const log of auditLogs) {
       if (new Date(log.created_at) >= thirtyDaysAgo && log.user_id) {
         activeUserIds.add(log.user_id);
       }
@@ -314,8 +309,8 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
  * Get admin analytics
  *
  * Cached globally for 60s — this scans users, projects, contracts, and audit
- * logs (limit 1000 each), so the admin dashboard shouldn't re-scan on every
- * poll. Only successful results are cached.
+ * logs (full cursor fetch each), so the admin dashboard shouldn't re-scan on
+ * every poll. Only successful results are cached.
  */
 export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>> {
   const cached = adminAnalyticsCache.get('admin_analytics');
@@ -327,15 +322,10 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     const [
       usersResponse,
       projectsResponse,
-      completedContractsResponse,
       activeContractsResponse,
     ] = await Promise.all([
       databases.listDocuments(DATABASE_ID, COLLECTIONS.USERS, [Query.limit(1)]),
       databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, [Query.limit(1)]),
-      databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]),
       databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
         Query.equal('status', 'active'),
         Query.limit(1),
@@ -346,29 +336,26 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     const totalProjects = projectsResponse.total;
     const activeContracts = activeContractsResponse.total;
 
+    // Full cursor fetches — the old Query.limit(1000) undercounted revenue and
+    // growth metrics past 1000 records (the limit(1000) truncation class).
+    const completedContracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('status', 'completed'),
+    ]);
     // Calculate total revenue (5% fee on completed contracts)
-    const totalRevenue = completedContractsResponse.documents.reduce(
+    const totalRevenue = completedContracts.reduce(
       (sum, c) => sum + Number(c.total_amount || 0) * 0.05, 0
     );
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const allUsersResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.USERS,
-      [Query.limit(1000)]
-    );
-    const userGrowth = allUsersResponse.documents.filter(
+    const allUsers = await fetchAllCollection(COLLECTIONS.USERS, []);
+    const userGrowth = allUsers.filter(
       u => new Date(u.created_at) >= thirtyDaysAgo
     ).length;
 
-    const allProjectsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [Query.limit(1000)]
-    );
-    const projectGrowth = allProjectsResponse.documents.filter(
+    const allProjects = await fetchAllCollection(COLLECTIONS.PROJECTS, []);
+    const projectGrowth = allProjects.filter(
       p => new Date(p.created_at) >= thirtyDaysAgo
     ).length;
 
@@ -377,10 +364,10 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
     const userGrowthData = computeMonthlyCounts(
-      allUsersResponse.documents.filter(u => new Date(u.created_at) >= twelveMonthsAgo)
+      allUsers.filter(u => new Date(u.created_at) >= twelveMonthsAgo)
     );
     const projectActivityData = computeMonthlyCounts(
-      allProjectsResponse.documents.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
+      allProjects.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
     );
 
     const data: AdminAnalytics = {
@@ -411,14 +398,11 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
   }
 
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [
-        Query.equal('status', 'open'),
-        Query.limit(1000),
-      ]
-    );
+    // Full cursor fetch — the old Query.limit(1000) counted demand only from
+    // the newest 1000 open projects (the limit(1000) truncation class).
+    const projects = await fetchAllCollection(COLLECTIONS.PROJECTS, [
+      Query.equal('status', 'open'),
+    ]);
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -430,7 +414,7 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
       olderCount: number;
     }>();
 
-    for (const project of response.documents) {
+    for (const project of projects) {
       const requiredSkills = project.required_skills;
       const skills: Array<string | { skill_name?: string; name?: string }> = typeof requiredSkills === 'string'
         ? JSON.parse(requiredSkills)

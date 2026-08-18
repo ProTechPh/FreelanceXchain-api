@@ -35,7 +35,14 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
     if (searchType) {
       queries.push(Query.equal('search_type', searchType));
     }
-    return this.listWithQueries<SavedSearchEntity>(queries, mapDoc);
+    try {
+      // fetchAll (cursor pagination) instead of listWithQueries: Appwrite's
+      // default 25-doc page silently hid a user's older saved searches (the
+      // default-page-size truncation class).
+      return (await this.fetchAll(queries)).map(mapDoc);
+    } catch {
+      return [];
+    }
   }
 
   async findOwnerById(id: string): Promise<string | null> {

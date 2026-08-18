@@ -134,6 +134,18 @@ describe('SavedSearchRepository', () => {
       expect(result[0].name).toBe('Search 1');
     });
 
+    it('should return ALL searches across cursor pages (250 across 3 pages of 100)', async () => {
+      const searches = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `ss${i}`, user_id: 'u1', name: `Search ${i}` }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: searches.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: searches.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: searches.slice(200), total: 250 });
+      const result = await repo.findByUser('u1');
+      expect(result).toHaveLength(250);
+      expect(result[200].id).toBe('ss200');
+      expect(result[249].id).toBe('ss249');
+    });
+
     it('should filter by search type when provided', async () => {
       const searches = [toAppwriteDoc({ id: 'ss1', user_id: 'u1', search_type: 'freelancer' })];
       mockListDocuments.mockResolvedValueOnce({ documents: searches, total: 1 });
