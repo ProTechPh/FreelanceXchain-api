@@ -134,16 +134,13 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
 
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('availability', 'available'),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(mapProfile);
+      // fetchAll (cursor pagination) instead of Query.limit(1000): AI matching
+      // silently ignored available freelancers past the first 1000.
+      const profiles = await this.fetchAll([
+        Query.equal('availability', 'available'),
+        Query.orderDesc('created_at'),
+      ]);
+      return profiles.map(normalizeProfileEntity);
     } catch {
       return [];
     }
@@ -155,16 +152,11 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     const lowerSkillNames = skillNames.map(s => s.toLowerCase());
 
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
+      // fetchAll instead of Query.limit(1000): the in-memory filter below only
+      // saw the newest 1000 profiles, so older freelancers were unreachable by
+      // skill search and total/hasMore were computed from the truncated slice.
+      const allProfiles = (await this.fetchAll([Query.orderDesc('created_at')])).map(normalizeProfileEntity);
       const lowerSkillNameSet = new Set(lowerSkillNames);
-      const allProfiles = response.documents.map(mapProfile);
       const filtered = allProfiles.filter(profile =>
         profile.skills.some(skill => lowerSkillNameSet.has(skill.name.toLowerCase()))
       );
@@ -185,15 +177,9 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     const offset = options?.offset ?? 0;
 
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      const allProfiles = response.documents.map(mapProfile);
+      // fetchAll instead of Query.limit(1000): same truncation class as
+      // searchBySkills — the keyword filter only saw the newest 1000 profiles.
+      const allProfiles = (await this.fetchAll([Query.orderDesc('created_at')])).map(normalizeProfileEntity);
       const lowerKeyword = keyword.toLowerCase();
       const filtered = allProfiles.filter(profile =>
         profile.bio.toLowerCase().includes(lowerKeyword)

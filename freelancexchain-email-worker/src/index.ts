@@ -60,7 +60,14 @@ export default {
     });
 
     if (!response.ok) {
-      console.error(`Webhook delivery failed: ${response.status} ${await response.text()}`);
+      const body = await response.text();
+      console.error(`Webhook delivery failed: ${response.status} ${body}`);
+      // Throw so Cloudflare retries the email (and eventually bounces it back to
+      // the sender) instead of silently dropping it. The API dedups inbound
+      // emails by messageId, so retries are idempotent. Before this fix, a
+      // transient 5xx (or a 4xx from an invalid recipient) permanently lost the
+      // message with only a worker-side console log.
+      throw new Error(`Webhook delivery failed with status ${response.status}: ${body}`);
     }
   },
 } satisfies ExportedHandler<Env>;

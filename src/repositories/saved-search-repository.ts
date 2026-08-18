@@ -1,5 +1,5 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { Query } from '../config/appwrite.js';
 
 type SavedSearchType = 'project' | 'freelancer';
 
