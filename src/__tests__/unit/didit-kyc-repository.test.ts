@@ -166,6 +166,20 @@ describe('DiditKycRepository', () => {
       );
     });
 
+    it('should return verifications beyond the first 1000 (no truncation)', async () => {
+      // 250 docs across 3 pages of 100 — the old Query.limit(1000) hid the rest.
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `k${i}`, status: 'approved' }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await getKycVerificationsByStatus('approved');
+      expect(result).toHaveLength(250);
+      expect(result[0]!.id).toBe('k0');
+      expect(result[249]!.id).toBe('k249');
+    });
+
     it('should return empty array on error', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
       const result = await getKycVerificationsByStatus('approved');
@@ -185,6 +199,21 @@ describe('DiditKycRepository', () => {
         'kyc_verifications',
         expect.arrayContaining([Query.orderAsc('$createdAt')])
       );
+    });
+
+    it('should return pending reviews beyond the first 1000 (no truncation)', async () => {
+      // 250 pending docs across 3 pages — the old cap meant the 1001st+ pending
+      // verification was never visible in the admin queue and never reviewed.
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `k${i}`, status: 'completed', reviewed_by: null }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await getPendingReviews();
+      expect(result).toHaveLength(250);
+      expect(result[0]!.id).toBe('k0');
+      expect(result[249]!.id).toBe('k249');
     });
 
     it('should return empty array on error', async () => {
@@ -221,6 +250,19 @@ describe('DiditKycRepository', () => {
         'kyc_verifications',
         expect.arrayContaining([Query.orderDesc('$createdAt')])
       );
+    });
+
+    it('should return history beyond the first 1000 (no truncation)', async () => {
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `k${i}` }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await getKycVerificationHistory('u1');
+      expect(result).toHaveLength(250);
+      expect(result[0]!.id).toBe('k0');
+      expect(result[249]!.id).toBe('k249');
     });
 
     it('should return empty array on error', async () => {

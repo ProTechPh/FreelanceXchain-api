@@ -163,6 +163,21 @@ describe('FreelancerProfileRepository', () => {
       expect(result[0]!.id).toBe('fp1');
     });
 
+    it('should return available profiles beyond the first 1000 (no truncation)', async () => {
+      // 250 docs across 3 pages of 100 — the old Query.limit(1000) hid the rest
+      // from AI matching.
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `fp${i}`, availability: 'available' }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.getAvailableProfiles();
+      expect(result).toHaveLength(250);
+      expect(result[0]!.id).toBe('fp0');
+      expect(result[249]!.id).toBe('fp249');
+    });
+
     it('should return empty array on error', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.getAvailableProfiles();
@@ -210,6 +225,23 @@ describe('FreelancerProfileRepository', () => {
       expect(result.total).toBe(0);
     });
 
+    it('should reach profiles beyond the old 1000-cap (no truncation)', async () => {
+      // 250 matching docs across 3 pages; page 3 (offset 200) must be reachable
+      // — the old in-memory slice over limit(1000) made it empty.
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `fp${i}`, skills: [{ name: 'React', years_of_experience: 2 }] }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.searchBySkills(['React'], { limit: 100, offset: 200 });
+      expect(result.total).toBe(250);
+      expect(result.items).toHaveLength(50);
+      expect(result.items[0]!.id).toBe('fp200');
+      expect(result.items[49]!.id).toBe('fp249');
+      expect(result.hasMore).toBe(false);
+    });
+
     it('should return fallback on error', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.searchBySkills(['React']);
@@ -243,6 +275,21 @@ describe('FreelancerProfileRepository', () => {
       expect(result.items).toEqual([]);
       expect(result.hasMore).toBe(false);
       expect(result.total).toBe(0);
+    });
+
+    it('should reach profiles beyond the old 1000-cap (no truncation)', async () => {
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `fp${i}`, bio: `React developer ${i}` }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.searchByKeyword('react', { limit: 100, offset: 200 });
+      expect(result.total).toBe(250);
+      expect(result.items).toHaveLength(50);
+      expect(result.items[0]!.id).toBe('fp200');
+      expect(result.items[49]!.id).toBe('fp249');
+      expect(result.hasMore).toBe(false);
     });
 
     it('should return fallback on error', async () => {

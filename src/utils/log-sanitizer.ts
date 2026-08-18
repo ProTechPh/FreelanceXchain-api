@@ -109,16 +109,35 @@ export function sanitizeString(input: string): string {
  * The generic preserves the input's shape so callers keep their types.
  */
 export function sanitizeObject<T>(obj: T): T {
+  return sanitizeObjectInternal(obj, new WeakSet<object>());
+}
+
+/**
+ * Recursive core of sanitizeObject. `seen` tracks the objects currently being
+ * sanitized on this path (added before recursing, removed after) so a circular
+ * reference — e.g. `err.cause = err` or a self-referential request object — is
+ * replaced with '[Circular]' instead of recursing forever and overflowing the
+ * stack, which would crash the logger and mask the very error being logged.
+ * Shared-but-non-circular references are still fully sanitized.
+ */
+function sanitizeObjectInternal<T>(obj: T, seen: WeakSet<object>): T {
   if (!obj || typeof obj !== 'object') {
     return obj;
   }
 
-  if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeObject(item)) as T;
+  if (seen.has(obj)) {
+    return '[Circular]' as T;
   }
+  seen.add(obj);
 
   const sanitized: Record<string, unknown> = {};
-  
+
+  if (Array.isArray(obj)) {
+    const items = obj.map(item => sanitizeObjectInternal(item, seen));
+    seen.delete(obj);
+    return items as T;
+  }
+
   for (const [key, value] of Object.entries(obj)) {
     const lowerKey = key.toLowerCase();
     
@@ -128,7 +147,7 @@ export function sanitizeObject<T>(obj: T): T {
     }
 
     if (typeof value === 'object' && value !== null) {
-      sanitized[key] = sanitizeObject(value);
+      sanitized[key] = sanitizeObjectInternal(value, seen);
     } else if (typeof value === 'string') {
       sanitized[key] = sanitizeString(value);
     } else {
@@ -136,6 +155,7 @@ export function sanitizeObject<T>(obj: T): T {
     }
   }
 
+  seen.delete(obj);
   return sanitized as T;
 }
 
@@ -159,6 +179,11 @@ export function sanitizeLogData<T>(data: T): T {
  * Sanitize error objects for logging
  */
 export function sanitizeError(error: Error): Record<string, unknown> {
+  const seen = new WeakSet<object>();
+  // The root error is on the current path, so a self-reference (e.g. a
+  // `cause` pointing back at the error) is detected as circular.
+  seen.add(error);
+
   const sanitized: Record<string, unknown> = {
     name: error.name,
     message: sanitizeString(error.message),
@@ -174,6 +199,8 @@ export function sanitizeError(error: Error): Record<string, unknown> {
       
       if (SENSITIVE_FIELDS.has(key) || SENSITIVE_FIELDS.has(lowerKey)) {
         sanitized[key] = REDACTED;
+      } else if (typeof value === 'object' && value !== null) {
+        sanitized[key] = sanitizeObjectInternal(value, seen);
       } else {
         sanitized[key] = sanitizeLogData(value);
       }

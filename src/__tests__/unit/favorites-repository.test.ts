@@ -25,6 +25,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
     orderAsc: jest.fn((...args: any[]) => ({ type: 'orderAsc', args })),
     orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
+    cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
@@ -163,6 +164,19 @@ describe('FavoriteRepository', () => {
       const result = await repo.findByUser('u1', 'project');
       expect(result).toHaveLength(1);
       expect(result[0].target_type).toBe('project');
+    });
+
+    it('should return favorites beyond the default 25-doc page (no truncation)', async () => {
+      const favs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `fav${i}`, user_id: 'u1', target_type: 'project' }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: favs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: favs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: favs.slice(200), total: 250 });
+
+      const result = await repo.findByUser('u1');
+      expect(result).toHaveLength(250);
+      expect(result[0].id).toBe('fav0');
+      expect(result[249].id).toBe('fav249');
     });
 
     it('should return empty array on error', async () => {

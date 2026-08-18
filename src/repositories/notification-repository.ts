@@ -65,16 +65,13 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
 
   async getAllNotificationsByUser(userId: string): Promise<NotificationEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('user_id', userId),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(mapNotification);
+      // fetchAll (cursor pagination) instead of Query.limit(1000): a cap here
+      // silently dropped every notification past the first 1000 (the
+      // limit(1000) truncation class fixed in base-repository).
+      return await this.fetchAll([
+        Query.equal('user_id', userId),
+        Query.orderDesc('created_at'),
+      ]);
     } catch {
       return [];
     }
@@ -82,17 +79,11 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
 
   async getUnreadNotificationsByUser(userId: string): Promise<NotificationEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('user_id', userId),
-          Query.equal('is_read', false),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(mapNotification);
+      return await this.fetchAll([
+        Query.equal('user_id', userId),
+        Query.equal('is_read', false),
+        Query.orderDesc('created_at'),
+      ]);
     } catch {
       return [];
     }
@@ -104,22 +95,20 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
 
   async markAllAsRead(userId: string): Promise<number> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('user_id', userId),
-          Query.equal('is_read', false),
-          Query.limit(1000),
-        ]
-      );
+      // fetchAll so >1000 unread notifications are ALL marked read — the old
+      // Query.limit(1000) left the rest unread, so the badge (an exact count
+      // query) and the read state diverged.
+      const unread = await this.fetchAll([
+        Query.equal('user_id', userId),
+        Query.equal('is_read', false),
+      ]);
       const now = new Date().toISOString();
       await Promise.all(
-        response.documents.map(doc =>
-          databases.updateDocument(DATABASE_ID, COLLECTION_ID, doc.$id, { is_read: true, updated_at: now })
+        unread.map(notification =>
+          databases.updateDocument(DATABASE_ID, COLLECTION_ID, notification.id, { is_read: true, updated_at: now })
         )
       );
-      return response.documents.length;
+      return unread.length;
     } catch {
       return 0;
     }
@@ -148,21 +137,18 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
    * read query error propagates to the caller (scheduler job).
    */
   async deleteReadBefore(threshold: Date): Promise<number> {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTION_ID,
-      [
-        Query.equal('is_read', true),
-        Query.limit(1000),
-      ]
-    );
-
-    const oldNotifications = response.documents.filter(
-      n => new Date(n.created_at) < threshold
-    );
+    // fetchAll with a created_at filter instead of Query.limit(1000) with an
+    // in-memory threshold: the old cap deleted at most 1000 arbitrary read
+    // notifications per run (no ordering), so the backlog never drained under
+    // sustained volume. The read error still propagates to the caller
+    // (scheduler job), as before.
+    const oldNotifications = await this.fetchAll([
+      Query.equal('is_read', true),
+      Query.lessThan('created_at', threshold.toISOString()),
+    ]);
 
     const deleteResults = await Promise.all(
-      oldNotifications.map(async (notification) => (await this.delete(notification.$id)) ? 1 : 0)
+      oldNotifications.map(async (notification) => (await this.delete(notification.id)) ? 1 : 0)
     );
     return deleteResults.reduce<number>((sum, n) => sum + n, 0);
   }

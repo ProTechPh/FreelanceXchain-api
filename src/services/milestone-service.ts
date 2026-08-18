@@ -53,7 +53,10 @@ async function findMilestoneContext(
   milestoneId: string,
   userId: string
 ): Promise<MilestoneContext | null> {
-  const contractsResult = await contractRepository.getUserContracts(userId, { limit: 1000, offset: 0 });
+  // Fetch the full set (the repo fetchAlls internally and slices in memory), so
+  // a milestone on a contract past the old 1000-cap is still found (the
+  // limit(1000) truncation class).
+  const contractsResult = await contractRepository.getUserContracts(userId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
 
   for (const contract of contractsResult.items) {
     const project = await projectRepository.findProjectById(contract.project_id);
@@ -258,7 +261,9 @@ export async function findFreelancerMilestoneContext(
   freelancerId: string,
   milestoneId: string
 ): Promise<FreelancerMilestoneContext | null> {
-  const contractsResult = await contractRepository.getContractsByFreelancer(freelancerId, { limit: 1000, offset: 0 });
+  // Full fetch — getContractsByFreelancer now fetchAlls and slices in memory,
+  // so a milestone on contract #1001+ is still found.
+  const contractsResult = await contractRepository.getContractsByFreelancer(freelancerId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
 
   // Prefer active contracts first, then fall back to others.
   const contracts = [...contractsResult.items].sort((a, b) => {
@@ -411,7 +416,8 @@ export async function findEmployerMilestoneContractId(
   employerId: string,
   milestoneId: string
 ): Promise<string | null> {
-  const contractsResult = await contractRepository.getContractsByEmployer(employerId, { limit: 1000, offset: 0 });
+  // Full fetch — getContractsByEmployer now fetchAlls and slices in memory.
+  const contractsResult = await contractRepository.getContractsByEmployer(employerId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
 
   for (const contract of contractsResult.items) {
     const project = await projectRepository.findProjectById(contract.project_id);

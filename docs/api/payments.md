@@ -290,6 +290,10 @@ user, without the itemized log. `available` is `false` when either totals query 
 a dashboard widget can render an explicit unavailable state instead of a misleading zero
 (the failing totals are `null` in that case).
 
+The summary is cached per user for 60 seconds (the totals scan every completed payment
+record, so the endpoint doesn't re-scan on every poll). Only available results are cached
+— a failed or unavailable summary is re-fetched on the next request.
+
 | | |
 | --- | --- |
 | **Auth** | Bearer JWT |

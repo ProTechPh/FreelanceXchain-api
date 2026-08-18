@@ -47,10 +47,16 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
 const mockSkillCache = { get: jest.fn(), set: jest.fn() };
 const mockPlatformMetricsCache = { get: jest.fn(), set: jest.fn() };
 const mockSkillTrendsCache = { get: jest.fn(), set: jest.fn() };
+const mockFreelancerAnalyticsCache = { get: jest.fn(), set: jest.fn() };
+const mockEmployerAnalyticsCache = { get: jest.fn(), set: jest.fn() };
+const mockAdminAnalyticsCache = { get: jest.fn(), set: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
   skillCache: mockSkillCache,
   platformMetricsCache: mockPlatformMetricsCache,
   skillTrendsCache: mockSkillTrendsCache,
+  freelancerAnalyticsCache: mockFreelancerAnalyticsCache,
+  employerAnalyticsCache: mockEmployerAnalyticsCache,
+  adminAnalyticsCache: mockAdminAnalyticsCache,
   LRUCache: jest.fn().mockImplementation(() => ({ get: jest.fn(), set: jest.fn() })),
 }));
 
@@ -321,6 +327,12 @@ function resetAllMocks() {
   mockPlatformMetricsCache.set.mockReset();
   mockSkillTrendsCache.get.mockReset().mockReturnValue(undefined);
   mockSkillTrendsCache.set.mockReset();
+  mockFreelancerAnalyticsCache.get.mockReset().mockReturnValue(undefined);
+  mockFreelancerAnalyticsCache.set.mockReset();
+  mockEmployerAnalyticsCache.get.mockReset().mockReturnValue(undefined);
+  mockEmployerAnalyticsCache.set.mockReset();
+  mockAdminAnalyticsCache.get.mockReset().mockReturnValue(undefined);
+  mockAdminAnalyticsCache.set.mockReset();
   // Reset default repo mocks
   mockNotificationRepo.createNotification.mockImplementation(async (entity: any) => ({
     ...entity,
@@ -908,7 +920,12 @@ describe('analytics-service: active user filtering in getPlatformMetrics (line 2
       .mockResolvedValueOnce({ documents: [], total: 30 })
       // Call 4: CONTRACTS (completed count)
       .mockResolvedValueOnce({ documents: [], total: 20 })
-      // Call 5: AUDIT_LOG_ENTRIES
+      // Call 5: CONTRACTS (completed, full fetch for transaction volume)
+      .mockResolvedValueOnce({
+        documents: [{ total_amount: 5000 }, { total_amount: 3000 }],
+        total: 2,
+      })
+      // Call 6: AUDIT_LOG_ENTRIES (full fetch for active users)
       .mockResolvedValueOnce({
         documents: [
           { user_id: 'user-a', created_at: recentDate },
@@ -918,11 +935,6 @@ describe('analytics-service: active user filtering in getPlatformMetrics (line 2
           { user_id: null, created_at: recentDate },
         ],
         total: 5,
-      })
-      // Call 6: CONTRACTS (completed, for transaction volume)
-      .mockResolvedValueOnce({
-        documents: [{ total_amount: 5000 }, { total_amount: 3000 }],
-        total: 2,
       });
 
     const { getPlatformMetrics } = await import(resolveModule('src/services/analytics-service.ts'));

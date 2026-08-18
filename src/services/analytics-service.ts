@@ -2,9 +2,43 @@ import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { Models } from 'node-appwrite';
 import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
-import { platformMetricsCache, skillTrendsCache } from '../utils/cache.js';
+import {
+  platformMetricsCache,
+  skillTrendsCache,
+  freelancerAnalyticsCache,
+  employerAnalyticsCache,
+  adminAnalyticsCache,
+} from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+
+/**
+ * Fetch ALL documents matching the queries using cursor-based pagination (the
+ * base-repository.fetchAll pattern, for this service's raw collection scans).
+ * The old Query.limit(1000) silently undercounted: a user with more than 1000
+ * completed contracts saw truncated earnings/spend totals (the limit(1000)
+ * truncation class). Errors propagate to the caller.
+ */
+async function fetchAllCollection(collectionId: string, baseQueries: string[], pageSize = 100): Promise<Models.DefaultDocument[]> {
+  const allDocs: Models.DefaultDocument[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const queries = [...baseQueries, Query.limit(pageSize)];
+    if (lastId) {
+      queries.push(Query.cursorAfter(lastId));
+    }
+
+    const response = await databases.listDocuments(DATABASE_ID, collectionId, queries);
+    allDocs.push(...response.documents);
+
+    if (response.documents.length < pageSize) break;
+    lastId = response.documents[response.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return allDocs;
+}
 
 interface DateRangeOptions {
   startDate?: string;
@@ -60,25 +94,30 @@ interface AdminAnalytics {
 
 /**
  * Get freelancer analytics
+ *
+ * Cached per user + date range for 60s — this scans contracts, reviews, and
+ * proposals (full cursor fetch each) plus per-project lookups, so a
+ * frequently-polled dashboard shouldn't re-scan on every request. Only
+ * successful results are cached; a failed computation is re-attempted on the
+ * next request.
  */
 export async function getFreelancerAnalytics(
   userId: string,
   options: DateRangeOptions = {}
 ): Promise<ServiceResult<FreelancerAnalytics>> {
+  const cacheKey = `freelancer:${userId}:${options.startDate ?? ''}:${options.endDate ?? ''}`;
+  const cached = freelancerAnalyticsCache.get(cacheKey);
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const { startDate, endDate } = options;
 
-    const contractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('freelancer_id', userId),
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]
-    );
-
-    let contracts = contractsResponse.documents;
+    let contracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('freelancer_id', userId),
+      Query.equal('status', 'completed'),
+    ]);
     if (startDate) {
       contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
     }
@@ -89,44 +128,34 @@ export async function getFreelancerAnalytics(
     const totalEarnings = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
-    const reviewsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.limit(1000),
-      ]
-    );
-
-    const reviews = reviewsResponse.documents;
+    const reviews = await fetchAllCollection(COLLECTIONS.REVIEWS, [
+      Query.equal('reviewee_id', userId),
+    ]);
     const averageRating = reviews.length > 0
       ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length
       : 0;
 
-    const proposalsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROPOSALS,
-      [
-        Query.equal('freelancer_id', userId),
-        Query.limit(1000),
-      ]
-    );
-    
-    const totalProposals = proposalsResponse.documents.length;
-    const acceptedProposals = proposalsResponse.documents.filter(p => p.status === 'accepted').length;
+    const proposals = await fetchAllCollection(COLLECTIONS.PROPOSALS, [
+      Query.equal('freelancer_id', userId),
+    ]);
+
+    const totalProposals = proposals.length;
+    const acceptedProposals = proposals.filter(p => p.status === 'accepted').length;
     const proposalAcceptanceRate = totalProposals > 0 ? (acceptedProposals / totalProposals) * 100 : 0;
 
     const earningsByMonth = calculateEarningsByMonth(contracts);
     const topSkills = await calculateTopSkills(userId, 'freelancer');
 
-    return successResult({
+    const data: FreelancerAnalytics = {
       totalEarnings,
       projectsCompleted,
       averageRating: Math.round(averageRating * 10) / 10,
       earningsByMonth,
       topSkills,
       proposalAcceptanceRate: Math.round(proposalAcceptanceRate * 10) / 10,
-    });
+    };
+    freelancerAnalyticsCache.set(cacheKey, data);
+    return successResult(data);
       } catch (error) {
       logger.error('Failed to get freelancer analytics', { error, userId });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
@@ -135,24 +164,30 @@ export async function getFreelancerAnalytics(
 
 /**
  * Get employer analytics
+ *
+ * Cached per user + date range for 60s — this scans projects and contracts
+ * (full cursor fetch each) plus per-project lookups, so a frequently-polled
+ * dashboard shouldn't re-scan on every request. Only successful results are
+ * cached.
  */
 export async function getEmployerAnalytics(
   userId: string,
   options: DateRangeOptions = {}
 ): Promise<ServiceResult<EmployerAnalytics>> {
+  const cacheKey = `employer:${userId}:${options.startDate ?? ''}:${options.endDate ?? ''}`;
+  const cached = employerAnalyticsCache.get(cacheKey);
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const { startDate, endDate } = options;
 
-    const postedResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [
-        Query.equal('employer_id', userId),
-        Query.limit(1000),
-      ]
-    );
+    const posted = await fetchAllCollection(COLLECTIONS.PROJECTS, [
+      Query.equal('employer_id', userId),
+    ]);
 
-    let projectsPostedData = postedResponse.documents;
+    let projectsPostedData = posted;
     if (startDate) {
       projectsPostedData = projectsPostedData.filter(p => new Date(p.created_at) >= new Date(startDate));
     }
@@ -165,17 +200,10 @@ export async function getEmployerAnalytics(
     /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects */
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
-    const contractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('employer_id', userId),
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]
-    );
-
-    let contracts = contractsResponse.documents;
+    let contracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('employer_id', userId),
+      Query.equal('status', 'completed'),
+    ]);
     if (startDate) {
       contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
     }
@@ -189,14 +217,16 @@ export async function getEmployerAnalytics(
     const spendingByMonth = calculateEarningsByMonth(contracts);
     const topHiredSkills = await calculateTopSkills(userId, 'employer');
 
-    return successResult({
+    const data: EmployerAnalytics = {
       totalSpent,
       projectsPosted,
       projectsCompleted,
       averageProjectBudget: Math.round(averageProjectBudget * 100) / 100,
       spendingByMonth,
       topHiredSkills,
-    });
+    };
+    employerAnalyticsCache.set(cacheKey, data);
+    return successResult(data);
       } catch (error) {
       logger.error('Failed to get employer analytics', { error, userId });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
@@ -218,7 +248,6 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
       projectsResponse,
       contractsResponse,
       completedContractsResponse,
-      auditLogsResponse,
     ] = await Promise.all([
       databases.listDocuments(DATABASE_ID, COLLECTIONS.USERS, [Query.limit(1)]),
       databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, [Query.limit(1)]),
@@ -227,9 +256,6 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
         Query.equal('status', 'completed'),
         Query.limit(1),
       ]),
-      databases.listDocuments(DATABASE_ID, COLLECTIONS.AUDIT_LOG_ENTRIES, [
-        Query.limit(1000),
-      ]),
     ]);
 
     const totalUsers = usersResponse.total;
@@ -237,23 +263,22 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     const totalContracts = contractsResponse.total;
     const completedContracts = completedContractsResponse.total;
 
-    const completedDocs = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]
-    );
-    const totalTransactionVolume = completedDocs.documents.reduce(
+    // Full cursor fetches — the old Query.limit(1000) undercounted volume and
+    // active users past 1000 records (the limit(1000) truncation class).
+    const completedDocs = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('status', 'completed'),
+    ]);
+    const totalTransactionVolume = completedDocs.reduce(
       (sum, c) => sum + Number(c.total_amount || 0), 0
     );
+
+    const auditLogs = await fetchAllCollection(COLLECTIONS.AUDIT_LOG_ENTRIES, []);
 
     // Count active users (those with audit log entries in last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const activeUserIds = new Set<string>();
-    for (const log of auditLogsResponse.documents) {
+    for (const log of auditLogs) {
       if (new Date(log.created_at) >= thirtyDaysAgo && log.user_id) {
         activeUserIds.add(log.user_id);
       }
@@ -282,21 +307,25 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
 
 /**
  * Get admin analytics
+ *
+ * Cached globally for 60s — this scans users, projects, contracts, and audit
+ * logs (full cursor fetch each), so the admin dashboard shouldn't re-scan on
+ * every poll. Only successful results are cached.
  */
 export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>> {
+  const cached = adminAnalyticsCache.get('admin_analytics');
+  if (cached) {
+    return successResult(cached);
+  }
+
   try {
     const [
       usersResponse,
       projectsResponse,
-      completedContractsResponse,
       activeContractsResponse,
     ] = await Promise.all([
       databases.listDocuments(DATABASE_ID, COLLECTIONS.USERS, [Query.limit(1)]),
       databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, [Query.limit(1)]),
-      databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
-        Query.equal('status', 'completed'),
-        Query.limit(1000),
-      ]),
       databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
         Query.equal('status', 'active'),
         Query.limit(1),
@@ -307,29 +336,26 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     const totalProjects = projectsResponse.total;
     const activeContracts = activeContractsResponse.total;
 
+    // Full cursor fetches — the old Query.limit(1000) undercounted revenue and
+    // growth metrics past 1000 records (the limit(1000) truncation class).
+    const completedContracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+      Query.equal('status', 'completed'),
+    ]);
     // Calculate total revenue (5% fee on completed contracts)
-    const totalRevenue = completedContractsResponse.documents.reduce(
+    const totalRevenue = completedContracts.reduce(
       (sum, c) => sum + Number(c.total_amount || 0) * 0.05, 0
     );
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const allUsersResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.USERS,
-      [Query.limit(1000)]
-    );
-    const userGrowth = allUsersResponse.documents.filter(
+    const allUsers = await fetchAllCollection(COLLECTIONS.USERS, []);
+    const userGrowth = allUsers.filter(
       u => new Date(u.created_at) >= thirtyDaysAgo
     ).length;
 
-    const allProjectsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [Query.limit(1000)]
-    );
-    const projectGrowth = allProjectsResponse.documents.filter(
+    const allProjects = await fetchAllCollection(COLLECTIONS.PROJECTS, []);
+    const projectGrowth = allProjects.filter(
       p => new Date(p.created_at) >= thirtyDaysAgo
     ).length;
 
@@ -338,13 +364,13 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
     const userGrowthData = computeMonthlyCounts(
-      allUsersResponse.documents.filter(u => new Date(u.created_at) >= twelveMonthsAgo)
+      allUsers.filter(u => new Date(u.created_at) >= twelveMonthsAgo)
     );
     const projectActivityData = computeMonthlyCounts(
-      allProjectsResponse.documents.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
+      allProjects.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
     );
 
-    return successResult({
+    const data: AdminAnalytics = {
       totalUsers,
       totalProjects,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
@@ -353,7 +379,9 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       projectGrowth,
       userGrowthData,
       projectActivityData,
-    });
+    };
+    adminAnalyticsCache.set('admin_analytics', data);
+    return successResult(data);
       } catch (error) {
       logger.error('Failed to get admin analytics', { error });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
@@ -370,14 +398,11 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
   }
 
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [
-        Query.equal('status', 'open'),
-        Query.limit(1000),
-      ]
-    );
+    // Full cursor fetch — the old Query.limit(1000) counted demand only from
+    // the newest 1000 open projects (the limit(1000) truncation class).
+    const projects = await fetchAllCollection(COLLECTIONS.PROJECTS, [
+      Query.equal('status', 'open'),
+    ]);
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -389,7 +414,7 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
       olderCount: number;
     }>();
 
-    for (const project of response.documents) {
+    for (const project of projects) {
       const requiredSkills = project.required_skills;
       const skills: Array<string | { skill_name?: string; name?: string }> = typeof requiredSkills === 'string'
         ? JSON.parse(requiredSkills)

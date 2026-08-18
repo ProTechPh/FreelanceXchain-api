@@ -25,6 +25,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
     orderAsc: jest.fn((...args: any[]) => ({ type: 'orderAsc', args })),
     orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
+    cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
@@ -132,6 +133,21 @@ describe('PortfolioRepository', () => {
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('pi1');
       expect(result[1].id).toBe('pi2');
+    });
+
+    it('should return items beyond the default 25-doc page (no truncation)', async () => {
+      // 250 items across 3 cursor pages — the old listWithQueries call without
+      // a limit silently returned only the newest 25.
+      const items = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `pi${i}`, freelancer_id: 'f1', title: `P${i}` }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: items.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: items.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: items.slice(200), total: 250 });
+
+      const result = await repo.findByFreelancer('f1');
+      expect(result).toHaveLength(250);
+      expect(result[0].id).toBe('pi0');
+      expect(result[249].id).toBe('pi249');
     });
 
     it('should return empty array on error', async () => {

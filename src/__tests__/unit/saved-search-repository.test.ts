@@ -25,6 +25,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
     orderAsc: jest.fn((...args: any[]) => ({ type: 'orderAsc', args })),
     orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
+    cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
@@ -133,6 +134,18 @@ describe('SavedSearchRepository', () => {
       expect(result[0].name).toBe('Search 1');
     });
 
+    it('should return ALL searches across cursor pages (250 across 3 pages of 100)', async () => {
+      const searches = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `ss${i}`, user_id: 'u1', name: `Search ${i}` }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: searches.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: searches.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: searches.slice(200), total: 250 });
+      const result = await repo.findByUser('u1');
+      expect(result).toHaveLength(250);
+      expect(result[200].id).toBe('ss200');
+      expect(result[249].id).toBe('ss249');
+    });
+
     it('should filter by search type when provided', async () => {
       const searches = [toAppwriteDoc({ id: 'ss1', user_id: 'u1', search_type: 'freelancer' })];
       mockListDocuments.mockResolvedValueOnce({ documents: searches, total: 1 });
@@ -182,7 +195,20 @@ describe('SavedSearchRepository', () => {
       expect(result[0].id).toBe('ss1');
       const queries = mockListDocuments.mock.calls[0][2] as any[];
       expect(queries.some(q => q.type === 'equal' && q.args[1] === true)).toBe(true);
-      expect(queries.some(q => q.type === 'limit' && q.args[0] === 100)).toBe(true);
+    });
+
+    it('should return saved searches beyond the first 100 (no truncation)', async () => {
+      // 250 notify-enabled searches across 3 pages of 100 (fetchAll cursor pagination).
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `ss${i}`, notify_on_new: true }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.findAllWithNotifyEnabled();
+      expect(result).toHaveLength(250);
+      expect(result[0].id).toBe('ss0');
+      expect(result[249].id).toBe('ss249');
     });
   });
 });

@@ -1,5 +1,5 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { Query } from '../config/appwrite.js';
 
 type SavedSearchType = 'project' | 'freelancer';
 
@@ -35,7 +35,14 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
     if (searchType) {
       queries.push(Query.equal('search_type', searchType));
     }
-    return this.listWithQueries<SavedSearchEntity>(queries, mapDoc);
+    try {
+      // fetchAll (cursor pagination) instead of listWithQueries: Appwrite's
+      // default 25-doc page silently hid a user's older saved searches (the
+      // default-page-size truncation class).
+      return (await this.fetchAll(queries)).map(mapDoc);
+    } catch {
+      return [];
+    }
   }
 
   async findOwnerById(id: string): Promise<string | null> {
@@ -47,15 +54,13 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
    * Saved searches that should notify on new matches. Errors propagate to the caller.
    */
   async findAllWithNotifyEnabled(): Promise<SavedSearchEntity[]> {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTION_ID,
-      [
-        Query.equal('notify_on_new', true),
-        Query.limit(100),
-      ]
-    );
-    return response.documents.map(doc => fromAppwriteDoc<SavedSearchEntity>(doc));
+    // fetchAll instead of Query.limit(100): the scheduler must scan EVERY
+    // notify-enabled saved search — the 101st+ were silently skipped (the
+    // limit(1000) truncation class, at a lower cap). Errors still propagate
+    // to the caller (scheduler job), as before.
+    return this.fetchAll([
+      Query.equal('notify_on_new', true),
+    ]);
   }
 }
 

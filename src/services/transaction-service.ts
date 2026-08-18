@@ -53,7 +53,13 @@ export async function getUserTransactions(
     const limit = options.limit || 20;
     const offset = (page - 1) * limit;
 
-    const pagedResult = await transactionRepository.findByUser(userId, { limit: 200, offset: 0 });
+    // Fetch the COMPLETE list: findByUser already fetchAll's internally (cursor
+    // pagination), so an unbounded limit adds no DB cost — and the in-memory
+    // filters + pagination below must run over ALL of the user's transactions.
+    // Capping at 200 here silently dropped everything older: total/hasMore were
+    // wrong and page 2+ was unreachable for users with >200 transactions (the
+    // limit(1000) truncation class of bug).
+    const pagedResult = await transactionRepository.findByUser(userId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
     let filtered = pagedResult.items;
 
     // Apply filters in-memory (Appwrite doesn't support complex WHERE)

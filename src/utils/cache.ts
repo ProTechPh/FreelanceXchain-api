@@ -78,3 +78,21 @@ export const skillCache = new LRUCache<any[]>(200, 5 * 60_000);
 // Analytics caches: 5-minute TTL for expensive queries
 export const platformMetricsCache = new LRUCache<any>(10, 5 * 60_000);
 export const skillTrendsCache = new LRUCache<any[]>(10, 5 * 60_000);
+
+// Per-user payment summary: 60s TTL. The totals scan every completed payment
+// record, so a frequently-polled dashboard widget shouldn't re-scan on every
+// request. Keyed by userId (one entry per user); only available results are
+// cached by the service, never failed/unavailable queries.
+export const paymentSummaryCache = new LRUCache<{
+  totalEarnings: number | null;
+  totalSpent: number | null;
+  available: boolean;
+}>(500, 60_000);
+
+// Analytics dashboards: 60s TTL. These scan whole collections (contracts,
+// reviews, proposals, projects with limit(1000) plus per-project lookups), so a
+// frequently-polled dashboard shouldn't re-scan on every request. The per-user
+// caches are keyed by userId + date range; only successful results are cached.
+export const freelancerAnalyticsCache = new LRUCache<any>(500, 60_000);
+export const employerAnalyticsCache = new LRUCache<any>(500, 60_000);
+export const adminAnalyticsCache = new LRUCache<any>(10, 60_000);

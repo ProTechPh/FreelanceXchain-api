@@ -147,12 +147,30 @@ describe('ContractRepository', () => {
 
     it('should handle custom options', async () => {
       mockListDocuments.mockResolvedValueOnce({
-        documents: [toAppwriteDoc({ id: 'c1' })],
-        total: 5,
+        documents: [toAppwriteDoc({ id: 'c1' }), toAppwriteDoc({ id: 'c2' })],
+        total: 2,
       });
       const result = await repo.getContractsByFreelancer('f1', { limit: 1, offset: 0 });
       expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(2);
       expect(result.hasMore).toBe(true);
+    });
+
+    it('should reach contracts beyond the old 1000-cap (no truncation)', async () => {
+      // 250 contracts across 3 cursor pages; page 3 (offset 200) must be
+      // reachable — the old Query.limit(1000) made it empty.
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `c${i}` }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.getContractsByFreelancer('f1', { limit: 100, offset: 200 });
+      expect(result.total).toBe(250);
+      expect(result.items).toHaveLength(50);
+      expect(result.items[0]!.id).toBe('c200');
+      expect(result.items[49]!.id).toBe('c249');
+      expect(result.hasMore).toBe(false);
     });
   });
 
@@ -165,6 +183,20 @@ describe('ContractRepository', () => {
       const result = await repo.getContractsByEmployer('e1');
       expect(result.items).toHaveLength(1);
       expect(mockOrderDesc).toHaveBeenCalledWith('$createdAt');
+    });
+
+    it('should reach contracts beyond the old 1000-cap (no truncation)', async () => {
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `c${i}` }));
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.getContractsByEmployer('e1', { limit: 100, offset: 200 });
+      expect(result.total).toBe(250);
+      expect(result.items).toHaveLength(50);
+      expect(result.items[0]!.id).toBe('c200');
+      expect(result.items[49]!.id).toBe('c249');
     });
   });
 

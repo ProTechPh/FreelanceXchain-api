@@ -26,13 +26,18 @@ export class PortfolioRepository extends BaseRepository<PortfolioItemEntity> {
   }
 
   async findByFreelancer(freelancerId: string): Promise<PortfolioItemEntity[]> {
-    return this.listWithQueries<PortfolioItemEntity>(
-      [
+    try {
+      // fetchAll (cursor pagination) instead of listWithQueries: Appwrite's
+      // default 25-doc page silently hid a freelancer's older portfolio items
+      // (the default-page-size truncation class).
+      const all = await this.fetchAll([
         Query.equal('freelancer_id', freelancerId),
         Query.orderDesc('created_at'),
-      ],
-      mapDoc
-    );
+      ]);
+      return all.map(mapDoc);
+    } catch {
+      return [];
+    }
   }
 
   async findOwnerById(id: string): Promise<string | null> {

@@ -161,6 +161,54 @@ describe('log-sanitizer', () => {
       expect(result.token).toBe('[REDACTED]');
       expect(result.code).toBe('ERR_001');
     });
+
+    it('should replace a circular extra property instead of overflowing the stack', () => {
+      const err: any = new Error('oops');
+      err.self = err;
+      err.cause = { nested: { parent: err } };
+      expect(() => sanitizeError(err)).not.toThrow();
+      const result = sanitizeError(err);
+      expect(result.self).toBe('[Circular]');
+      expect((result.cause as any).nested.parent).toBe('[Circular]');
+    });
+
+    it('should sanitize non-circular object extra properties', () => {
+      const err = Object.assign(new Error('oops'), { details: { email: 'user@example.com' } });
+      const result = sanitizeError(err);
+      expect((result.details as any).email).toBe('[REDACTED_EMAIL]');
+    });
+  });
+
+  describe('sanitizeObject circular references', () => {
+    it('should replace self-references with [Circular] without throwing', () => {
+      const obj: any = { name: 'req' };
+      obj.self = obj;
+      expect(() => sanitizeObject(obj)).not.toThrow();
+      expect(sanitizeObject(obj).self).toBe('[Circular]');
+    });
+
+    it('should replace nested cycles back to an ancestor', () => {
+      const inner: any = { value: 'x' };
+      const outer: any = { inner };
+      inner.parent = outer;
+      const result = sanitizeObject(outer);
+      expect((result.inner as any).parent).toBe('[Circular]');
+    });
+
+    it('should not mark shared non-circular references as circular', () => {
+      const shared = { email: 'user@example.com' };
+      const result = sanitizeObject({ a: shared, b: shared });
+      expect((result.a as any).email).toBe('[REDACTED_EMAIL]');
+      expect((result.b as any).email).toBe('[REDACTED_EMAIL]');
+    });
+
+    it('should handle circular arrays', () => {
+      const arr: any[] = [1, 2];
+      arr.push(arr);
+      const result = sanitizeObject(arr) as any[];
+      expect(result[0]).toBe(1);
+      expect(result[2]).toBe('[Circular]');
+    });
   });
 
   describe('containsSensitiveData', () => {

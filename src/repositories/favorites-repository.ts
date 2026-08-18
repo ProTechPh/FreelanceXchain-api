@@ -56,7 +56,14 @@ export class FavoriteRepository extends BaseRepository<FavoriteEntity> {
     if (targetType) {
       queries.push(Query.equal('target_type', targetType));
     }
-    return this.listWithQueries<FavoriteEntity>(queries, mapDoc);
+    try {
+      // fetchAll (cursor pagination) instead of listWithQueries: Appwrite's
+      // default 25-doc page silently hid favorites past the newest 25 (the
+      // default-page-size truncation class).
+      return (await this.fetchAll(queries)).map(mapDoc);
+    } catch {
+      return [];
+    }
   }
 
   async removeByUserAndTarget(

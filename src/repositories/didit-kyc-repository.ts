@@ -5,6 +5,33 @@ import { fromAppwriteDoc } from './base-repository.js';
 
 const TABLE_NAME = 'kyc_verifications';
 
+/**
+ * Fetch ALL KYC documents matching the given queries, using cursor-based
+ * pagination. Mirrors BaseRepository.fetchAll — replaces the Query.limit(1000)
+ * pattern that silently dropped records past 1000 (the truncation class fixed
+ * across the listing layer). Errors propagate to the caller.
+ */
+async function listAllKycDocuments(baseQueries: string[], pageSize = 100): Promise<Record<string, unknown>[]> {
+  const allDocs: Record<string, unknown>[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const queries = [...baseQueries, Query.limit(pageSize)];
+    if (lastId) {
+      queries.push(Query.cursorAfter(lastId));
+    }
+
+    const response = await databases.listDocuments(DATABASE_ID, TABLE_NAME, queries);
+    allDocs.push(...response.documents);
+
+    if (response.documents.length < pageSize) break;
+    lastId = response.documents[response.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return allDocs;
+}
+
 function mapKyc(doc: Record<string, unknown>): KycVerification {
   const result = fromAppwriteDoc<Record<string, unknown>>(doc);
   for (const field of ['decline_reasons', 'review_reasons', 'metadata']) {
@@ -136,16 +163,13 @@ export async function updateKycVerification(
  */
 export async function getKycVerificationsByStatus(status: KycVerification['status']): Promise<KycVerification[]> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      TABLE_NAME,
-      [
-        Query.equal('status', status),
-        Query.orderDesc('$createdAt'),
-        Query.limit(1000),
-      ]
-    );
-    return response.documents.map(mapKyc);
+    // listAllKycDocuments (cursor pagination) instead of Query.limit(1000): the
+    // admin status list silently hid verifications past the first 1000.
+    const documents = await listAllKycDocuments([
+      Query.equal('status', status),
+      Query.orderDesc('$createdAt'),
+    ]);
+    return documents.map(mapKyc);
   } catch (error) {
     logger.error('Error fetching KYC verifications by status', error as Error);
     return [];
@@ -157,17 +181,15 @@ export async function getKycVerificationsByStatus(status: KycVerification['statu
  */
 export async function getPendingReviews(): Promise<KycVerification[]> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      TABLE_NAME,
-      [
-        Query.equal('status', 'completed'),
-        Query.isNull('reviewed_by'),
-        Query.orderAsc('$createdAt'),
-        Query.limit(1000),
-      ]
-    );
-    return response.documents.map(mapKyc);
+    // listAllKycDocuments (cursor pagination) instead of Query.limit(1000): with
+    // more than 1000 completed-but-unreviewed verifications, the admin queue
+    // silently hid the older ones and they were never reviewed.
+    const documents = await listAllKycDocuments([
+      Query.equal('status', 'completed'),
+      Query.isNull('reviewed_by'),
+      Query.orderAsc('$createdAt'),
+    ]);
+    return documents.map(mapKyc);
   } catch (error) {
     logger.error('Error fetching pending reviews', error as Error);
     return [];
@@ -192,16 +214,13 @@ export async function deleteKycVerification(id: string): Promise<boolean> {
  */
 export async function getKycVerificationHistory(userId: string): Promise<KycVerification[]> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      TABLE_NAME,
-      [
-        Query.equal('user_id', userId),
-        Query.orderDesc('$createdAt'),
-        Query.limit(1000),
-      ]
-    );
-    return response.documents.map(mapKyc);
+    // listAllKycDocuments (cursor pagination) instead of Query.limit(1000): a
+    // user with more than 1000 KYC attempts saw only the newest 1000.
+    const documents = await listAllKycDocuments([
+      Query.equal('user_id', userId),
+      Query.orderDesc('$createdAt'),
+    ]);
+    return documents.map(mapKyc);
   } catch (error) {
     logger.error('Error fetching KYC verification history', error as Error);
     return [];

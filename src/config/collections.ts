@@ -14,6 +14,7 @@ export const COLLECTIONS = {
   EMAIL_PREFERENCES: 'email_preferences',
   SAVED_SEARCHES: 'saved_searches',
   EMAILS: 'emails',
+  EMAIL_DELIVERY_FAILURES: 'email_delivery_failures',
 } as const;
 
 export type CollectionId = typeof COLLECTIONS[keyof typeof COLLECTIONS];

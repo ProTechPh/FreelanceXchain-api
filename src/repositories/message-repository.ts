@@ -17,6 +17,68 @@ function mapMessage(doc: Record<string, unknown>): MessageEntity {
   return result as MessageEntity;
 }
 
+/**
+ * Fetch ALL documents matching the queries using cursor-based pagination.
+ * The old `Query.limit(1000)` per participant slot silently dropped every
+ * conversation past the first 1000 — the limit(1000) truncation class that
+ * base-repository.fetchAll replaces elsewhere.
+ */
+async function fetchAllConversations(queries: string[], pageSize = 100): Promise<Record<string, unknown>[]> {
+  const allDocs: Record<string, unknown>[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const pageQueries = [...queries, Query.limit(pageSize)];
+    if (lastId) {
+      pageQueries.push(Query.cursorAfter(lastId));
+    }
+
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      CONVERSATIONS_COLLECTION,
+      pageQueries
+    );
+    allDocs.push(...response.documents);
+
+    if (response.documents.length < pageSize) break;
+    lastId = response.documents[response.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return allDocs;
+}
+
+/**
+ * Fetch ALL message documents matching the queries using cursor-based
+ * pagination — same pattern as fetchAllConversations, for the messages
+ * collection (used by markMessagesAsRead so >1000 unread messages all get
+ * marked read).
+ */
+async function fetchAllMessages(queries: string[], pageSize = 100): Promise<Record<string, unknown>[]> {
+  const allDocs: Record<string, unknown>[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const pageQueries = [...queries, Query.limit(pageSize)];
+    if (lastId) {
+      pageQueries.push(Query.cursorAfter(lastId));
+    }
+
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      MESSAGES_COLLECTION,
+      pageQueries
+    );
+    allDocs.push(...response.documents);
+
+    if (response.documents.length < pageSize) break;
+    lastId = response.documents[response.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return allDocs;
+}
+
 export const messageRepository = {
   async createConversation(participant1Id: string, participant2Id: string): Promise<ConversationEntity> {
     const now = new Date().toISOString();
@@ -67,28 +129,17 @@ export const messageRepository = {
 
   async getUserConversations(userId: string, limit: number, offset: number) {
     try {
-      const response1 = await databases.listDocuments(
-        DATABASE_ID,
-        CONVERSATIONS_COLLECTION,
-        [
+      const [slot1, slot2] = await Promise.all([
+        fetchAllConversations([
           Query.equal('participant1_id', userId),
           Query.orderDesc('last_message_at'),
-          Query.limit(1000),
-        ]
-      );
-      const response2 = await databases.listDocuments(
-        DATABASE_ID,
-        CONVERSATIONS_COLLECTION,
-        [
+        ]),
+        fetchAllConversations([
           Query.equal('participant2_id', userId),
           Query.orderDesc('last_message_at'),
-          Query.limit(1000),
-        ]
-      );
-      const all = [
-        ...response1.documents.map(mapConversation),
-        ...response2.documents.map(mapConversation),
-      ];
+        ]),
+      ]);
+      const all = [...slot1, ...slot2].map(mapConversation);
       const unique = Array.from(new Map(all.map(c => [c.id, c])).values());
       unique.sort((a, b) => (b.last_message_at || '').localeCompare(a.last_message_at || ''));
       const total = unique.length;
@@ -138,19 +189,17 @@ export const messageRepository = {
 
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        MESSAGES_COLLECTION,
-        [
-          Query.equal('conversation_id', conversationId),
-          Query.equal('receiver_id', userId),
-          Query.equal('is_read', false),
-          Query.limit(1000),
-        ]
-      );
+      // fetchAllMessages (cursor pagination) instead of Query.limit(1000): with
+      // more than 1000 unread messages in a conversation the rest stayed unread
+      // and the unread badge never cleared (the limit(1000) truncation class).
+      const unreadMessages = await fetchAllMessages([
+        Query.equal('conversation_id', conversationId),
+        Query.equal('receiver_id', userId),
+        Query.equal('is_read', false),
+      ]);
       await Promise.all(
-        response.documents.map(doc =>
-          databases.updateDocument(DATABASE_ID, MESSAGES_COLLECTION, doc.$id, { is_read: true })
+        unreadMessages.map(doc =>
+          databases.updateDocument(DATABASE_ID, MESSAGES_COLLECTION, doc.$id as string, { is_read: true })
         )
       );
     } catch {

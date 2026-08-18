@@ -20,6 +20,8 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     orderDesc: jest.fn().mockImplementation((field: string) => ({ type: 'orderDesc', field })),
     limit: jest.fn().mockImplementation((n: number) => ({ type: 'limit', value: n })),
     offset: jest.fn().mockImplementation((n: number) => ({ type: 'offset', value: n })),
+    cursorAfter: jest.fn().mockImplementation((id: string) => ({ type: 'cursorAfter', id })),
+    lessThan: jest.fn().mockImplementation((field: string, value: string) => ({ type: 'lessThan', field, value })),
   },
   ID: { unique: jest.fn(() => 'mock-unique-id') },
 }));
@@ -135,6 +137,20 @@ describe('NotificationRepository', () => {
       const result = await repo.getAllNotificationsByUser('u1');
       expect(result).toEqual([]);
     });
+
+    it('should return notifications beyond the first 1000 (no truncation)', async () => {
+      // 250 notifications across 3 pages of 100 (fetchAll cursor pagination).
+      const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `n${i}`, user_id: 'u1', is_read: false }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+
+      const result = await repo.getAllNotificationsByUser('u1');
+      expect(result).toHaveLength(250);
+      expect(result[0]).toMatchObject({ id: 'n0' });
+      expect(result[249]).toMatchObject({ id: 'n249' });
+    });
   });
 
   describe('getUnreadNotificationsByUser', () => {
@@ -188,10 +204,64 @@ describe('NotificationRepository', () => {
       expect(result).toBe(0);
     });
 
+    it('should mark ALL unread notifications read even beyond 1000', async () => {
+      // 250 unread notifications across 3 pages of 100 — the old Query.limit(1000)
+      // left the last 150 unread, so the badge and read state diverged.
+      const unreadDocs = Array.from({ length: 250 }, (_, i) => ({ $id: `n${i}`, user_id: 'u1', is_read: false }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: unreadDocs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: unreadDocs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: unreadDocs.slice(200), total: 250 });
+      mockDatabases.updateDocument.mockResolvedValue({ $id: 'n' });
+
+      const result = await repo.markAllAsRead('u1');
+      expect(result).toBe(250);
+      expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(250);
+    });
+
     it('should return fallback on database error', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('update failed'));
       const result = await repo.markAllAsRead('u1');
       expect(result).toBe(0);
+    });
+  });
+
+  describe('deleteReadBefore', () => {
+    it('should delete only read notifications older than the threshold', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'n1', user_id: 'u1', is_read: true },
+          { $id: 'n2', user_id: 'u1', is_read: true },
+        ],
+        total: 2,
+      });
+      mockDatabases.deleteDocument.mockResolvedValue({ $id: 'n1' });
+      mockDatabases.deleteDocument.mockResolvedValue({ $id: 'n2' });
+
+      const result = await repo.deleteReadBefore(new Date('2025-01-01T00:00:00Z'));
+      expect(result).toBe(2);
+      expect(mockDatabases.deleteDocument).toHaveBeenCalledTimes(2);
+    });
+
+    it('should drain the backlog beyond the old 1000-cap (no truncation)', async () => {
+      // 250 read notifications across 3 pages of 100 — the old Query.limit(1000)
+      // deleted at most 1000 arbitrary read notifications per run, so the
+      // scheduler cleanup never caught up under sustained volume.
+      const docs = Array.from({ length: 250 }, (_, i) => ({ $id: `n${i}`, user_id: 'u1', is_read: true }));
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
+        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+      mockDatabases.deleteDocument.mockResolvedValue({ $id: 'n' });
+
+      const result = await repo.deleteReadBefore(new Date('2025-01-01T00:00:00Z'));
+      expect(result).toBe(250);
+      expect(mockDatabases.deleteDocument).toHaveBeenCalledTimes(250);
+    });
+
+    it('should propagate read errors to the caller (scheduler job)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      await expect(repo.deleteReadBefore(new Date('2025-01-01T00:00:00Z'))).rejects.toThrow('select failed');
     });
   });
 
