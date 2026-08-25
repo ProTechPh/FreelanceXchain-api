@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Deployments
 
+- **1.0.15+build.b8a6dce** (2026-08-25) - commit `b8a6dce`: Merge branch 'main' of https://github.com/ProTechPh/FreelanceXchain-api
 - **1.0.14+build.e108dde** (2026-08-25) - commit `e108dde`: fix(config): prevent redis connection race condition during startup
 - **1.0.13+build.52ed7f4** (2026-08-25) - commit `52ed7f4`: Merge pull request #253 from ProTechPh/crypto-news
 - **1.0.12+build.c3907b2** (2026-08-25) - commit `c3907b2`: Merge pull request #252 from ProTechPh/crypto-news
