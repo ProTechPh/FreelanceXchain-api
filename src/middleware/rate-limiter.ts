@@ -39,12 +39,7 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
       return;
     }
 
-    if (redis.status !== 'ready' && failOpen) {
-      next();
-      return;
-    }
-
-    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
     const windowStart = Math.floor(Date.now() / windowMs);
     const key = `ratelimit:${name}:${ip}:${windowStart}`;
 

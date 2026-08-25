@@ -152,63 +152,12 @@ export async function getCryptoNews(
     sources?: string | undefined;
   } = {}
 ): Promise<ServiceResult<CryptoNewsFeed>> {
-  // If specific coin, category, or source is requested:
-  if (options.coin || options.category || options.sources) {
-    const categoryParam =
-      options.category ||
-      (options.coin === 'BTC' ? 'bitcoin' : options.coin === 'ETH' ? 'ethereum' : options.coin?.toLowerCase());
-
-    return fetchCryptoNews<CryptoNewsFeed>('/api/news', {
-      limit: options.limit,
-      coin: options.coin,
-      category: categoryParam,
-      sort: options.sort,
-      sources: options.sources,
-    });
-  }
-
-  // When general feed is requested, query top categories in parallel to aggregate a rich feed of 15+ articles
-  const categories = ['macro', 'bitcoin', 'ethereum', 'defi', 'security'];
-  try {
-    const results = await Promise.allSettled(
-      categories.map((cat) =>
-        fetchCryptoNews<CryptoNewsFeed>('/api/news', {
-          category: cat,
-          sort: options.sort,
-        })
-      )
-    );
-
-    const mergedArticles: CryptoNewsArticle[] = [];
-    const seen = new Set<string>();
-
-    for (const res of results) {
-      if (res.status === 'fulfilled' && res.value.success && res.value.data) {
-        const feed = res.value.data;
-        const list = Array.isArray(feed.articles) ? feed.articles : [];
-        for (const art of list) {
-          const key = art.link || art.url || art.title;
-          if (key && !seen.has(key)) {
-            seen.add(key);
-            mergedArticles.push(art);
-          }
-        }
-      }
-    }
-
-    if (mergedArticles.length > 0) {
-      return successResult({
-        articles: mergedArticles.slice(0, options.limit || 24),
-        count: mergedArticles.length,
-      });
-    }
-  } catch {
-    // fallback to single fetch
-  }
-
   return fetchCryptoNews<CryptoNewsFeed>('/api/news', {
     limit: options.limit,
+    coin: options.coin,
+    category: options.category,
     sort: options.sort,
+    sources: options.sources,
   });
 }
 
