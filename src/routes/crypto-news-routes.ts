@@ -99,6 +99,7 @@ router.get('/news', apiRateLimiter, asyncHandler(async (req: Request, res: Respo
   const result = await getCryptoNews({
     limit,
     coin: coin?.toUpperCase(),
+    category: req.query['category'] as string | undefined,
     sort: req.query['sort'] as string | undefined,
     sources: req.query['sources'] as string | undefined,
   });
