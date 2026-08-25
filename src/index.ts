@@ -3,8 +3,22 @@ import { config } from './config/index.js';
 import { initializeScheduler, stopScheduler } from './services/scheduler-service.js';
 import { stopHeartbeat } from './services/notification-delivery-service.js';
 import { logger } from './config/logger.js';
+import { redis } from './config/redis.js';
 
 async function main(): Promise<void> {
+  // Wait for Redis to be ready before accepting traffic.
+  // This prevents the "Stream isn't writeable" race where the rate-limiter
+  // fires before ioredis has finished its initial TCP handshake.
+  try {
+    await redis.connect();
+  } catch (err) {
+    // connect() rejects if already connected — safe to ignore.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes('already')) {
+      logger.error('[redis] connect() warning at startup:', err);
+    }
+  }
+
   initializeScheduler();
 
   const app = await createApp();
@@ -27,18 +41,21 @@ async function main(): Promise<void> {
 
     server.close(() => {
       logger.info('HTTP server closed');
-      process.exit(0);
     });
+
+    await redis.quit().catch(() => redis.disconnect());
 
     const forceTimer = setTimeout(() => {
       logger.error('Could not close connections in time, forcefully shutting down');
       process.exit(1);
     }, 10000);
     forceTimer.unref();
+
+    process.exit(0);
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 process.on('unhandledRejection', (reason: unknown) => {
