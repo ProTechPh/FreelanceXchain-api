@@ -11,6 +11,9 @@ import { validateUrl } from '../utils/url-validator.js';
 import { LRUCache } from '../utils/cache.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { getCryptoPanicNews, getCryptoPanicCurrencies } from './cryptopanic-service.js';
+import type { NewsCategoryItem } from './cryptopanic-service.js';
+import { getAggregatedRssNews } from './crypto-rss-service.js';
 
 const BASE_URL = config.cryptoNews.baseUrl.replace(/\/+$/, '');
 
@@ -140,8 +143,20 @@ async function fetchCryptoNews<T>(
   }
 }
 
+
+// Minimum number of articles the primary source must return before we skip
+// supplementing with secondary & RSS sources.
+const MIN_PRIMARY_ARTICLES = 10;
+
 /**
  * Latest crypto news with multi-category aggregation.
+ *
+ * Aggregates in priority order:
+ * 1. cryptocurrency.cv API
+ * 2. CoinTelegraph & Decrypt live RSS feeds (unlimited free 30+ real articles with images)
+ * 3. CryptoPanic API (if available)
+ *
+ * Deduplicates by title and sorts latest first.
  */
 export async function getCryptoNews(
   options: {
@@ -152,26 +167,115 @@ export async function getCryptoNews(
     sources?: string | undefined;
   } = {}
 ): Promise<ServiceResult<CryptoNewsFeed>> {
-  return fetchCryptoNews<CryptoNewsFeed>('/api/news', {
-    limit: options.limit,
-    coin: options.coin,
-    category: options.category,
-    sort: options.sort,
-    sources: options.sources,
+  const limit = options.limit ?? 24;
+
+  // Fetch primary API and RSS feeds in parallel for maximum speed and freshness
+  const [primaryResult, rssResult] = await Promise.allSettled([
+    fetchCryptoNews<CryptoNewsFeed>('/api/news', {
+      limit: options.limit,
+      coin: options.coin,
+      category: options.category,
+      sort: options.sort,
+      sources: options.sources,
+    }),
+    getAggregatedRssNews({
+      limit,
+      coin: options.coin,
+      category: options.category,
+    }),
+  ]);
+
+  const primaryArticles: CryptoNewsArticle[] =
+    primaryResult.status === 'fulfilled' && primaryResult.value.success
+      ? (primaryResult.value.data.articles ?? [])
+      : [];
+
+  const rssArticles: CryptoNewsArticle[] =
+    rssResult.status === 'fulfilled' && rssResult.value.success
+      ? (rssResult.value.data.articles ?? [])
+      : [];
+
+  // Deduplicate by title
+  const seenTitles = new Set<string>();
+  const combinedArticles: CryptoNewsArticle[] = [];
+
+  for (const art of [...primaryArticles, ...rssArticles]) {
+    const normTitle = (art.title || '').toLowerCase().trim();
+    if (normTitle && !seenTitles.has(normTitle)) {
+      seenTitles.add(normTitle);
+      combinedArticles.push(art);
+    }
+  }
+
+  // If still under desired count, try CryptoPanic
+  if (combinedArticles.length < limit) {
+    const needed = limit - combinedArticles.length;
+    const secondaryResult = await getCryptoPanicNews({
+      limit: needed,
+      ...(options.coin !== undefined && { coin: options.coin }),
+    });
+
+    if (secondaryResult.success && Array.isArray(secondaryResult.data.articles)) {
+      for (const secArt of secondaryResult.data.articles) {
+        const normTitle = (secArt.title || '').toLowerCase().trim();
+        if (normTitle && !seenTitles.has(normTitle)) {
+          seenTitles.add(normTitle);
+          combinedArticles.push(secArt);
+        }
+      }
+    }
+  }
+
+  const finalArticles = combinedArticles.slice(0, limit);
+
+  logger.info('[crypto-news] aggregated live news feed', {
+    primary: primaryArticles.length,
+    rss: rssArticles.length,
+    total: finalArticles.length,
+  } as Record<string, unknown>);
+
+  return successResult({
+    articles: finalArticles,
+    count: finalArticles.length,
+    source: 'Aggregated Live Feeds (CoinTelegraph, Decrypt, Cryptocurrency.cv)',
   });
 }
+
 
 /**
  * Full-text search across news, articles, and market data.
  */
-export function searchCryptoNews(
+export async function searchCryptoNews(
   query: string,
   limit?: number | undefined
 ): Promise<ServiceResult<Record<string, unknown>>> {
-  return fetchCryptoNews<Record<string, unknown>>('/api/search', {
+  const upstream = await fetchCryptoNews<Record<string, unknown>>('/api/search', {
     q: query,
     limit,
   });
+
+  if (upstream.success && Array.isArray(upstream.data?.results) && upstream.data.results.length > 0) {
+    return upstream;
+  }
+
+  // Fallback: search through live RSS feed articles
+  const rssResult = await getAggregatedRssNews({ limit: limit ?? 20 });
+  if (rssResult.success && Array.isArray(rssResult.data.articles)) {
+    const qLower = query.toLowerCase();
+    const matched = rssResult.data.articles.filter(
+      (a) =>
+        a.title.toLowerCase().includes(qLower) ||
+        (a.summary && a.summary.toLowerCase().includes(qLower)) ||
+        (a.category && a.category.toLowerCase().includes(qLower))
+    );
+    return successResult({
+      results: matched,
+      count: matched.length,
+      source: 'RSS Feed Search (CoinTelegraph, Decrypt)',
+    });
+  }
+
+  return upstream;
 }
 
 /**
@@ -234,3 +338,56 @@ export function getMarketMovers(
     timeframe: options.timeframe,
   });
 }
+
+/**
+ * Dynamically extract and generate category filter options from live news
+ * feeds and top currency listings. Zero hardcoded categories.
+ */
+export async function getDynamicCategories(limit = 10): Promise<ServiceResult<NewsCategoryItem[]>> {
+  const [currenciesRes, newsRes] = await Promise.allSettled([
+    getCryptoPanicCurrencies(5),
+    getCryptoNews({ limit: 30 }),
+  ]);
+
+  const categories: NewsCategoryItem[] = [{ label: 'All News' }];
+  const seen = new Set<string>(['all news']);
+
+  // 1. Add top active coin symbols from live currency listings
+  if (currenciesRes.status === 'fulfilled' && currenciesRes.value.success) {
+    for (const c of currenciesRes.value.data) {
+      const lower = c.label.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        categories.push(c);
+      }
+    }
+  }
+
+  // 2. Extract actual unique category tags from live articles currently in feed
+  if (newsRes.status === 'fulfilled' && newsRes.value.success) {
+    const articles = newsRes.value.data.articles || [];
+    for (const art of articles) {
+      if (!art.category) continue;
+      const raw = art.category.trim();
+      if (!raw || raw.toLowerCase() === 'crypto' || raw.toLowerCase() === 'latest news') continue;
+
+      const parts = raw.split(/[,/]/).map((p) => p.trim()).filter(Boolean);
+      for (const p of parts) {
+        const lower = p.toLowerCase();
+        if (!seen.has(lower) && categories.length < limit) {
+          seen.add(lower);
+          const formatted = p
+            .split(' ')
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(' ');
+          categories.push({
+            label: formatted,
+            filter: lower,
+          });
+        }
+      }
+    }
+  }
+
+  return successResult(categories);
+}

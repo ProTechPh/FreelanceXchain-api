@@ -87,6 +87,14 @@ export const config = {
     // limit. Set 0 to disable caching entirely.
     cacheTtlMs: getEnvVarNumber('CRYPTO_NEWS_CACHE_TTL_MS', 60000),
   },
+  cryptoPanic: {
+    // Secondary news source (https://cryptopanic.com/developers/api/).
+    // Free tier works without a token (public=true). Set CRYPTOPANIC_AUTH_TOKEN
+    // to unlock authenticated endpoints and higher per-minute limits.
+    baseUrl: getEnvVar('CRYPTOPANIC_BASE_URL', 'https://cryptopanic.com/api/v1'),
+    authToken: getEnvVarOptional('CRYPTOPANIC_AUTH_TOKEN'),
+    timeoutMs: getEnvVarNumber('CRYPTOPANIC_TIMEOUT_MS', 8000),
+  },
   // NOTE: No JWT signing config here. Auth tokens are issued and validated by
   // Appwrite (session JWTs via account.get/createSession) — the app never signs
   // or verifies its own tokens, so JWT_SECRET-style env vars would be dead

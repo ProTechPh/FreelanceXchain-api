@@ -8,7 +8,9 @@ import {
   getFearGreedIndex,
   getGlobalMarketStats,
   getMarketMovers,
+  getDynamicCategories,
 } from '../services/crypto-news-service.js';
+import type { NewsCategoryItem } from '../services/cryptopanic-service.js';
 import type { ServiceError } from '../types/service-result.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -413,6 +415,34 @@ router.get('/movers', apiRateLimiter, asyncHandler(async (req: Request, res: Res
   }
 
   res.status(200).json(result.data);
+}));
+
+/**
+ * @swagger
+ * /api/crypto-news/categories:
+ *   get:
+ *     summary: Dynamic news category list
+ *     description: Returns top cryptocurrency coins from CryptoPanic plus curated topic categories for use as news filter pills.
+ *     tags:
+ *       - Crypto News
+ *     responses:
+ *       200:
+ *         description: Category list retrieved successfully
+ */
+router.get('/categories', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+
+  const limitRaw = req.query['limit'] as string | undefined;
+  const limit = limitRaw !== undefined ? Math.min(Math.max(parseInt(limitRaw, 10) || 10, 1), 25) : 10;
+
+  const result = await getDynamicCategories(limit);
+
+  if (!result.success) {
+    sendUpstreamError(res, result.error, requestId);
+    return;
+  }
+
+  res.status(200).json({ categories: result.data });
 }));
 
 export default router;
