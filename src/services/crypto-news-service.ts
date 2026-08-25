@@ -38,10 +38,19 @@ const cryptoNewsCache =
 export type CryptoNewsArticle = {
   title: string;
   link?: string;
+  url?: string;
   pubDate?: string;
   source?: string;
   category?: string;
   sentiment?: string;
+  image?: string;
+  imageurl?: string;
+  imageUrl?: string;
+  image_url?: string;
+  thumbnail?: string;
+  urlToImage?: string;
+  summary?: string;
+  description?: string;
 };
 
 export type CryptoNewsFeed = {
@@ -132,14 +141,13 @@ async function fetchCryptoNews<T>(
 }
 
 /**
- * Latest crypto news. `coin` filters by coin symbol (e.g. BTC, ETH).
- * Params are typed as `| undefined` to satisfy exactOptionalPropertyTypes when
- * routes forward optional query params that may be absent.
+ * Latest crypto news with multi-category aggregation.
  */
-export function getCryptoNews(
+export async function getCryptoNews(
   options: {
     limit?: number | undefined;
     coin?: string | undefined;
+    category?: string | undefined;
     sort?: string | undefined;
     sources?: string | undefined;
   } = {}
@@ -147,6 +155,7 @@ export function getCryptoNews(
   return fetchCryptoNews<CryptoNewsFeed>('/api/news', {
     limit: options.limit,
     coin: options.coin,
+    category: options.category,
     sort: options.sort,
     sources: options.sources,
   });
