@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Deployments
 
+- **1.0.12+build.c3907b2** (2026-08-25) - commit `c3907b2`: Merge pull request #252 from ProTechPh/crypto-news
 - **1.0.11+build.f32aaf1** (2026-08-18) - commit `f32aaf1`: Merge remote-tracking branch 'origin/dependabot/github_actions/metcalfc/changelog-generator-4.8.0'
 - **1.0.11+build.ca756ba** (2026-08-18) - commit `ca756ba`: Merge remote-tracking branch 'origin/dependabot/github_actions/trufflesecurity/trufflehog-3.97.0'
 - **1.0.10+build.446c91d** (2026-08-18) - commit `446c91d`: Merge pull request #251 from ProTechPh/improvement
