@@ -7573,6 +7573,297 @@
         }
       }
     },
+    "/api/crypto-news/news": {
+      "get": {
+        "summary": "Latest crypto news",
+        "description": "Latest crypto news from 300+ sources, proxied from the free cryptocurrency.cv API. Optional coin filter (e.g. BTC, ETH).",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            },
+            "description": "Maximum number of articles to return"
+          },
+          {
+            "in": "query",
+            "name": "coin",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Coin symbol to filter by (e.g. BTC, ETH)"
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Sort field"
+          },
+          {
+            "in": "query",
+            "name": "sources",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated list of news sources"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "News articles retrieved successfully"
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/search": {
+      "get": {
+        "summary": "Search crypto news",
+        "description": "Full-text search across crypto news, articles, and market data.",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search query",
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            },
+            "description": "Maximum number of results to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results retrieved successfully"
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/sentiment": {
+      "get": {
+        "summary": "Crypto market sentiment",
+        "description": "Market sentiment analysis and indicators.",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            },
+            "description": "Maximum number of results to return"
+          },
+          {
+            "in": "query",
+            "name": "asset",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Asset identifier (e.g. BTC, ETH)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sentiment data retrieved successfully"
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/digest": {
+      "get": {
+        "summary": "Daily crypto market digest",
+        "description": "Daily crypto market digest.",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Time period for data aggregation (e.g. 24h)"
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Response format (e.g. full)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Digest retrieved successfully"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/prices": {
+      "get": {
+        "summary": "Real-time crypto prices",
+        "description": "Real-time cryptocurrency prices. `coins` is a comma-separated list of identifiers (e.g. bitcoin,ethereum).",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "coins",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated cryptocurrency identifiers"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prices retrieved successfully"
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/fear-greed": {
+      "get": {
+        "summary": "Fear & Greed index",
+        "description": "Current crypto Fear & Greed index.",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Fear & Greed index retrieved successfully"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/global": {
+      "get": {
+        "summary": "Global crypto market statistics",
+        "description": "Global cryptocurrency market statistics (market cap, dominance, volume).",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Global market statistics retrieved successfully"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
+    "/api/crypto-news/movers": {
+      "get": {
+        "summary": "Top gaining and losing cryptocurrencies",
+        "description": "Top gaining and losing cryptocurrencies by timeframe.",
+        "tags": [
+          "Crypto News"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "type": "string",
+              "default": "gainers",
+              "enum": [
+                "gainers",
+                "losers"
+              ]
+            },
+            "description": "Which movers to return"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            },
+            "description": "Maximum number of results to return"
+          },
+          {
+            "in": "query",
+            "name": "timeframe",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Time period (e.g. 1h, 24h, 7d, 30d)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Market movers retrieved successfully"
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "502": {
+            "description": "Upstream crypto news API unavailable"
+          }
+        }
+      }
+    },
     "/api/contracts/{id}/fund": {
       "post": {
         "summary": "Fund contract escrow",
@@ -7698,6 +7989,7 @@
     }
   },
   "tags": [
-    "Messages"
+    "Messages",
+    "Crypto News"
   ]
 }

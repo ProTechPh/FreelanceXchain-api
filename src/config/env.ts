@@ -75,6 +75,18 @@ export const config = {
     apiUrl: getEnvVar('LLM_API_URL'),
     model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
   },
+  cryptoNews: {
+    // Upstream provider for the crypto news proxy (cryptocurrency.cv free API).
+    // Basic news/market endpoints work without a key; set CRYPTO_NEWS_API_KEY to
+    // unlock premium endpoints and higher rate limits (sent as X-API-Key).
+    baseUrl: getEnvVar('CRYPTO_NEWS_BASE_URL', 'https://cryptocurrency.cv'),
+    apiKey: getEnvVarOptional('CRYPTO_NEWS_API_KEY'),
+    timeoutMs: getEnvVarNumber('CRYPTO_NEWS_TIMEOUT_MS', 10000),
+    // In-memory response cache TTL (ms). Repeated frontend calls for the same
+    // path+params are served from cache instead of hitting the upstream rate
+    // limit. Set 0 to disable caching entirely.
+    cacheTtlMs: getEnvVarNumber('CRYPTO_NEWS_CACHE_TTL_MS', 60000),
+  },
   // NOTE: No JWT signing config here. Auth tokens are issued and validated by
   // Appwrite (session JWTs via account.get/createSession) — the app never signs
   // or verifies its own tokens, so JWT_SECRET-style env vars would be dead
