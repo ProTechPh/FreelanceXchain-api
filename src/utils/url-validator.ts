@@ -21,6 +21,7 @@ const ALLOWED_DOMAINS = new Set([
   'cloud.appwrite.io',
   'didit.me',
   'api.didit.me',
+  'cryptocurrency.cv',
   'generativelanguage.googleapis.com',
   'api.openai.com',
   'api.anthropic.com',

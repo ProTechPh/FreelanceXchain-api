@@ -35,6 +35,7 @@ import rushUpgradeRoutes from './rush-upgrade-routes.js';
 import emailInboxRoutes from './email-inbox-routes.js';
 import dashboardRoutes from './dashboard-routes.js';
 import metricsRoutes from './metrics-routes.js';
+import cryptoNewsRoutes from './crypto-news-routes.js';
 
 const router = Router();
 
@@ -139,5 +140,8 @@ router.use('/dashboard', dashboardRoutes);
 
 // SLO/SLI metrics (admin only)
 router.use('/metrics', metricsRoutes);
+
+// Crypto news proxy (cryptocurrency.cv free API)
+router.use('/crypto-news', cryptoNewsRoutes);
 
 export default router;

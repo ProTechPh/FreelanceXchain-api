@@ -173,6 +173,7 @@ All routes are prefixed with `/api`. Full interactive docs at `/api-docs` (set `
 | Saved searches / Favorites / Portfolio | `/api/saved-searches` · `/api/favorites` · `/api/portfolio` | Discovery & profile extras |
 | Admin / Audit / Files | `/api/admin` · `/api/audit-logs` · `/api/files` | Administration, audit trail, uploads |
 | Webhooks | `/api/webhooks` · `/api/inbox/webhook` · `/api/kyc/webhook` | Blockchain / email / Didit events |
+| Crypto News | `/api/crypto-news` | Proxy for the free cryptocurrency.cv news API (news, search, sentiment, prices, Fear & Greed, movers) |
 | Dashboard / Metrics | `/api/dashboard` · `/api/metrics` | Summary + SLI metrics |
 
 ## ⛓️ Smart Contracts

@@ -9,6 +9,7 @@
 | [AI Matching API](matching.md) | AI-powered skill matching, project recommendations, freelancer recommendations, skill extraction, and skill gap analysis |
 | [Authentication API](auth.md) | User registration, login, token refresh, OAuth integration, and password recovery |
 | [Contract API](contracts.md) | Contract listing and retrieval |
+| [Crypto News API](crypto-news.md) | Proxy for the free cryptocurrency.cv news API: news, search, sentiment, prices, Fear & Greed, market movers |
 | [Dispute API](disputes.md) | Dispute creation, evidence submission, resolution, and retrieval |
 | [KYC Verification API](kyc.md) | Identity verification, face match, liveness checks, document submission, and admin review |
 | [Notification API](notifications.md) | Notification retrieval, marking as read, and unread counts |
