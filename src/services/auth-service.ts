@@ -69,7 +69,28 @@ function extractSessionSecretFromCookies(cookieHeaders: string[] | string | null
   return undefined;
 }
 
-async function createTokenSession(userId: string, secret: string): Promise<string> {
+function extractAppwriteTokenSecret(secret: string): string {
+  if (!secret || typeof secret !== 'string') return secret;
+  if (secret.startsWith('ey') && secret.includes('.')) {
+    try {
+      const parts = secret.split('.');
+      if (parts.length >= 2 && parts[1]) {
+        const payloadStr = Buffer.from(parts[1], 'base64url').toString('utf8');
+        const payload = JSON.parse(payloadStr);
+        if (payload && typeof payload.secret === 'string') {
+          return payload.secret;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return secret;
+}
+
+async function createTokenSession(userId: string, rawSecret: string): Promise<string> {
+  const secret = extractAppwriteTokenSecret(rawSecret);
+
   // In unit tests, use mocked adminAccount
   if (config.server.nodeEnv === 'test') {
     const adminSession = await adminAccount.createSession({ userId, secret });
@@ -88,6 +109,25 @@ async function createTokenSession(userId: string, secret: string): Promise<strin
   });
 
   if (!response.ok) {
+    if (secret !== rawSecret) {
+      try {
+        const fallbackResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Appwrite-Project': config.appwrite.projectId,
+          },
+          body: JSON.stringify({ userId, secret: rawSecret }),
+        });
+        if (fallbackResponse.ok) {
+          const data = (await fallbackResponse.json().catch(() => ({}))) as { secret?: string };
+          if (data.secret) return data.secret;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const errText = await response.text();
     // If guest endpoint fails and API key might have permissions, try adminAccount fallback
     try {
@@ -445,9 +485,9 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     const userClient = createUserClient('');
     const account = new Account(userClient);
 
-    const frontendBaseUrl = process.env.FRONTEND_URL
-      ?? process.env.PUBLIC_URL
-      ?? 'http://localhost:3000';
+    const frontendBaseUrl = process.env.PUBLIC_URL
+      ?? process.env.FRONTEND_URL
+      ?? 'http://localhost:5173';
     const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
     const redirectUrl = `${normalizedFrontendBaseUrl}/reset-password`;
 
