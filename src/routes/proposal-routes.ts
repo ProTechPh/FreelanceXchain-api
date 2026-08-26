@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, validateAppwriteDocumentId, isValidUUID, validate, submitProposalSchema, submitProposalMultipartSchema } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId, isValidUUID, validate, submitProposalSchema, submitProposalMultipartSchema } from '../middleware/validation-middleware.js';
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';

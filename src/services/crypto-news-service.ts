@@ -144,9 +144,6 @@ async function fetchCryptoNews<T>(
 }
 
 
-// Minimum number of articles the primary source must return before we skip
-// supplementing with secondary & RSS sources.
-const MIN_PRIMARY_ARTICLES = 10;
 
 /**
  * Latest crypto news with multi-category aggregation.

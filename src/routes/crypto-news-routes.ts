@@ -10,7 +10,6 @@ import {
   getMarketMovers,
   getDynamicCategories,
 } from '../services/crypto-news-service.js';
-import type { NewsCategoryItem } from '../services/cryptopanic-service.js';
 import type { ServiceError } from '../types/service-result.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
