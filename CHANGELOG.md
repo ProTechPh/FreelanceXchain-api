@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Deployments
 
+- **1.0.19+build.5147f0e** (2026-08-26) - commit `5147f0e`: fix(auth): use Appwrite SDK for token session exchange with detailed logging
 - **1.0.18+build.8f5209f** (2026-08-26) - commit `8f5209f`: fix(auth): extract raw token secret from Appwrite JWT during token session exchange
 - **1.0.17+build.653b05b** (2026-08-26) - commit `653b05b`: Merge branch 'main' of https://github.com/ProTechPh/FreelanceXchain-api
 - **1.0.16+build.431175f** (2026-08-26) - commit `431175f`: Merge pull request #254 from ProTechPh/public-route
