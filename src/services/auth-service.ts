@@ -105,7 +105,24 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
     if (adminSession?.secret) return adminSession.secret;
   }
 
-  // 1. Try Appwrite SDK with guest client (no API key — same as browser SDK)
+  // 1. Try Appwrite Users API (Server API key has users/sessions scope)
+  try {
+    const userSession = await users.createSession(userId);
+    if (userSession?.secret) {
+      logger.info('createTokenSession: users.createSession succeeded', {
+        userId,
+        hasSecret: true,
+      });
+      return userSession.secret;
+    }
+  } catch (usersErr: unknown) {
+    logger.warn('createTokenSession: users.createSession failed, trying guest token exchange', {
+      userId,
+      error: getErrorMessage(usersErr),
+    });
+  }
+
+  // 2. Try Appwrite SDK with guest client (no API key — same as browser SDK)
   try {
     const guestClient = createUserClient('');
     const guestAccount = new Account(guestClient);
