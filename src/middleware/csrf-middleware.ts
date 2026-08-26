@@ -125,6 +125,7 @@ export function generateCsrfToken(req: Request, res: Response): void {
     sendSuccessResponse(res, 200, {
       message: 'CSRF token generated and set in cookie',
       cookieName,
+      token,
     }, requestId);
   } catch (error) {
     logger.error('Failed to generate CSRF token', {
