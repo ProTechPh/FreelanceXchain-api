@@ -90,6 +90,14 @@ function extractAppwriteTokenSecret(secret: string): string {
 
 async function createTokenSession(userId: string, rawSecret: string): Promise<string> {
   const secret = extractAppwriteTokenSecret(rawSecret);
+  const wasJwt = secret !== rawSecret;
+
+  logger.info('createTokenSession: starting', {
+    userId,
+    wasJwt,
+    secretLen: secret.length,
+    rawSecretPrefix: rawSecret.substring(0, 10),
+  });
 
   // In unit tests, use mocked adminAccount
   if (config.server.nodeEnv === 'test') {
@@ -97,7 +105,40 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
     if (adminSession?.secret) return adminSession.secret;
   }
 
-  // 1. Direct HTTP request as guest (Account API endpoint)
+  // 1. Try Appwrite SDK with guest client (no API key — same as browser SDK)
+  try {
+    const guestClient = createUserClient('');
+    const guestAccount = new Account(guestClient);
+    const session = await guestAccount.createSession({ userId, secret });
+    logger.info('createTokenSession: SDK guest client succeeded', {
+      userId,
+      hasSecret: !!session?.secret,
+    });
+    if (session?.secret) return session.secret;
+  } catch (sdkError: unknown) {
+    logger.warn('createTokenSession: SDK guest client failed', {
+      userId,
+      error: getErrorMessage(sdkError),
+    });
+  }
+
+  // 2. If JWT was decoded, also try with the raw JWT
+  if (wasJwt) {
+    try {
+      const guestClient = createUserClient('');
+      const guestAccount = new Account(guestClient);
+      const session = await guestAccount.createSession({ userId, secret: rawSecret });
+      logger.info('createTokenSession: SDK guest client with raw JWT succeeded', { userId });
+      if (session?.secret) return session.secret;
+    } catch (sdkError: unknown) {
+      logger.warn('createTokenSession: SDK guest client with raw JWT failed', {
+        userId,
+        error: getErrorMessage(sdkError),
+      });
+    }
+  }
+
+  // 3. Direct HTTP request as fallback
   const url = `${config.appwrite.endpoint}/account/sessions/token`;
   const response = await fetch(url, {
     method: 'POST',
@@ -108,28 +149,17 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
     body: JSON.stringify({ userId, secret }),
   });
 
-  if (!response.ok) {
-    if (secret !== rawSecret) {
-      try {
-        const fallbackResponse = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Appwrite-Project': config.appwrite.projectId,
-          },
-          body: JSON.stringify({ userId, secret: rawSecret }),
-        });
-        if (fallbackResponse.ok) {
-          const data = (await fallbackResponse.json().catch(() => ({}))) as { secret?: string };
-          if (data.secret) return data.secret;
-        }
-      } catch {
-        // ignore
-      }
-    }
+  logger.info('createTokenSession: HTTP fallback response', {
+    userId,
+    status: response.status,
+    ok: response.ok,
+  });
 
+  if (!response.ok) {
     const errText = await response.text();
-    // If guest endpoint fails and API key might have permissions, try adminAccount fallback
+    logger.warn('createTokenSession: HTTP fallback error body', { userId, errText });
+
+    // Try adminAccount as last resort
     try {
       const adminSession = await adminAccount.createSession({ userId, secret });
       if (adminSession?.secret) return adminSession.secret;
