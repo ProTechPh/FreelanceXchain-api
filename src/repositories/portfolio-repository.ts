@@ -32,7 +32,7 @@ export class PortfolioRepository extends BaseRepository<PortfolioItemEntity> {
       // (the default-page-size truncation class).
       const all = await this.fetchAll([
         Query.equal('freelancer_id', freelancerId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
       return all.map(mapDoc);
     } catch {

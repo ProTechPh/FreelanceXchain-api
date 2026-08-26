@@ -23,8 +23,9 @@ import {
   requestMagicUrl,
   verifyAuthToken,
   updateUserWallet,
+  isAuthError,
 } from '../services/auth-service.js';
-import { MfaRequiredResult, isAuthError } from '../services/auth-types.js';
+import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
@@ -418,11 +419,36 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
  *         description: Authentication failed
  */
 router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { code, error, error_description } = req.query;
+  const { code, error, error_description, userId, secret } = req.query;
   const requestId = getRequestId(req);
 
   if (error) {
     sendErrorResponse(res, 400, 'OAUTH_ERROR', String(error_description || error), { requestId, success: false });
+    return;
+  }
+
+  if (userId && secret && typeof userId === 'string' && typeof secret === 'string') {
+    const result = await verifyAuthToken(userId, secret);
+    if (isAuthError(result)) {
+      if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+        sendSuccessResponse(res, 202, {
+          success: true,
+          status: 'registration_required',
+          message: 'User does not exist. Please register with a role.',
+          access_token: (result as { accessToken?: string }).accessToken || secret,
+        }, requestId);
+        return;
+      }
+      sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, { requestId, success: false });
+      return;
+    }
+
+    sendSuccessResponse(res, 200, {
+      success: true,
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      user: result.user,
+    }, requestId);
     return;
   }
 
@@ -598,7 +624,7 @@ router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Req
         success: true,
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
-        access_token: secret,
+        access_token: (result as { accessToken?: string }).accessToken || secret,
       }, requestId);
       return;
     }
@@ -707,19 +733,34 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
  *         description: Invalid token
  */
 router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { access_token } = req.body;
+  const { access_token, accessToken, userId, secret } = req.body;
+  const token = access_token || accessToken || secret;
   const requestId = getRequestId(req);
 
-  logger.debug('OAuth callback received', { requestId });
+  logger.debug('OAuth callback received', { requestId, hasUserId: !!userId, hasSecret: !!secret, hasToken: !!token });
 
-  if (!access_token || typeof access_token !== 'string') {
-    logger.warn('OAuth callback missing access_token', { requestId });
+  let result: AuthResult | (AuthError & { accessToken?: string }) | MfaRequiredResult;
+  let sessionSecret = token;
+
+  if (userId && (secret || token)) {
+    const tokenSecret = (secret || token) as string;
+    const verifyResult = await verifyAuthToken(userId, tokenSecret);
+    if (isAuthError(verifyResult)) {
+      if (verifyResult.code === 'AUTH_REQUIRE_REGISTRATION') {
+        sessionSecret = verifyResult.accessToken || tokenSecret;
+      }
+      result = verifyResult;
+    } else {
+      sessionSecret = verifyResult.accessToken;
+      result = verifyResult;
+    }
+  } else if (token && typeof token === 'string') {
+    result = await loginWithAppwrite(token);
+  } else {
+    logger.warn('OAuth callback missing token/secret', { requestId });
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'access_token is required', { requestId });
     return;
   }
-
-  logger.debug('Calling loginWithAppwrite', { requestId });
-  const result = await loginWithAppwrite(access_token);
 
   if (isAuthError(result)) {
     logger.info('OAuth authentication error', {
@@ -743,6 +784,7 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
         success: true,
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
+        access_token: sessionSecret,
       }, requestId);
       return;
     }

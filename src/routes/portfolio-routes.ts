@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
@@ -125,7 +125,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   return res.status(201).json(result.data);
 }
 
-router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/freelancer/:freelancerId', apiRateLimiter, validateAppwriteDocumentId(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
   const freelancerId = req.params['freelancerId'] ?? '';
   const requestId = getRequestId(req);
 

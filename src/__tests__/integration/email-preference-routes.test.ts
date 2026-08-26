@@ -1,66 +1,67 @@
 import { jest, describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
-import type { Express, Request, Response, NextFunction } from 'express';
+import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+  authMiddleware: jest.fn((req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({
+        error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization header is required' },
+        timestamp: new Date().toISOString(),
+        requestId: 'unknown',
+      });
+      return;
+    }
+    (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: 'freelancer' };
+    next();
+  }),
+  requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+  requireRole: jest.fn(() => jest.fn((_req: Request, _res: Response, next: NextFunction) => next())),
+  requireVerifiedKyc: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/email-preference-service.ts'), () => ({
+  getEmailPreferences: jest.fn(async () => ({
+    success: true,
+    data: {
+      user_id: 'test-user-id',
+      proposal_received: true,
+      proposal_accepted: true,
+      milestone_updates: true,
+      payment_notifications: true,
+      dispute_notifications: true,
+      marketing_emails: false,
+      weekly_digest: true,
+    },
+  })),
+  updateEmailPreferences: jest.fn(async () => ({
+    success: true,
+    data: {
+      user_id: 'test-user-id',
+      proposal_received: false,
+      proposal_accepted: true,
+    },
+  })),
+  unsubscribeAll: jest.fn(async () => ({
+    success: true,
+    data: { message: 'Unsubscribed from all emails' },
+  })),
+  shouldSendEmail: jest.fn(async () => true),
+}));
+
+const emailPreferenceRouter = (await import('../../routes/email-preference-routes.js')).default;
+
 describe('Email Preference Routes Integration Tests', () => {
   let app: Express;
 
-  beforeAll(async () => {
-    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
-      authMiddleware: jest.fn((req: Request, res: Response, next: NextFunction) => {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          res.status(401).json({
-            error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization header is required' },
-            timestamp: new Date().toISOString(),
-            requestId: 'unknown',
-          });
-          return;
-        }
-        (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: 'freelancer' };
-        next();
-      }),
-      requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
-      requireRole: jest.fn(() => jest.fn((_req: Request, _res: Response, next: NextFunction) => next())),
-      requireVerifiedKyc: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
-    }));
-
-    jest.unstable_mockModule(resolveModule('src/services/email-preference-service.ts'), () => ({
-      getEmailPreferences: jest.fn(async () => ({
-        success: true,
-        data: {
-          user_id: 'test-user-id',
-          proposal_received: true,
-          proposal_accepted: true,
-          milestone_updates: true,
-          payment_notifications: true,
-          dispute_notifications: true,
-          marketing_emails: false,
-          weekly_digest: true,
-        },
-      })),
-      updateEmailPreferences: jest.fn(async () => ({
-        success: true,
-        data: {
-          user_id: 'test-user-id',
-          proposal_received: false,
-          proposal_accepted: true,
-        },
-      })),
-      unsubscribeAll: jest.fn(async () => ({
-        success: true,
-        data: { message: 'Unsubscribed from all emails' },
-      })),
-      // email-delivery-service imports shouldSendEmail; keep it available so the
-      // mocked module still satisfies the import graph when createApp loads routes
-      shouldSendEmail: jest.fn(async () => true),
-    }));
-
-    const { createApp } = await import('../../app.js');
-    app = await createApp();
+  beforeAll(() => {
+    app = express();
+    app.use(express.json());
+    app.use('/api/email-preferences', emailPreferenceRouter);
   });
 
   describe('GET /api/email-preferences', () => {

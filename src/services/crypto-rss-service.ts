@@ -5,7 +5,7 @@
  */
 import { logger } from '../config/logger.js';
 import { LRUCache } from '../utils/cache.js';
-import { successResult, errorResult } from '../types/service-result.js';
+import { successResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type { CryptoNewsArticle, CryptoNewsFeed } from './crypto-news-service.js';
 

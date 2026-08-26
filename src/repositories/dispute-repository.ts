@@ -72,7 +72,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
         COLLECTION_ID,
         [
           Query.equal('contract_id', contractId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]
@@ -94,7 +94,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
       // truncation class fixed in base-repository).
       return await this.fetchAll([
         Query.equal('contract_id', contractId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
     } catch {
       return [];
@@ -129,7 +129,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
         COLLECTION_ID,
         [
           Query.equal('status', status),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]
@@ -154,7 +154,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
         COLLECTION_ID,
         [
           Query.equal('initiator_id', initiatorId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]
@@ -175,7 +175,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
 
     try {
       const queries: string[] = [
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ];
       if (options?.status) {
         queries.unshift(Query.equal('status', options.status));
@@ -206,7 +206,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
         DATABASE_ID,
         COLLECTION_ID,
         [
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(1000),
         ]
       );

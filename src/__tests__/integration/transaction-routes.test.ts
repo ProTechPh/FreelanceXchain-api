@@ -1,62 +1,65 @@
 import { jest, describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
-import type { Express, Request, Response, NextFunction } from 'express';
+import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+  authMiddleware: jest.fn((req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({
+        error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization header is required' },
+        timestamp: new Date().toISOString(),
+        requestId: 'unknown',
+      });
+      return;
+    }
+    (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: 'freelancer' };
+    next();
+  }),
+  requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+  requireRole: jest.fn(() => jest.fn((_req: Request, _res: Response, next: NextFunction) => next())),
+  requireVerifiedKyc: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/transaction-service.ts'), () => ({
+  getUserTransactions: jest.fn(async () => ({
+    success: true,
+    data: {
+      items: [
+        { id: 'tx-1', amount: 100, type: 'payment', status: 'completed', created_at: new Date().toISOString() },
+      ],
+      hasMore: false,
+      total: 1,
+    },
+  })),
+  getTransactionById: jest.fn(async () => ({
+    success: true,
+    data: { id: 'tx-1', amount: 100, type: 'payment', status: 'completed', created_at: new Date().toISOString() },
+  })),
+  getContractTransactions: jest.fn(async () => ({
+    success: true,
+    data: {
+      items: [
+        { id: 'tx-1', amount: 100, type: 'payment', status: 'completed', created_at: new Date().toISOString() },
+      ],
+      hasMore: false,
+      total: 1,
+    },
+  })),
+}));
+
+const transactionRouter = (await import('../../routes/transaction-routes.js')).default;
+
 describe('Transaction Routes Integration Tests', () => {
   let app: Express;
 
-  beforeAll(async () => {
-    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
-      authMiddleware: jest.fn((req: Request, res: Response, next: NextFunction) => {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          res.status(401).json({
-            error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization header is required' },
-            timestamp: new Date().toISOString(),
-            requestId: 'unknown',
-          });
-          return;
-        }
-        (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: 'freelancer' };
-        next();
-      }),
-      requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
-      requireRole: jest.fn(() => jest.fn((_req: Request, _res: Response, next: NextFunction) => next())),
-      requireVerifiedKyc: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
-    }));
-
-    jest.unstable_mockModule(resolveModule('src/services/transaction-service.ts'), () => ({
-      getUserTransactions: jest.fn(async () => ({
-        success: true,
-        data: {
-          items: [
-            { id: 'tx-1', amount: 100, type: 'payment', status: 'completed', created_at: new Date().toISOString() },
-          ],
-          hasMore: false,
-          total: 1,
-        },
-      })),
-      getTransactionById: jest.fn(async () => ({
-        success: true,
-        data: { id: 'tx-1', amount: 100, type: 'payment', status: 'completed', created_at: new Date().toISOString() },
-      })),
-      getContractTransactions: jest.fn(async () => ({
-        success: true,
-        data: {
-          items: [
-            { id: 'tx-1', amount: 100, type: 'payment', status: 'completed', created_at: new Date().toISOString() },
-          ],
-          hasMore: false,
-          total: 1,
-        },
-      })),
-    }));
-
-    const { createApp } = await import('../../app.js');
-    app = await createApp();
+  beforeAll(() => {
+    app = express();
+    app.use(express.json());
+    app.use('/api/transactions', transactionRouter);
   });
 
   describe('GET /api/transactions', () => {

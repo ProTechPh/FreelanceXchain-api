@@ -23,7 +23,7 @@ export class EmailDeliveryFailureRepository extends BaseRepository<EmailDelivery
   async findRecent(limit = 50): Promise<EmailDeliveryFailureEntity[]> {
     try {
       return await this.listWithQueries<EmailDeliveryFailureEntity>([
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(limit),
       ]);
     } catch {

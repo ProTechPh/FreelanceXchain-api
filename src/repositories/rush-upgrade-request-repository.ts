@@ -42,7 +42,7 @@ export class RushUpgradeRequestRepository extends BaseRepository<RushUpgradeRequ
         COLLECTION_ID,
         [
           Query.equal('contract_id', contractId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(1000),
         ]
       );
@@ -60,7 +60,7 @@ export class RushUpgradeRequestRepository extends BaseRepository<RushUpgradeRequ
         [
           Query.equal('contract_id', contractId),
           Query.equal('status', ['pending', 'counter_offered']),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(1),
         ]
       );

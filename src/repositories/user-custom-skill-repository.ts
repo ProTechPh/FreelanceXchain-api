@@ -56,7 +56,7 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
     try {
       return await this.fetchAll([
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
     } catch (error) {
       throw new Error(`Failed to get user custom skills: ${getErrorMessageOr(error, 'Unknown error')}`);
@@ -101,7 +101,7 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
     try {
       const all = await this.fetchAll([
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
       const lower = keyword.toLowerCase();
       return all.filter(s =>

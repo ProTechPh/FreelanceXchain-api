@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validate, validateAppwriteDocumentId, submitRatingSchema } from '../middleware/validation-middleware.js';
+import { validate, validateUUID, submitRatingSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -324,7 +324,7 @@ router.get('/leaderboard', apiRateLimiter, asyncHandler(async (req: Request, res
  *       404:
  *         description: User not found
  */
-router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId', apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -373,7 +373,7 @@ router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), a
  *       404:
  *         description: User not found
  */
-router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -410,7 +410,7 @@ router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['user
  *       200:
  *         description: Aggregated reputation score
  */
-router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -444,7 +444,7 @@ router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimi
  *       200:
  *         description: Reputation breakdown by stars
  */
-router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -483,7 +483,7 @@ router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRate
  *       200:
  *         description: Reputation history
  */
-router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
     const months = parseInt(req.query['months'] as string) || 12;

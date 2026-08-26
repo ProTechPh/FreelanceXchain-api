@@ -34,7 +34,7 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
   const { windowMs, maxRequests, message, failOpen = true } = rateLimitConfig;
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    if (config.server.nodeEnv === 'test') {
+    if (config.server.nodeEnv === 'test' || config.server.disableRateLimiter) {
       next();
       return;
     }
@@ -92,6 +92,13 @@ export const passwordResetRateLimiter = rateLimiter('password-reset', {
   maxRequests: 5,
   message: 'Too many password reset attempts, please try again later',
   failOpen: false,
+});
+
+export const oauthRateLimiter = rateLimiter('oauth', {
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 60,
+  message: 'Too many OAuth attempts, please try again later',
+  failOpen: true,
 });
 
 export const authRateLimiter = loginRateLimiter;

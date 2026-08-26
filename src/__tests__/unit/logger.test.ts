@@ -73,19 +73,21 @@ describe('Logger', () => {
       expect(consoleOutput[0]!.level).toBe('error');
     });
 
-    it('should default to INFO level when LOG_LEVEL is not set', async () => {
+    it('should default to ERROR level when LOG_LEVEL is not set', async () => {
       delete process.env.LOG_LEVEL;
       const { logger } = await importModule();
       logger.debug('debug msg');
       logger.info('info msg');
+      logger.warn('warn msg');
+      logger.error('error msg');
       expect(consoleOutput).toHaveLength(1);
-      expect(consoleOutput[0]!.level).toBe('log');
+      expect(consoleOutput[0]!.level).toBe('error');
     });
   });
 
   describe('formatting', () => {
     it('should include timestamp, level, and message in log entry', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.info('test message');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -95,7 +97,7 @@ describe('Logger', () => {
     });
 
     it('should include meta when provided', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.info('test message', { userId: '123' });
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -103,7 +105,7 @@ describe('Logger', () => {
     });
 
     it('should not include meta when not provided', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.info('test message');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -113,7 +115,7 @@ describe('Logger', () => {
 
   describe('error logging', () => {
     it('should log error with Error object', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       const err = new Error('Something failed');
       logger.error('Operation failed', err);
@@ -123,7 +125,7 @@ describe('Logger', () => {
     });
 
     it('should log error with non-Error object', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.error('Operation failed', { code: 'ERR_1' });
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -132,7 +134,7 @@ describe('Logger', () => {
     });
 
     it('should log error without error object', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.error('Operation failed');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -140,7 +142,7 @@ describe('Logger', () => {
     });
 
     it('should log error with meta', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.error('Operation failed', new Error('fail'), { requestId: 'r1' });
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -163,7 +165,7 @@ describe('Logger', () => {
     });
 
     it('should log auth event', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.auth('USER_LOGIN', 'user-1');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -172,7 +174,7 @@ describe('Logger', () => {
     });
 
     it('should log authorization failure', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.authzFailure('user-1', 'projects', 'delete');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -183,7 +185,7 @@ describe('Logger', () => {
     });
 
     it('should log rate limit violation', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.rateLimit('127.0.0.1', '/api/login');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -193,7 +195,7 @@ describe('Logger', () => {
     });
 
     it('should log suspicious activity', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.suspicious('SQL_INJECTION_ATTEMPT');
       const entry = JSON.parse(consoleOutput[0]!.args[0]);
@@ -204,14 +206,14 @@ describe('Logger', () => {
 
   describe('message sanitization', () => {
     it('should sanitize string messages', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.info('sensitive message');
       expect(mockSanitizeLogData).toHaveBeenCalledWith('sensitive message');
     });
 
     it('should pass through non-string messages', async () => {
-      delete process.env.LOG_LEVEL;
+      process.env.LOG_LEVEL = 'info';
       const { logger } = await importModule();
       logger.info(123 as any);
       expect(mockSanitizeLogData).not.toHaveBeenCalled();

@@ -51,7 +51,7 @@ export class FavoriteRepository extends BaseRepository<FavoriteEntity> {
   ): Promise<FavoriteEntity[]> {
     const queries: string[] = [
       Query.equal('user_id', userId),
-      Query.orderDesc('created_at'),
+      Query.orderDesc('$createdAt'),
     ];
     if (targetType) {
       queries.push(Query.equal('target_type', targetType));
