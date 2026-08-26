@@ -1,8 +1,15 @@
 // @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
+import { Router } from 'express';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+
+const mockApiRouter = Router();
+
+jest.unstable_mockModule(resolveModule('src/routes/index.ts'), () => ({
+  default: mockApiRouter,
+}));
 
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: {
@@ -48,6 +55,11 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       timeoutMs: 10000,
       cacheTtlMs: 60000,
     },
+    cryptoPanic: {
+      baseUrl: 'https://cryptopanic.com/api/v1',
+      authToken: undefined,
+      timeoutMs: 8000,
+    },
     blockchain: {
       rpcUrl: 'http://localhost:8545',
       privateKey: '0x' + 'a'.repeat(64),
@@ -67,13 +79,16 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   getEmailWebhookSecret: () => process.env['EMAIL_WEBHOOK_SECRET'],
 }));
 
+import * as realFs from 'node:fs/promises';
+
 // Mock node:fs/promises to make readFile throw for openapi.json
 jest.unstable_mockModule('node:fs/promises', () => ({
-  readFile: jest.fn().mockImplementation((filePath: string) => {
-    if (filePath.includes('openapi.json')) {
+  ...realFs,
+  readFile: jest.fn().mockImplementation((filePath: string, ...args: any[]) => {
+    if (String(filePath).includes('openapi.json')) {
       return Promise.reject(new Error('ENOENT: no such file or directory'));
     }
-    return Promise.reject(new Error('File not found'));
+    return (realFs.readFile as any)(filePath, ...args);
   }),
 }));
 

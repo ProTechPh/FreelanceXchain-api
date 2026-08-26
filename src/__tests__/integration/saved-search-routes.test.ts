@@ -1,60 +1,63 @@
 import { jest, describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
-import type { Express, Request, Response, NextFunction } from 'express';
+import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+  authMiddleware: jest.fn((req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({
+        error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization header is required' },
+        timestamp: new Date().toISOString(),
+        requestId: 'unknown',
+      });
+      return;
+    }
+    (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: 'freelancer' };
+    next();
+  }),
+  requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+  requireRole: jest.fn(() => jest.fn((_req: Request, _res: Response, next: NextFunction) => next())),
+  requireVerifiedKyc: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/saved-search-service.ts'), () => ({
+  createSavedSearch: jest.fn(async () => ({
+    success: true,
+    data: { id: 'search-1', user_id: 'test-user-id', name: 'Test Search', search_type: 'project', filters: {}, notify_on_new: false },
+  })),
+  getUserSavedSearches: jest.fn(async () => ({
+    success: true,
+    data: [
+      { id: 'search-1', user_id: 'test-user-id', name: 'Test Search', search_type: 'project', filters: {}, notify_on_new: false },
+    ],
+  })),
+  updateSavedSearch: jest.fn(async () => ({
+    success: true,
+    data: { id: 'search-1', user_id: 'test-user-id', name: 'Updated Search', search_type: 'project', filters: {}, notify_on_new: true },
+  })),
+  deleteSavedSearch: jest.fn(async () => ({
+    success: true,
+    data: { message: 'Saved search deleted' },
+  })),
+  executeSavedSearch: jest.fn(async () => ({
+    success: true,
+    data: { items: [], hasMore: false, total: 0 },
+  })),
+}));
+
+const savedSearchRouter = (await import('../../routes/saved-search-routes.js')).default;
+
 describe('Saved Search Routes Integration Tests', () => {
   let app: Express;
 
-  beforeAll(async () => {
-    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
-      authMiddleware: jest.fn((req: Request, res: Response, next: NextFunction) => {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          res.status(401).json({
-            error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization header is required' },
-            timestamp: new Date().toISOString(),
-            requestId: 'unknown',
-          });
-          return;
-        }
-        (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: 'freelancer' };
-        next();
-      }),
-      requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
-      requireRole: jest.fn(() => jest.fn((_req: Request, _res: Response, next: NextFunction) => next())),
-      requireVerifiedKyc: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
-    }));
-
-    jest.unstable_mockModule(resolveModule('src/services/saved-search-service.ts'), () => ({
-      createSavedSearch: jest.fn(async () => ({
-        success: true,
-        data: { id: 'search-1', user_id: 'test-user-id', name: 'Test Search', search_type: 'project', filters: {}, notify_on_new: false },
-      })),
-      getUserSavedSearches: jest.fn(async () => ({
-        success: true,
-        data: [
-          { id: 'search-1', user_id: 'test-user-id', name: 'Test Search', search_type: 'project', filters: {}, notify_on_new: false },
-        ],
-      })),
-      updateSavedSearch: jest.fn(async () => ({
-        success: true,
-        data: { id: 'search-1', user_id: 'test-user-id', name: 'Updated Search', search_type: 'project', filters: {}, notify_on_new: true },
-      })),
-      deleteSavedSearch: jest.fn(async () => ({
-        success: true,
-        data: { message: 'Saved search deleted' },
-      })),
-      executeSavedSearch: jest.fn(async () => ({
-        success: true,
-        data: { items: [], hasMore: false, total: 0 },
-      })),
-    }));
-
-    const { createApp } = await import('../../app.js');
-    app = await createApp();
+  beforeAll(() => {
+    app = express();
+    app.use(express.json());
+    app.use('/api/saved-searches', savedSearchRouter);
   });
 
   describe('POST /api/saved-searches', () => {

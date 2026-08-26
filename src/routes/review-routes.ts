@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validate, validateUUID, validateAppwriteDocumentId, submitReviewSchema } from '../middleware/validation-middleware.js';
+import { validate, validateUUID, submitReviewSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -46,7 +46,7 @@ router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, validate(su
   res.status(201).json(result.data);
 }));
 
-router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const reviewId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -61,7 +61,7 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(as
   res.status(200).json(result.data);
 }));
 
-router.get('/user/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/user/:userId', apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 

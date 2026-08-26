@@ -1,5 +1,3 @@
-import { createEmailClient } from '@opencoredev/email-sdk';
-import { cloudflare } from '@opencoredev/email-sdk/cloudflare';
 import { logger } from '../config/logger.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
@@ -28,9 +26,9 @@ type EmailData = {
   data: Record<string, any>;
 };
 
-let emailClient: ReturnType<typeof createEmailClient> | null = null;
+let emailClient: any = null;
 
-function getEmailClient() {
+async function getEmailClient() {
   if (emailClient) {
     return emailClient;
   }
@@ -42,6 +40,9 @@ function getEmailClient() {
     logger.warn('Cloudflare email configuration not found, email sending disabled');
     throw new Error('Cloudflare email configuration not found');
   }
+
+  const { createEmailClient } = await import('@opencoredev/email-sdk');
+  const { cloudflare } = await import('@opencoredev/email-sdk/cloudflare');
 
   emailClient = createEmailClient({
     adapters: [
@@ -99,7 +100,7 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
 
 export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ messageId: string }>> {
   try {
-    const client = getEmailClient();
+    const client = await getEmailClient();
     const html = await renderTemplate(emailData.template, emailData.data);
 
     const emailFrom = process.env['EMAIL_FROM'] || 'noreply@freelancexchain.com';

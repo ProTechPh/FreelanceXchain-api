@@ -113,7 +113,10 @@ async function createTokenSession(userId: string, secret: string): Promise<strin
 async function createEmailPasswordSessionHelper(email: string, password: string): Promise<string> {
   if (config.server.nodeEnv === 'test') {
     const adminSession = await adminAccount.createEmailPasswordSession({ email, password });
-    if (adminSession?.secret) return adminSession.secret;
+    if (!adminSession?.secret) {
+      throw new Error('Appwrite session response did not include an authentication secret');
+    }
+    return adminSession.secret;
   }
 
   // 1. Try adminAccount first in case API Key has sessions.write

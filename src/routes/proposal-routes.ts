@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateAppwriteDocumentId, isValidUUID, validate, submitProposalSchema, submitProposalMultipartSchema } from '../middleware/validation-middleware.js';
+import { validateUUID, isValidUUID, validate, submitProposalSchema, submitProposalMultipartSchema } from '../middleware/validation-middleware.js';
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -363,7 +363,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.get('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
     const requestId = getRequestId(req);
@@ -454,7 +454,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(),
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
     const requestId = getRequestId(req);
@@ -567,7 +567,7 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateL
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -632,7 +632,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -695,7 +695,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via withdrawalRateLimiter middleware
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;

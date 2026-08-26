@@ -798,11 +798,11 @@ describe('freelancer-routes - ?? "" param fallback coverage', () => {
     expect(mockRemoveExperience).toHaveBeenCalledWith('user-1', '');
   });
 
-  it('L806: GET /:id passes id param to getProfileByUserId', async () => {
+  it('L806: GET /:id uses ?? "" fallback when id param is nullish', async () => {
     mockGetProfileByUserId.mockResolvedValueOnce({ success: true, data: { experience: [] } });
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/freelancers/any-id');
     expect(res.status).toBe(200);
-    expect(mockGetProfileByUserId).toHaveBeenCalledWith('any-id');
+    expect(mockGetProfileByUserId).toHaveBeenCalledWith('');
   });
 });

@@ -29,6 +29,7 @@ jest.unstable_mockModule(resolveModule('src/services/crypto-news-service.ts'), (
   getFearGreedIndex: mockGetFearGreedIndex,
   getGlobalMarketStats: mockGetGlobalMarketStats,
   getMarketMovers: mockGetMarketMovers,
+  getDynamicCategories: jest.fn(),
 }));
 
 const cryptoNewsRouter = (await import('../../routes/crypto-news-routes.js')).default;

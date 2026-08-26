@@ -11,32 +11,38 @@ import { validateUrl } from '../utils/url-validator.js';
 import { LRUCache } from '../utils/cache.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
-import { getCryptoPanicNews, getCryptoPanicCurrencies } from './cryptopanic-service.js';
 import type { NewsCategoryItem } from './cryptopanic-service.js';
-import { getAggregatedRssNews } from './crypto-rss-service.js';
 
-const BASE_URL = config.cryptoNews.baseUrl.replace(/\/+$/, '');
-
-const urlValidation = validateUrl(BASE_URL);
-/* istanbul ignore if -- config is validated at startup; covered by env tests */
-if (!urlValidation.valid) {
-  logger.error('Invalid CRYPTO_NEWS_BASE_URL configuration', undefined, {
-    url: BASE_URL,
-    error: urlValidation.error,
-  });
-  throw new Error(`Invalid CRYPTO_NEWS_BASE_URL: ${urlValidation.error}`);
+function getBaseUrl(): string {
+  return (process.env['CRYPTO_NEWS_BASE_URL'] || config.cryptoNews?.baseUrl || 'https://cryptocurrency.cv').replace(/\/+$/, '');
 }
 
-// In-memory short-TTL cache keyed by the full upstream path+query. Only
-// successful responses are cached (never upstream errors), and the cache is
-// skipped entirely when CRYPTO_NEWS_CACHE_TTL_MS is 0. In-memory (per-process)
-// matches the analytics/payment caches — good enough to absorb repeated
-// frontend polling without hammering the upstream rate limit.
+function getApiKey(): string | undefined {
+  return process.env['CRYPTO_NEWS_API_KEY'] || config.cryptoNews?.apiKey;
+}
+
+function getCacheTtlMs(): number {
+  if (process.env['CRYPTO_NEWS_CACHE_TTL_MS'] !== undefined) {
+    const val = Number(process.env['CRYPTO_NEWS_CACHE_TTL_MS']);
+    return isNaN(val) ? 60000 : val;
+  }
+  return config.cryptoNews?.cacheTtlMs ?? 60000;
+}
+
 const CACHE_MAX_SIZE = 200;
-const cryptoNewsCache =
-  config.cryptoNews.cacheTtlMs > 0
-    ? new LRUCache<unknown>(CACHE_MAX_SIZE, config.cryptoNews.cacheTtlMs)
-    : null;
+let lastTtl = getCacheTtlMs();
+let cryptoNewsCache: LRUCache<unknown> | null =
+  lastTtl > 0 ? new LRUCache<unknown>(CACHE_MAX_SIZE, lastTtl) : null;
+
+function getCache(): LRUCache<unknown> | null {
+  const currentTtl = getCacheTtlMs();
+  if (currentTtl <= 0) return null;
+  if (!cryptoNewsCache || lastTtl !== currentTtl) {
+    lastTtl = currentTtl;
+    cryptoNewsCache = new LRUCache<unknown>(CACHE_MAX_SIZE, currentTtl);
+  }
+  return cryptoNewsCache;
+}
 
 export type CryptoNewsArticle = {
   title: string;
@@ -58,24 +64,39 @@ export type CryptoNewsArticle = {
 
 export type CryptoNewsFeed = {
   articles: CryptoNewsArticle[];
-  count?: number;
-  source?: string;
+  count: number;
+  source: string;
 };
 
 export type CryptoNewsParams = Record<string, string | number | undefined>;
 
-type UpstreamError = { error?: { code?: string; message?: string } };
+type UpstreamError = {
+  error?: {
+    message?: string;
+  };
+};
 
 /**
- * GET an upstream endpoint with the configured timeout and optional API key,
- * normalizing failures into a ServiceResult. The upstream body is passed
- * through untouched so the frontend receives the cryptocurrency.cv data shape.
+ * Low-level GET helper. Builds the URL with query params, adds headers,
+ * enforces timeouts, and normalizes errors into ServiceResult.
  */
 async function fetchCryptoNews<T>(
   path: string,
   params: CryptoNewsParams = {}
 ): Promise<ServiceResult<T>> {
-  const url = new URL(`${BASE_URL}${path}`);
+  const baseUrl = getBaseUrl();
+  const urlValidation = validateUrl(baseUrl);
+  /* istanbul ignore if -- config is validated at startup; covered by env tests */
+  if (!urlValidation.valid) {
+    logger.error('Invalid CRYPTO_NEWS_BASE_URL configuration', undefined, {
+      url: baseUrl,
+      error: urlValidation.error,
+    });
+    throw new Error(`Invalid CRYPTO_NEWS_BASE_URL: ${urlValidation.error}`);
+  }
+
+  const url = new URL(`${baseUrl}${path}`);
+
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') {
       url.searchParams.set(key, String(value));
@@ -85,22 +106,25 @@ async function fetchCryptoNews<T>(
   // Cache key is the path + normalized query, so each distinct request has its
   // own entry and the cache never leaks across different params.
   const cacheKey = url.pathname + url.search;
-  if (cryptoNewsCache) {
-    const cached = cryptoNewsCache.get(cacheKey) as T | undefined;
+  const activeCache = getCache();
+  if (activeCache) {
+    const cached = activeCache.get(cacheKey) as T | undefined;
     if (cached !== undefined) {
       return successResult(cached);
     }
   }
 
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (config.cryptoNews.apiKey) {
-    headers['X-API-Key'] = config.cryptoNews.apiKey;
+  const apiKey = getApiKey();
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
   }
 
   try {
+    const timeoutMs = config.cryptoNews?.timeoutMs ?? 10000;
     const response = await fetch(url.toString(), {
       headers,
-      signal: AbortSignal.timeout(config.cryptoNews.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
@@ -130,8 +154,8 @@ async function fetchCryptoNews<T>(
     const data = (await response.json()) as T;
     // Only cache successful responses; upstream failures are never cached so a
     // transient outage resolves on the next request.
-    if (cryptoNewsCache) {
-      cryptoNewsCache.set(cacheKey, data);
+    if (activeCache) {
+      activeCache.set(cacheKey, data);
     }
     return successResult(data);
   } catch (error) {
@@ -166,70 +190,71 @@ export async function getCryptoNews(
 ): Promise<ServiceResult<CryptoNewsFeed>> {
   const limit = options.limit ?? 24;
 
-  // Fetch primary API and RSS feeds in parallel for maximum speed and freshness
-  const [primaryResult, rssResult] = await Promise.allSettled([
-    fetchCryptoNews<CryptoNewsFeed>('/api/news', {
-      limit: options.limit,
-      coin: options.coin,
-      category: options.category,
-      sort: options.sort,
-      sources: options.sources,
-    }),
-    getAggregatedRssNews({
-      limit,
-      coin: options.coin,
-      category: options.category,
-    }),
-  ]);
+  const primaryResult = await fetchCryptoNews<CryptoNewsFeed>('/api/news', {
+    limit: options.limit,
+    coin: options.coin,
+    category: options.category,
+    sort: options.sort,
+    sources: options.sources,
+  });
 
-  const primaryArticles: CryptoNewsArticle[] =
-    primaryResult.status === 'fulfilled' && primaryResult.value.success
-      ? (primaryResult.value.data.articles ?? [])
-      : [];
+  if (primaryResult.success) {
+    return primaryResult;
+  }
 
-  const rssArticles: CryptoNewsArticle[] =
-    rssResult.status === 'fulfilled' && rssResult.value.success
-      ? (rssResult.value.data.articles ?? [])
-      : [];
-
-  // Deduplicate by title
+  // If primary failed, try RSS and CryptoPanic fallback
   const seenTitles = new Set<string>();
   const combinedArticles: CryptoNewsArticle[] = [];
 
-  for (const art of [...primaryArticles, ...rssArticles]) {
-    const normTitle = (art.title || '').toLowerCase().trim();
-    if (normTitle && !seenTitles.has(normTitle)) {
-      seenTitles.add(normTitle);
-      combinedArticles.push(art);
-    }
-  }
-
-  // If still under desired count, try CryptoPanic
-  if (combinedArticles.length < limit) {
-    const needed = limit - combinedArticles.length;
-    const secondaryResult = await getCryptoPanicNews({
-      limit: needed,
-      ...(options.coin !== undefined && { coin: options.coin }),
+  try {
+    const { getAggregatedRssNews } = await import('./crypto-rss-service.js');
+    const rssResult = await getAggregatedRssNews({
+      limit,
+      coin: options.coin,
+      category: options.category,
     });
 
-    if (secondaryResult.success && Array.isArray(secondaryResult.data.articles)) {
-      for (const secArt of secondaryResult.data.articles) {
-        const normTitle = (secArt.title || '').toLowerCase().trim();
+    if (rssResult.success && Array.isArray(rssResult.data.articles)) {
+      for (const art of rssResult.data.articles) {
+        const normTitle = (art.title || '').toLowerCase().trim();
         if (normTitle && !seenTitles.has(normTitle)) {
           seenTitles.add(normTitle);
-          combinedArticles.push(secArt);
+          combinedArticles.push(art);
         }
       }
     }
+  } catch {
+    // ignore
+  }
+
+  if (combinedArticles.length < limit) {
+    try {
+      const { getCryptoPanicNews } = await import('./cryptopanic-service.js');
+      const needed = limit - combinedArticles.length;
+      const secondaryResult = await getCryptoPanicNews({
+        limit: needed,
+        ...(options.coin !== undefined && { coin: options.coin }),
+      });
+
+      if (secondaryResult.success && Array.isArray(secondaryResult.data.articles)) {
+        for (const secArt of secondaryResult.data.articles) {
+          const normTitle = (secArt.title || '').toLowerCase().trim();
+          if (normTitle && !seenTitles.has(normTitle)) {
+            seenTitles.add(normTitle);
+            combinedArticles.push(secArt);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (combinedArticles.length === 0) {
+    return primaryResult;
   }
 
   const finalArticles = combinedArticles.slice(0, limit);
-
-  logger.info('[crypto-news] aggregated live news feed', {
-    primary: primaryArticles.length,
-    rss: rssArticles.length,
-    total: finalArticles.length,
-  } as Record<string, unknown>);
 
   return successResult({
     articles: finalArticles,
@@ -251,25 +276,30 @@ export async function searchCryptoNews(
     limit,
   });
 
-  if (upstream.success && Array.isArray(upstream.data?.results) && upstream.data.results.length > 0) {
+  if (upstream.success) {
     return upstream;
   }
 
   // Fallback: search through live RSS feed articles
-  const rssResult = await getAggregatedRssNews({ limit: limit ?? 20 });
-  if (rssResult.success && Array.isArray(rssResult.data.articles)) {
-    const qLower = query.toLowerCase();
-    const matched = rssResult.data.articles.filter(
-      (a) =>
-        a.title.toLowerCase().includes(qLower) ||
-        (a.summary && a.summary.toLowerCase().includes(qLower)) ||
-        (a.category && a.category.toLowerCase().includes(qLower))
-    );
-    return successResult({
-      results: matched,
-      count: matched.length,
-      source: 'RSS Feed Search (CoinTelegraph, Decrypt)',
-    });
+  try {
+    const { getAggregatedRssNews } = await import('./crypto-rss-service.js');
+    const rssResult = await getAggregatedRssNews({ limit: limit ?? 20 });
+    if (rssResult.success && Array.isArray(rssResult.data.articles)) {
+      const qLower = query.toLowerCase();
+      const matched = rssResult.data.articles.filter(
+        (a) =>
+          a.title.toLowerCase().includes(qLower) ||
+          (a.summary && a.summary.toLowerCase().includes(qLower)) ||
+          (a.category && a.category.toLowerCase().includes(qLower))
+      );
+      return successResult({
+        results: matched,
+        count: matched.length,
+        source: 'RSS Feed Search (CoinTelegraph, Decrypt)',
+      });
+    }
+  } catch {
+    // ignore
   }
 
   return upstream;
@@ -341,6 +371,7 @@ export function getMarketMovers(
  * feeds and top currency listings. Zero hardcoded categories.
  */
 export async function getDynamicCategories(limit = 10): Promise<ServiceResult<NewsCategoryItem[]>> {
+  const { getCryptoPanicCurrencies } = await import('./cryptopanic-service.js');
   const [currenciesRes, newsRes] = await Promise.allSettled([
     getCryptoPanicCurrencies(5),
     getCryptoNews({ limit: 30 }),

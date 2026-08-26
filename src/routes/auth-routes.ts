@@ -23,9 +23,10 @@ import {
   requestMagicUrl,
   verifyAuthToken,
   updateUserWallet,
+  isAuthError,
 } from '../services/auth-service.js';
-import { AuthResult, AuthError, MfaRequiredResult, isAuthError } from '../services/auth-types.js';
-import { authRateLimiter, oauthRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
+import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
+import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
@@ -417,7 +418,7 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
  *       401:
  *         description: Authentication failed
  */
-router.get('/callback', oauthRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { code, error, error_description, userId, secret } = req.query;
   const requestId = getRequestId(req);
 
@@ -681,7 +682,7 @@ router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Req
  *       302:
  *         description: Redirect to provider
  */
-router.get('/oauth/:provider', oauthRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { provider } = req.params as { provider: string };
   const requestId = getRequestId(req);
 
@@ -731,7 +732,7 @@ router.get('/oauth/:provider', oauthRateLimiter, asyncHandler(async (req: Reques
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/callback', oauthRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { access_token, accessToken, userId, secret } = req.body;
   const token = access_token || accessToken || secret;
   const requestId = getRequestId(req);

@@ -2,9 +2,16 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
 import request from 'supertest';
-import type { Express } from 'express';
+import { type Express, Router } from 'express';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+
+const mockApiRouter = Router();
+mockApiRouter.post('/projects', (_req, res) => res.status(200).json({ success: true }));
+
+jest.unstable_mockModule(resolveModule('src/routes/index.ts'), () => ({
+  default: mockApiRouter,
+}));
 
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: {
@@ -49,6 +56,11 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       apiKey: undefined,
       timeoutMs: 10000,
       cacheTtlMs: 60000,
+    },
+    cryptoPanic: {
+      baseUrl: 'https://cryptopanic.com/api/v1',
+      authToken: undefined,
+      timeoutMs: 8000,
     },
     blockchain: {
       rpcUrl: 'http://localhost:8545',

@@ -18,13 +18,13 @@ import { successResult, errorResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type { CryptoNewsArticle, CryptoNewsFeed } from './crypto-news-service.js';
 
-const BASE_URL = config.cryptoPanic.baseUrl.replace(/\/+$/, '');
+const BASE_URL = (config.cryptoPanic?.baseUrl ?? 'https://cryptopanic.com/api/v1').replace(/\/+$/, '');
 
 // Share the same cache TTL as the primary source.
 const CACHE_MAX_SIZE = 100;
 const cache =
-  config.cryptoNews.cacheTtlMs > 0
-    ? new LRUCache<CryptoNewsFeed>(CACHE_MAX_SIZE, config.cryptoNews.cacheTtlMs)
+  (config.cryptoNews?.cacheTtlMs ?? 60000) > 0
+    ? new LRUCache<CryptoNewsFeed>(CACHE_MAX_SIZE, config.cryptoNews?.cacheTtlMs ?? 60000)
     : null;
 
 // ---------------------------------------------------------------------------
@@ -112,14 +112,14 @@ export async function getCryptoPanicCurrencies(limit = 10): Promise<ServiceResul
   }
 
   const params = new URLSearchParams({ public: 'true' });
-  if (config.cryptoPanic.authToken) params.set('auth_token', config.cryptoPanic.authToken);
+  if (config.cryptoPanic?.authToken) params.set('auth_token', config.cryptoPanic.authToken);
 
   const url = `${BASE_URL}/currencies/?${params.toString()}`;
 
   try {
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(config.cryptoPanic.timeoutMs),
+      signal: AbortSignal.timeout(config.cryptoPanic?.timeoutMs ?? 8000),
     });
 
     if (!response.ok) {
@@ -163,7 +163,7 @@ export async function getCryptoPanicNews(options: {
 
   const params = new URLSearchParams();
   params.set('public', 'true');
-  if (config.cryptoPanic.authToken) {
+  if (config.cryptoPanic?.authToken) {
     params.set('auth_token', config.cryptoPanic.authToken);
   }
   const currencies = buildCurrencies(coin);
@@ -181,7 +181,7 @@ export async function getCryptoPanicNews(options: {
   try {
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(config.cryptoPanic.timeoutMs),
+      signal: AbortSignal.timeout(config.cryptoPanic?.timeoutMs ?? 8000),
     });
 
     if (!response.ok) {

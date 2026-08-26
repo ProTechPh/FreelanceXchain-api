@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -42,7 +42,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
   res.status(200).json(result.data);
 }));
 
-router.get('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const transactionId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
