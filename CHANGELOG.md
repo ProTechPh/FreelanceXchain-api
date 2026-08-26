@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Deployments
 
+- **1.0.21+build.8501712** (2026-08-26) - commit `8501712`: fix(csrf): return token in response body and safely handle cross-domain CSRF without throwing
 - **1.0.20+build.1c7a000** (2026-08-26) - commit `1c7a000`: fix(auth): use users.createSession for reliable session creation with full-scope Appwrite API key
 - **1.0.19+build.5147f0e** (2026-08-26) - commit `5147f0e`: fix(auth): use Appwrite SDK for token session exchange with detailed logging
 - **1.0.18+build.8f5209f** (2026-08-26) - commit `8f5209f`: fix(auth): extract raw token secret from Appwrite JWT during token session exchange
