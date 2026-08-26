@@ -103,7 +103,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
     try {
       // Cursor pagination (fetchAll) instead of Query.limit(1000) so large
       // user bases are not silently truncated at 1000 records.
-      return await this.fetchAll([Query.equal('role', role), Query.orderDesc('created_at')]);
+      return await this.fetchAll([Query.equal('role', role), Query.orderDesc('$createdAt')]);
     } catch (error) {
       throw new Error(`Failed to get users by role: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import {
   validateUUID,
+  validateAppwriteDocumentId,
   isValidUUID,
   validate,
   createProjectSchema,
@@ -360,7 +361,7 @@ router.get('/stats/categories', apiRateLimiter, asyncHandler(async (req: Request
  *       404:
  *         description: Project not found
  */
-router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -926,7 +927,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
  *       404:
  *         description: Project not found
  */
-router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);

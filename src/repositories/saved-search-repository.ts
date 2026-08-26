@@ -30,7 +30,7 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
   async findByUser(userId: string, searchType?: SavedSearchType): Promise<SavedSearchEntity[]> {
     const queries: string[] = [
       Query.equal('user_id', userId),
-      Query.orderDesc('created_at'),
+      Query.orderDesc('$createdAt'),
     ];
     if (searchType) {
       queries.push(Query.equal('search_type', searchType));

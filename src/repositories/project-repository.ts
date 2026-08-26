@@ -302,7 +302,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
       COLLECTION_ID,
       [
         Query.equal('status', 'open'),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(limit),
       ]
     );

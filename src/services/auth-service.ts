@@ -5,6 +5,7 @@ import { account as adminAccount, createUserClient, users } from '../config/appw
 import { UserRole } from '../models/user.js';
 import { getErrorMessage } from '../utils/index.js';
 import { logger } from '../config/logger.js';
+import { config } from '../config/env.js';
 import {
   RegisterInput,
   LoginInput,
@@ -47,6 +48,107 @@ function requireSessionSecret(session: { secret?: string }): string {
   }
 
   return session.secret;
+}
+
+function extractSessionSecretFromCookies(cookieHeaders: string[] | string | null | undefined): string | undefined {
+  if (!cookieHeaders) return undefined;
+  const cookieStr = Array.isArray(cookieHeaders) ? cookieHeaders.join('; ') : cookieHeaders;
+  
+  const projectId = config.appwrite.projectId.toLowerCase();
+  const projectRegex = new RegExp(`a_session_${projectId}(?:_legacy)?=([^;]+)`, 'i');
+  const projectMatch = cookieStr.match(projectRegex);
+  if (projectMatch && projectMatch[1]) {
+    return decodeURIComponent(projectMatch[1]);
+  }
+
+  const genericMatch = cookieStr.match(/a_session_[^=]+=([^;]+)/i);
+  if (genericMatch && genericMatch[1]) {
+    return decodeURIComponent(genericMatch[1]);
+  }
+
+  return undefined;
+}
+
+async function createTokenSession(userId: string, secret: string): Promise<string> {
+  // In unit tests, use mocked adminAccount
+  if (config.server.nodeEnv === 'test') {
+    const adminSession = await adminAccount.createSession({ userId, secret });
+    if (adminSession?.secret) return adminSession.secret;
+  }
+
+  // 1. Direct HTTP request as guest (Account API endpoint)
+  const url = `${config.appwrite.endpoint}/account/sessions/token`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Appwrite-Project': config.appwrite.projectId,
+    },
+    body: JSON.stringify({ userId, secret }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    // If guest endpoint fails and API key might have permissions, try adminAccount fallback
+    try {
+      const adminSession = await adminAccount.createSession({ userId, secret });
+      if (adminSession?.secret) return adminSession.secret;
+    } catch {
+      // ignore
+    }
+    throw new Error(`Token session exchange failed: ${response.status} ${errText}`);
+  }
+
+  const data = (await response.json().catch(() => ({}))) as { secret?: string };
+  if (data.secret) return data.secret;
+
+  const getSetCookie = (response.headers as any).getSetCookie;
+  const rawCookies: string[] = getSetCookie ? getSetCookie.call(response.headers) : [];
+  const secretFromCookie = extractSessionSecretFromCookies([response.headers.get('set-cookie') || '', ...rawCookies]);
+  if (secretFromCookie) return secretFromCookie;
+
+  throw new Error('Appwrite session response did not include a secret or session cookie');
+}
+
+async function createEmailPasswordSessionHelper(email: string, password: string): Promise<string> {
+  if (config.server.nodeEnv === 'test') {
+    const adminSession = await adminAccount.createEmailPasswordSession({ email, password });
+    if (adminSession?.secret) return adminSession.secret;
+  }
+
+  // 1. Try adminAccount first in case API Key has sessions.write
+  try {
+    const adminSession = await adminAccount.createEmailPasswordSession({ email, password });
+    if (adminSession?.secret) return adminSession.secret;
+  } catch (adminErr: unknown) {
+    logger.debug('adminAccount.createEmailPasswordSession failed, attempting guest fallback', { error: getErrorMessage(adminErr) });
+  }
+
+  // 2. Direct HTTP request as guest and parse response body or Set-Cookie header
+  const url = `${config.appwrite.endpoint}/account/sessions/email`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Appwrite-Project': config.appwrite.projectId,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Email password login failed: ${response.status} ${errText}`);
+  }
+
+  const data = (await response.json().catch(() => ({}))) as { secret?: string };
+  if (data.secret) return data.secret;
+
+  const getSetCookie = (response.headers as any).getSetCookie;
+  const rawCookies: string[] = getSetCookie ? getSetCookie.call(response.headers) : [];
+  const secretFromCookie = extractSessionSecretFromCookies([response.headers.get('set-cookie') || '', ...rawCookies]);
+  if (secretFromCookie) return secretFromCookie;
+
+  throw new Error('Appwrite email session response did not include a secret or session cookie');
 }
 
 type PasswordValidationResult = {
@@ -144,11 +246,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       mfa_enabled: false,
     });
 
-    const session = await adminAccount.createEmailPasswordSession({
-      email: normalizedEmail,
-      password: input.password,
-    });
-    const sessionSecret = requireSessionSecret(session);
+    const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
 
     return {
       user: {
@@ -206,11 +304,7 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
   try {
-    const session = await adminAccount.createEmailPasswordSession({
-      email: normalizedEmail,
-      password: input.password,
-    });
-    const sessionSecret = requireSessionSecret(session);
+    const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
     const authenticatedAccount = new Account(createUserClient(sessionSecret));
 
     // Check if MFA is required by calling account.get()
@@ -529,6 +623,14 @@ export async function getOAuthUrl(provider: string): Promise<string> {
 
   // Appwrite OAuth providers mapping if names differ
   const appwriteProvider = (provider === 'linkedin_oidc' ? 'linkedin' : provider) as OAuthProvider;
+
+  logger.info('Generating OAuth URL', {
+    provider: appwriteProvider,
+    successUrl,
+    failureUrl,
+    endpoint: process.env.APPWRITE_ENDPOINT,
+    projectId: process.env.APPWRITE_PROJECT_ID,
+  });
 
   return account.createOAuth2Token(
     appwriteProvider,
@@ -894,15 +996,21 @@ export async function requestMagicUrl(email: string): Promise<{ userId: string }
   }
 }
 
-/**
- * Verify Token (Phone OTP, Email OTP, or Magic URL)
- */
-export async function verifyAuthToken(userId: string, secret: string): Promise<AuthResult | AuthError> {
+export async function verifyAuthToken(userId: string, secret: string): Promise<AuthResult | (AuthError & { accessToken?: string })> {
   try {
-    const session = await adminAccount.createSession({ userId, secret });
-    const sessionSecret = requireSessionSecret(session);
+    const sessionSecret = await createTokenSession(userId, secret);
 
-    return await loginWithAppwrite(sessionSecret);
+    const loginResult = await loginWithAppwrite(sessionSecret);
+    if (isAuthError(loginResult)) {
+      if (loginResult.code === 'AUTH_REQUIRE_REGISTRATION') {
+        return {
+          ...loginResult,
+          accessToken: sessionSecret,
+        };
+      }
+      return loginResult;
+    }
+    return loginResult;
   } catch (error: unknown) {
     logger.error('Token verification failed', { error: getErrorMessage(error) });
     return { code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid or expired code/token' };

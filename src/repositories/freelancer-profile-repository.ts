@@ -138,7 +138,7 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
       // silently ignored available freelancers past the first 1000.
       const profiles = await this.fetchAll([
         Query.equal('availability', 'available'),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
       return profiles.map(normalizeProfileEntity);
     } catch {
@@ -155,7 +155,7 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
       // fetchAll instead of Query.limit(1000): the in-memory filter below only
       // saw the newest 1000 profiles, so older freelancers were unreachable by
       // skill search and total/hasMore were computed from the truncated slice.
-      const allProfiles = (await this.fetchAll([Query.orderDesc('created_at')])).map(normalizeProfileEntity);
+      const allProfiles = (await this.fetchAll([Query.orderDesc('$createdAt')])).map(normalizeProfileEntity);
       const lowerSkillNameSet = new Set(lowerSkillNames);
       const filtered = allProfiles.filter(profile =>
         profile.skills.some(skill => lowerSkillNameSet.has(skill.name.toLowerCase()))
@@ -179,7 +179,7 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     try {
       // fetchAll instead of Query.limit(1000): same truncation class as
       // searchBySkills — the keyword filter only saw the newest 1000 profiles.
-      const allProfiles = (await this.fetchAll([Query.orderDesc('created_at')])).map(normalizeProfileEntity);
+      const allProfiles = (await this.fetchAll([Query.orderDesc('$createdAt')])).map(normalizeProfileEntity);
       const lowerKeyword = keyword.toLowerCase();
       const filtered = allProfiles.filter(profile =>
         profile.bio.toLowerCase().includes(lowerKeyword)
@@ -197,7 +197,7 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async getAllProfilesPaginated(options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
-    const result = await this.queryPaginated(options, 'created_at', false);
+    const result = await this.queryPaginated(options, '$createdAt', false);
     return { ...result, items: result.items.map(normalizeProfileEntity) };
   }
 

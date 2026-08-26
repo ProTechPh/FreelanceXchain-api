@@ -49,7 +49,9 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
-    logLevel: getEnvVar('LOG_LEVEL', 'info'),
+    logLevel: getEnvVar('LOG_LEVEL', 'error'),
+    verboseLogs: getEnvVarBoolean('VERBOSE_LOGS', false),
+    disableRateLimiter: getEnvVarBoolean('DISABLE_RATE_LIMITER', false),
     // Number of trusted reverse-proxy hops. Keeps req.ip (used by rate limiters and
     // audit logging) pointing at the real client instead of the proxy when deployed
     // behind nginx/Cloudflare/HF Spaces. Set 0 to disable and always use the socket

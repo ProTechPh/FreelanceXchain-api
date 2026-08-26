@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
@@ -60,7 +60,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
   res.status(200).json(result.data);
 }));
 
-router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const searchId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -82,7 +82,7 @@ router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandle
   res.status(200).json(result.data);
 }));
 
-router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const searchId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -103,7 +103,7 @@ router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandl
   sendSuccessResponse(res, 200, { message: 'Saved search deleted' }, requestId);
 }));
 
-router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/execute', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const searchId = req.params['id'] ?? '';
   const requestId = getRequestId(req);

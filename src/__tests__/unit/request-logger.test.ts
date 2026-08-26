@@ -20,11 +20,22 @@ jest.unstable_mockModule(resolveModule('src/services/sli-metrics-service.ts'), (
   recordSliSample: mockRecordSliSample,
 }));
 
+const mockConfig = {
+  server: {
+    verboseLogs: true,
+  },
+};
+
+jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+  config: mockConfig,
+}));
+
 const { requestLogger } = await import('../../middleware/request-logger.js');
 
 describe('Request Logger', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockConfig.server.verboseLogs = true;
   });
 
   function createMockRequest(overrides: any = {}): any {
@@ -149,5 +160,74 @@ describe('Request Logger', () => {
 
     expect(mockClassifyRouteClass).toHaveBeenCalledWith('/api/contracts/abc');
     expect(mockRecordSliSample).toHaveBeenCalledWith('contracts', 200, expect.any(Number));
+  });
+
+  describe('VERBOSE_LOGS=false', () => {
+    it('should not log incoming request when verboseLogs is false', () => {
+      mockConfig.server.verboseLogs = false;
+      const req = createMockRequest();
+      const res = createMockResponse();
+
+      requestLogger(req, res, () => {});
+
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        'Incoming request',
+        expect.anything(),
+      );
+    });
+
+    it('should not log info response when verboseLogs is false and status is 200', () => {
+      mockConfig.server.verboseLogs = false;
+      const req = createMockRequest();
+      const res = createMockResponse(200);
+
+      requestLogger(req, res, () => {});
+      res.trigger('finish');
+
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        'Request completed',
+        expect.anything(),
+      );
+    });
+
+    it('should still log error response when verboseLogs is false and status is 500', () => {
+      mockConfig.server.verboseLogs = false;
+      const req = createMockRequest();
+      const res = createMockResponse(500);
+
+      requestLogger(req, res, () => {});
+      res.trigger('finish');
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Request completed with error',
+        undefined,
+        expect.objectContaining({ statusCode: 500 }),
+      );
+    });
+
+    it('should still log warn response when verboseLogs is false and status is 404', () => {
+      mockConfig.server.verboseLogs = false;
+      const req = createMockRequest();
+      const res = createMockResponse(404);
+
+      requestLogger(req, res, () => {});
+      res.trigger('finish');
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Request completed with client error',
+        expect.objectContaining({ statusCode: 404 }),
+      );
+    });
+
+    it('should still record SLI sample when verboseLogs is false', () => {
+      mockConfig.server.verboseLogs = false;
+      const req = createMockRequest({ path: '/api/test' });
+      const res = createMockResponse(200);
+
+      requestLogger(req, res, () => {});
+      res.trigger('finish');
+
+      expect(mockRecordSliSample).toHaveBeenCalled();
+    });
   });
 });

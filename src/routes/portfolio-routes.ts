@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
@@ -125,7 +125,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   return res.status(201).json(result.data);
 }
 
-router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/freelancer/:freelancerId', apiRateLimiter, validateAppwriteDocumentId(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
   const freelancerId = req.params['freelancerId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -139,7 +139,7 @@ router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelance
   res.status(200).json(result.data);
 }));
 
-router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -154,7 +154,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Requ
   res.status(200).json(result.data);
 }));
 
-router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -176,7 +176,7 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
   res.status(200).json(result.data);
 }));
 
-router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);

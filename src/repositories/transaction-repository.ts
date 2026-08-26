@@ -37,8 +37,8 @@ export class TransactionRepository extends BaseRepository<TransactionEntity> {
       const offset = options?.offset ?? 0;
 
       const [fromTx, toTx] = await Promise.all([
-        this.fetchAll([Query.equal('from_user_id', userId), Query.orderDesc('created_at')]),
-        this.fetchAll([Query.equal('to_user_id', userId), Query.orderDesc('created_at')]),
+        this.fetchAll([Query.equal('from_user_id', userId), Query.orderDesc('$createdAt')]),
+        this.fetchAll([Query.equal('to_user_id', userId), Query.orderDesc('$createdAt')]),
       ]);
 
       const all = [...fromTx, ...toTx]
@@ -62,7 +62,7 @@ export class TransactionRepository extends BaseRepository<TransactionEntity> {
     return this.listWithQueries<TransactionEntity>(
       [
         Query.equal('contract_id', contractId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ],
       mapDoc
     );

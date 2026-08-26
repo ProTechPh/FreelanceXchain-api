@@ -134,8 +134,8 @@ describe('Portfolio Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
-      const response = await request(app).get('/api/portfolio/freelancer/invalid-uuid');
+    it('should validate Appwrite document ID format', async () => {
+      const response = await request(app).get('/api/portfolio/freelancer/!@#$%^&*()');
       expect(response.status).toBe(400);
     });
 

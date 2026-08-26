@@ -100,7 +100,7 @@ export class AuditLogRepository {
         this.collectionId,
         [
           Query.equal('user_id', userId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
         ]
       );
@@ -117,7 +117,7 @@ export class AuditLogRepository {
         this.collectionId,
         [
           Query.equal('action', action),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
         ]
       );
@@ -135,7 +135,7 @@ export class AuditLogRepository {
         [
           Query.equal('resource_type', resourceType),
           Query.equal('resource_id', resourceId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
         ]
       );
@@ -151,7 +151,7 @@ export class AuditLogRepository {
         DATABASE_ID,
         this.collectionId,
         [
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
         ]
       );
@@ -174,7 +174,7 @@ export class AuditLogRepository {
         this.collectionId,
         [
           Query.equal('status', 'failure'),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
         ]
       );
@@ -204,9 +204,9 @@ export class AuditLogRepository {
       if (filters.resourceType) queries.push(Query.equal('resource_type', filters.resourceType));
       if (filters.resourceId) queries.push(Query.equal('resource_id', filters.resourceId));
       if (filters.status) queries.push(Query.equal('status', filters.status));
-      if (filters.startDate) queries.push(Query.greaterThanEqual('created_at', filters.startDate.toISOString()));
-      if (filters.endDate) queries.push(Query.lessThanEqual('created_at', filters.endDate.toISOString()));
-      queries.push(Query.orderDesc('created_at'), Query.limit(limit + 1));
+      if (filters.startDate) queries.push(Query.greaterThanEqual('$createdAt', filters.startDate.toISOString()));
+      if (filters.endDate) queries.push(Query.lessThanEqual('$createdAt', filters.endDate.toISOString()));
+      queries.push(Query.orderDesc('$createdAt'), Query.limit(limit + 1));
       if (filters.cursor) queries.push(Query.cursorAfter(filters.cursor));
 
       const response = await databases.listDocuments(DATABASE_ID, this.collectionId, queries);
@@ -237,9 +237,9 @@ export class AuditLogRepository {
 
       while (true) {
         const queries: string[] = [
-          Query.greaterThanEqual('created_at', startDate.toISOString()),
-          Query.lessThanEqual('created_at', endDate.toISOString()),
-          Query.orderDesc('created_at'),
+          Query.greaterThanEqual('$createdAt', startDate.toISOString()),
+          Query.lessThanEqual('$createdAt', endDate.toISOString()),
+          Query.orderDesc('$createdAt'),
           Query.limit(pageSize),
         ];
         if (lastId) queries.push(Query.cursorAfter(lastId));

@@ -71,7 +71,7 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
         COLLECTION_ID,
         [
           userQuery,
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]

@@ -60,7 +60,7 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
         COLLECTION_ID,
         [
           Query.equal('reviewee_id', revieweeId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]

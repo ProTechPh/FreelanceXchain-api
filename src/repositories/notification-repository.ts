@@ -48,7 +48,7 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
         COLLECTION_ID,
         [
           Query.equal('user_id', userId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]
@@ -70,7 +70,7 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
       // limit(1000) truncation class fixed in base-repository).
       return await this.fetchAll([
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
     } catch {
       return [];
@@ -82,7 +82,7 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
       return await this.fetchAll([
         Query.equal('user_id', userId),
         Query.equal('is_read', false),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ]);
     } catch {
       return [];
@@ -144,7 +144,7 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
     // (scheduler job), as before.
     const oldNotifications = await this.fetchAll([
       Query.equal('is_read', true),
-      Query.lessThan('created_at', threshold.toISOString()),
+      Query.lessThan('$createdAt', threshold.toISOString()),
     ]);
 
     const deleteResults = await Promise.all(

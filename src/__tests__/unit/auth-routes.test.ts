@@ -28,6 +28,7 @@ const mockConsumeMfaSession = jest.fn<any>();
 const mockValidateTokenAndGetUser = jest.fn<any>();
 const mockValidatePasswordStrength = jest.fn<any>();
 const mockUpdateUserWallet = jest.fn<any>();
+const mockVerifyAuthToken = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
@@ -56,11 +57,12 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   requestPhoneOtp: jest.fn(),
   requestEmailOtp: jest.fn(),
   requestMagicUrl: jest.fn(),
-  verifyAuthToken: jest.fn(),
+  verifyAuthToken: mockVerifyAuthToken,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  oauthRateLimiter: (_req: any, _res: any, next: any) => next(),
   registerRateLimiter: (_req: any, _res: any, next: any) => next(),
   passwordResetRateLimiter: (_req: any, _res: any, next: any) => next(),
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
@@ -305,6 +307,21 @@ describe('Auth Routes', () => {
       const res = await request(app).post('/api/auth/oauth/callback').send({ access_token: 'mfa-token' });
       expect(res.status).toBe(200);
       expect(res.body.mfaRequired).toBe(true);
+    });
+
+    it('should exchange userId and secret and login successfully', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ accessToken: 'session-secret', refreshToken: 'session-secret', user: { id: 'u-1' } });
+      const res = await request(app).post('/api/auth/oauth/callback').send({ userId: 'u-1', secret: 'oauth-secret' });
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toBe('session-secret');
+    });
+
+    it('should exchange userId and secret and return 202 when registration is required', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ code: 'AUTH_REQUIRE_REGISTRATION', message: 'Register', accessToken: 'session-secret' });
+      const res = await request(app).post('/api/auth/oauth/callback').send({ userId: 'u-2', secret: 'oauth-secret' });
+      expect(res.status).toBe(202);
+      expect(res.body.status).toBe('registration_required');
+      expect(res.body.access_token).toBe('session-secret');
     });
   });
 
@@ -753,6 +770,28 @@ describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
       expect(res.body.access_token).toBe('app-token');
       expect(res.body.refresh_token).toBe('app-refresh');
       expect(res.body.user).toBeDefined();
+    });
+
+    it('should return 200 on successful userId + secret flow', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ accessToken: 'app-token', refreshToken: 'app-refresh', user: { id: 'u-1', email: 'test@test.com' } });
+      const res = await request(app).get('/api/auth/callback').query({ userId: 'u-1', secret: 'secret-123' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.access_token).toBe('app-token');
+    });
+
+    it('should return 202 on userId + secret registration required flow', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ code: 'AUTH_REQUIRE_REGISTRATION', message: 'Register', accessToken: 'session-token' });
+      const res = await request(app).get('/api/auth/callback').query({ userId: 'u-1', secret: 'secret-123' });
+      expect(res.status).toBe(202);
+      expect(res.body.status).toBe('registration_required');
+      expect(res.body.access_token).toBe('session-token');
+    });
+
+    it('should return 401 on userId + secret auth error', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid token' });
+      const res = await request(app).get('/api/auth/callback').query({ userId: 'u-1', secret: 'bad-secret' });
+      expect(res.status).toBe(401);
     });
   });
 

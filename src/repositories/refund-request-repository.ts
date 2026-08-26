@@ -53,7 +53,7 @@ export class RefundRequestRepository extends BaseRepository<RefundRequestEntity>
     return this.listWithQueries<RefundRequestEntity>(
       [
         Query.equal('contract_id', contractId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ],
       mapDoc
     );

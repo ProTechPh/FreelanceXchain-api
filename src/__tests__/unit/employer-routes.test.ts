@@ -33,6 +33,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -367,6 +368,7 @@ describe('employer-routes - GET /:id ?? fallback branch', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',

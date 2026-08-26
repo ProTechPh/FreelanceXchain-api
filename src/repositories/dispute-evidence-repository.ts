@@ -43,7 +43,7 @@ export class DisputeEvidenceRepository extends BaseRepository<DisputeEvidenceEnt
 
   async findByDispute(disputeId: string): Promise<DisputeEvidenceEntity[]> {
     return this.listWithQueries<DisputeEvidenceEntity>(
-      [Query.equal('dispute_id', disputeId), Query.orderAsc('created_at')],
+      [Query.equal('dispute_id', disputeId), Query.orderAsc('$createdAt')],
       mapDoc
     );
   }
