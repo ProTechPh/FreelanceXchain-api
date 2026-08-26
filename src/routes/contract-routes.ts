@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, validate, emptyBodySchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
