@@ -445,9 +445,9 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     const userClient = createUserClient('');
     const account = new Account(userClient);
 
-    const frontendBaseUrl = process.env.PUBLIC_URL
-      ?? process.env.FRONTEND_URL
-      ?? 'http://localhost:5173';
+    const frontendBaseUrl = process.env.FRONTEND_URL
+      ?? process.env.PUBLIC_URL
+      ?? 'http://localhost:3000';
     const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
     const redirectUrl = `${normalizedFrontendBaseUrl}/reset-password`;
 
@@ -613,13 +613,14 @@ export async function updateUserWallet(
   }
 }
 
-export async function getOAuthUrl(provider: string): Promise<string> {
+export async function getOAuthUrl(provider: string, customFrontendUrl?: string): Promise<string> {
   const userClient = createUserClient('');
   const account = new Account(userClient);
 
-  const frontendBaseUrl = process.env.PUBLIC_URL
-    ?? process.env.FRONTEND_URL
-    ?? 'http://localhost:5173';
+  const frontendBaseUrl = customFrontendUrl
+    || process.env.FRONTEND_URL
+    || process.env.PUBLIC_URL
+    || 'http://localhost:3000';
   const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
   const successUrl = `${normalizedFrontendBaseUrl}/auth/callback`;
   const failureUrl = `${normalizedFrontendBaseUrl}/login?error=oauth_failed`;
@@ -631,15 +632,25 @@ export async function getOAuthUrl(provider: string): Promise<string> {
     provider: appwriteProvider,
     successUrl,
     failureUrl,
-    endpoint: process.env.APPWRITE_ENDPOINT,
-    projectId: process.env.APPWRITE_PROJECT_ID,
+    endpoint: config.appwrite.endpoint,
+    projectId: config.appwrite.projectId,
   });
 
-  return account.createOAuth2Token(
-    appwriteProvider,
-    successUrl,
-    failureUrl
-  );
+  try {
+    return await account.createOAuth2Token(
+      appwriteProvider,
+      successUrl,
+      failureUrl
+    );
+  } catch (error: unknown) {
+    logger.error('Failed to create OAuth2 token in Appwrite', {
+      error: getErrorMessage(error),
+      provider: appwriteProvider,
+      successUrl,
+      failureUrl,
+    });
+    throw error;
+  }
 }
 
 export async function exchangeCodeForSession(accessToken: string): Promise<{ accessToken: string; refreshToken: string } | AuthError> {

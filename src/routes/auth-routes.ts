@@ -41,6 +41,7 @@ import {
 } from '../validators/auth.schema.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { getErrorMessage } from '../utils/index.js';
 
 const router = Router();
 
@@ -692,10 +693,11 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
       return;
     }
 
-    // Role selection happens after callback, not here
-    const url = await getOAuthUrl(provider);
+    const customRedirect = typeof req.query['redirect_to'] === 'string' ? req.query['redirect_to'] : undefined;
+    const url = await getOAuthUrl(provider, customRedirect);
     res.redirect(url);
-  } catch {
+  } catch (error: unknown) {
+    logger.error('Failed to initiate OAuth flow', { requestId, provider, error: getErrorMessage(error) });
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to initiate OAuth flow', { requestId });
   }
 }));
