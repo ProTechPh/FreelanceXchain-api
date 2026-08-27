@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validate, validateUUID, updateFreelancerProfileSchema } from '../middleware/validation-middleware.js';
+import { validate, validateAppwriteDocumentId, updateFreelancerProfileSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
@@ -698,7 +698,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
  *       404:
  *         description: Profile not found
  */
-router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 

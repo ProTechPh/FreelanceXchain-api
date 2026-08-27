@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
@@ -65,23 +65,31 @@ async function processMultipartPortfolio(req: Request, res: Response) {
     return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
   }
 
-  if (!files || files.length === 0) {
-    return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 image is required', { requestId });
-  }
-
-  const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PORTFOLIO_IMAGES, userId);
-  const failedUploads = uploadResults.filter(r => !r.success);
-  
-  if (failedUploads.length > 0) {
-    const successfulUploads = uploadResults.filter(r => r.success && r.metadata);
-    if (successfulUploads.length > 0) {
-      await cleanupUploadedFiles(successfulUploads.map(r => r.metadata!), STORAGE_BUCKETS.PORTFOLIO_IMAGES);
+  let images: any[] = [];
+  if (files && files.length > 0) {
+    const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PORTFOLIO_IMAGES, userId);
+    const failedUploads = uploadResults.filter(r => !r.success);
+    
+    if (failedUploads.length > 0) {
+      const successfulUploads = uploadResults.filter(r => r.success && r.metadata);
+      if (successfulUploads.length > 0) {
+        await cleanupUploadedFiles(successfulUploads.map(r => r.metadata!), STORAGE_BUCKETS.PORTFOLIO_IMAGES);
+      }
+      return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
     }
-    return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
+    images = uploadResults.map(r => r.metadata!);
+  } else if (projectUrl && typeof projectUrl === 'string' && projectUrl.trim()) {
+    images = [{
+      url: `https://api.microlink.io/?url=${encodeURIComponent(projectUrl.trim())}&screenshot=true&meta=false&embed=screenshot.url`,
+      filename: 'live-website-preview.png',
+      size: 0,
+      mimeType: 'image/png',
+    }];
+  } else {
+    return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 image or a project URL is required', { requestId });
   }
 
-  const images = uploadResults.map(r => r.metadata!);
-  const skillsArray = typeof skills === 'string' ? skills.split(',').map((s: string) => s.trim()) : skills;
+  const skillsArray = typeof skills === 'string' ? skills.split(',').map((s: string) => s.trim()).filter(Boolean) : (skills || []);
 
   const result = await createPortfolioItem(userId, {
     title,
@@ -125,7 +133,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   return res.status(201).json(result.data);
 }
 
-router.get('/freelancer/:freelancerId', apiRateLimiter, validateAppwriteDocumentId(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
   const freelancerId = req.params['freelancerId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -139,7 +147,7 @@ router.get('/freelancer/:freelancerId', apiRateLimiter, validateAppwriteDocument
   res.status(200).json(result.data);
 }));
 
-router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(['id']), asyncHandler(async (req: Request, res: Response) => {
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -154,7 +162,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Requ
   res.status(200).json(result.data);
 }));
 
-router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(['id']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -176,7 +184,7 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
   res.status(200).json(result.data);
 }));
 
-router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(['id']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);

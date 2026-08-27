@@ -97,13 +97,20 @@ export function isAIAvailable(): boolean {
 
 const AI_RECOMMENDATIONS_ENDPOINT = '/FreelanceXchain/AI/Recommendations';
 
+function isGeminiApi(): boolean {
+  const url = config.llm.apiUrl.toLowerCase();
+  return url.includes('googleapis.com') || url.includes('generativelanguage');
+}
+
 /**
- * Build the AI API URL for the recommendations endpoint.
- * If LLM_API_URL already includes the endpoint, use it as-is.
+ * Build the AI API URL.
  */
 function buildApiUrl(): string {
   const baseUrl = config.llm.apiUrl.replace(/\/+$/, '');
-  if (baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
+  if (isGeminiApi()) {
+    return `${baseUrl}/models/${config.llm.model}:generateContent?key=${config.llm.apiKey}`;
+  }
+  if (baseUrl.toLowerCase().endsWith('/chat/completions') || baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
     return baseUrl;
   }
   return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
@@ -137,6 +144,19 @@ function buildOpenAIRequest(request: AIRequest): Record<string, unknown> {
   };
 }
 
+function buildGeminiRequest(request: AIRequest): Record<string, unknown> {
+  const temperature = request.generationConfig?.temperature != null ? request.generationConfig.temperature : 0.7;
+  const maxTokens = request.generationConfig?.maxOutputTokens != null ? request.generationConfig.maxOutputTokens : 2048;
+
+  return {
+    contents: request.contents,
+    generationConfig: {
+      temperature,
+      maxOutputTokens: maxTokens,
+    },
+  };
+}
+
 /**
  * Convert the OpenAI-compatible completion response to the internal AIResponse format.
  */
@@ -161,7 +181,7 @@ function parseOpenAIResponse(openAIResponse: OpenAICompletionResponse): AIRespon
 }
 
 /**
- * Make HTTP request to AI API with retry logic (OpenAI-compatible format)
+ * Make HTTP request to AI API with retry logic (supports both Gemini and OpenAI-compatible formats)
  */
 async function makeAIRequest(
   request: AIRequest,
@@ -179,13 +199,20 @@ async function makeAIRequest(
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    const isGemini = isGeminiApi();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (!isGemini) {
+      headers['Authorization'] = `Bearer ${config.llm.apiKey}`;
+    }
+
+    const bodyPayload = isGemini ? buildGeminiRequest(request) : buildOpenAIRequest(request);
+
     const response = await fetch(buildApiUrl(), {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.llm.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(buildOpenAIRequest(request)),
+      headers,
+      body: JSON.stringify(bodyPayload),
       signal: controller.signal,
     });
 
@@ -208,8 +235,22 @@ async function makeAIRequest(
       };
     }
 
-    const openAIResponse: OpenAICompletionResponse = await response.json();
-    return parseOpenAIResponse(openAIResponse);
+    const jsonResponse: any = await response.json();
+    if (isGemini) {
+      const text = jsonResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return {
+        candidates: [{
+          content: {
+            parts: [{ text }],
+            role: 'assistant',
+          },
+          finishReason: jsonResponse?.candidates?.[0]?.finishReason || 'stop',
+          index: 0,
+        }],
+      };
+    }
+
+    return parseOpenAIResponse(jsonResponse as OpenAICompletionResponse);
   } catch (error) {
     clearTimeout(timeoutId);
 

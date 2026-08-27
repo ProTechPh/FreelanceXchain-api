@@ -58,6 +58,8 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   requestEmailOtp: jest.fn(),
   requestMagicUrl: jest.fn(),
   verifyAuthToken: mockVerifyAuthToken,
+  deleteUserAccount: jest.fn().mockResolvedValue({ success: true, message: 'Account deleted' }),
+  disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -640,6 +642,8 @@ describe('auth-routes.ts - Branch Coverage', () => {
       requestEmailOtp: jest.fn(),
       requestMagicUrl: jest.fn(),
       verifyAuthToken: jest.fn(),
+      deleteUserAccount: jest.fn().mockResolvedValue({ success: true, message: 'Account deleted' }),
+      disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
     }));
     jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
       userRepository: { getUserById: jest.fn(), updateUser: jest.fn() },
@@ -954,6 +958,8 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       requestEmailOtp: mockRequestEmailOtp,
       requestMagicUrl: mockRequestMagicUrl,
       verifyAuthToken: mockVerifyAuthToken,
+      deleteUserAccount: jest.fn().mockResolvedValue({ success: true, message: 'Account deleted' }),
+      disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
     }));
     jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
       userRepository: { getUserById: jest.fn(), updateUser: jest.fn() },

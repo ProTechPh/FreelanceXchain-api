@@ -23,6 +23,8 @@ import {
   requestMagicUrl,
   verifyAuthToken,
   updateUserWallet,
+  disconnectUserWallet,
+  deleteUserAccount,
   isAuthError,
 } from '../services/auth-service.js';
 import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
@@ -1465,6 +1467,89 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
   sendSuccessResponse(res, 200, {
     message: 'Wallet address updated successfully',
     walletAddress: result.walletAddress,
+  }, requestId);
+}));
+
+/**
+ * @swagger
+ * /api/auth/wallet:
+ *   delete:
+ *     tags:
+ *       - Authentication
+ *     summary: Disconnect wallet address
+ *     description: Removes the associated wallet address from the user profile
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Wallet address disconnected successfully
+ *       400:
+ *         description: Cannot disconnect wallet due to active contracts
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = await disconnectUserWallet(userId);
+
+  if (isAuthError(result)) {
+    const statusCode = result.code === 'USER_NOT_FOUND' ? 404 : result.code === 'ACTIVE_CONTRACTS_EXIST' ? 400 : 500;
+    sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
+    return;
+  }
+
+  sendSuccessResponse(res, 200, {
+    message: 'Wallet address disconnected successfully',
+    walletAddress: '',
+  }, requestId);
+}));
+
+/**
+ * @swagger
+ * /api/auth/account:
+ *   delete:
+ *     tags:
+ *       - Authentication
+ *     summary: Delete account
+ *     description: Permanently deletes the user account and associated personal data (GDPR Right to Erasure)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Account permanently deleted
+ *       400:
+ *         description: Cannot delete account due to active contracts
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete('/account', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = await deleteUserAccount(userId);
+
+  if (isAuthError(result)) {
+    const statusCode = result.code === 'USER_NOT_FOUND' ? 404 : result.code === 'ACTIVE_CONTRACTS_EXIST' ? 400 : 500;
+    sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
+    return;
+  }
+
+  sendSuccessResponse(res, 200, {
+    message: result.message,
   }, requestId);
 }));
 

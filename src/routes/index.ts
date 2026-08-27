@@ -18,6 +18,7 @@ import kycRoutes from './didit-kyc-routes.js';
 import adminRoutes from './admin-routes.js';
 import auditLogRoutes from './audit-logs.js';
 import fileUploadRoutes from './file-upload.js';
+import fileManagementRoutes from './file-management-routes.js';
 import messageRoutes from './message-routes.js';
 import reviewRoutes from './review-routes.js';
 import healthRoutes from './health-routes.js';
@@ -95,6 +96,9 @@ router.use('/audit-logs', auditLogRoutes);
 
 // File upload routes
 router.use('/files', fileUploadRoutes);
+
+// File management routes (storage quota, list, remove)
+router.use('/file-management', fileManagementRoutes);
 
 // Message routes
 router.use('/messages', messageRoutes);

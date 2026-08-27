@@ -29,6 +29,7 @@ export type TokenPayload = {
 export type AuthResult = {
   user: {
     id: string;
+    name?: string;
     email: string;
     role: UserRole;
     walletAddress: string;
@@ -63,6 +64,8 @@ export type AuthError = {
   | 'MFA_CODE_REQUIRED'
   | 'MFA_VERIFY_FAILED'
   | 'UPDATE_FAILED'
+  | 'ACTIVE_CONTRACTS_EXIST'
+  | 'DELETE_FAILED'
   | 'WALLET_LOCKED';
   message: string;
 };
