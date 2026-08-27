@@ -39,9 +39,15 @@ async function resolvePortfolioSkills(skills: string[]): Promise<{
 }> {
   try {
     const allSkills = await skillRepository.getAllSkills().catch(() => []);
+    if (allSkills.length === 0) {
+      const resolved = skills.filter((s): s is string => typeof s === 'string' && Boolean(s.trim()));
+      return { valid: true, invalidSkills: [], resolved };
+    }
+
     const canonicalByName = new Map(allSkills.map(s => [normalizeSkillName(s.name), s.name]));
     const seen = new Set<string>();
     const resolved: string[] = [];
+    const invalidSkills: string[] = [];
 
     for (const raw of skills) {
       if (typeof raw !== 'string') continue;
@@ -50,10 +56,19 @@ async function resolvePortfolioSkills(skills: string[]): Promise<{
       const key = normalizeSkillName(trimmed);
       if (!key) continue;
 
-      const canonical = canonicalByName.get(key) || trimmed;
+      const canonical = canonicalByName.get(key);
+      if (!canonical) {
+        invalidSkills.push(trimmed);
+        continue;
+      }
+
       if (seen.has(canonical.toLowerCase())) continue;
       seen.add(canonical.toLowerCase());
       resolved.push(canonical);
+    }
+
+    if (invalidSkills.length > 0) {
+      return { valid: false, invalidSkills, resolved: [] };
     }
 
     return { valid: true, invalidSkills: [], resolved };

@@ -64,11 +64,35 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   account: mockAdminAccount,
   createUserClient: jest.fn(() => ({})),
+  DATABASE_ID: 'test-database-id',
+  databases: {
+    listDocuments: jest.fn().mockResolvedValue({ documents: [], total: 0 }),
+    deleteDocument: jest.fn().mockResolvedValue({}),
+  },
   users: {
     create: jest.fn().mockResolvedValue({ $id: 'test-appwrite-user-id' }),
     delete: jest.fn().mockResolvedValue({}),
     createSession: jest.fn().mockResolvedValue({ $id: 'session-1', secret: 'test-session-secret' }),
     deleteSession: jest.fn().mockResolvedValue({}),
+  },
+  ID: {
+    unique: () => 'mock-unique-id',
+    custom: (id: string) => id,
+  },
+  Query: {
+    equal: jest.fn(),
+    limit: jest.fn(),
+    offset: jest.fn(),
+    orderDesc: jest.fn(),
+  },
+  Permission: {},
+  Role: {},
+  BUCKETS: {
+    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+    PROJECT_ATTACHMENTS: 'project-attachments',
+    DISPUTE_EVIDENCE: 'dispute-evidence',
+    PORTFOLIO_IMAGES: 'portfolio-images',
+    MILESTONE_DELIVERABLES: 'milestone-deliverables',
   },
 }));
 

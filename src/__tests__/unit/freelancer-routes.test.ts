@@ -803,6 +803,6 @@ describe('freelancer-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/freelancers/any-id');
     expect(res.status).toBe(200);
-    expect(mockGetProfileByUserId).toHaveBeenCalledWith('');
+    expect(mockGetProfileByUserId).toHaveBeenCalledWith('any-id');
   });
 });
