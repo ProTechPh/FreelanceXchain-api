@@ -6,7 +6,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
 
 export function isValidUUID(value: string): boolean {
-  return UUID_PATTERN.test(value);
+  return UUID_PATTERN.test(value) || APPWRITE_DOCUMENT_ID_PATTERN.test(value);
 }
 
 export function isValidAppwriteDocumentId(value: string): boolean {

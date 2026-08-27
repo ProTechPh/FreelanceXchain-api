@@ -18,18 +18,56 @@ import {
   SkillGapAnalysis,
   SkillInfo,
 } from './ai-types.js';
+import { createHash } from 'node:crypto';
 import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
+import { redis } from '../config/redis.js';
+import { LRUCache } from '../utils/cache.js';
 
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-
 const DEFAULT_RECOMMENDATION_LIMIT = 10;
 const REPUTATION_WEIGHT = 0.3;
 const SKILL_MATCH_WEIGHT = 0.7;
+const MATCHING_CACHE_TTL_SECONDS = 300; // 5 minutes
+const SKILL_GAPS_CACHE_TTL_SECONDS = 600; // 10 minutes
+const EXTRACT_SKILLS_CACHE_TTL_SECONDS = 3600; // 1 hour
+
+export const localProjectRecCache = new LRUCache<ProjectRecommendation[]>(200, 5 * 60_000);
+export const localFreelancerRecCache = new LRUCache<FreelancerRecommendation[]>(200, 5 * 60_000);
+export const localExtractSkillsCache = new LRUCache<ExtractedSkill[]>(200, 60 * 60_000);
+export const localSkillGapsCache = new LRUCache<SkillGapAnalysis>(200, 10 * 60_000);
+
+async function getCached<T>(key: string, localCache: LRUCache<T>): Promise<T | null> {
+  if (process.env.NODE_ENV === 'test') {
+    return null;
+  }
+  try {
+    if (redis && redis.status === 'ready') {
+      const cached = await redis.get(key);
+      if (cached) {
+        return JSON.parse(cached) as T;
+      }
+    }
+  } catch (err) {
+    logger.warn(`Redis get failed for ${key}`, { error: err instanceof Error ? err.message : String(err) });
+  }
+  return localCache.get(key) ?? null;
+}
+
+async function setCached<T>(key: string, value: T, localCache: LRUCache<T>, ttlSeconds = MATCHING_CACHE_TTL_SECONDS): Promise<void> {
+  localCache.set(key, value, ttlSeconds * 1000);
+  try {
+    if (redis && redis.status === 'ready') {
+      await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    }
+  } catch (err) {
+    logger.warn(`Redis set failed for ${key}`, { error: err instanceof Error ? err.message : String(err) });
+  }
+}
 
 // Helper type for freelancer skill entity (new simplified structure)
 type FreelancerSkillEntity = { name: string; years_of_experience: number };
@@ -59,6 +97,13 @@ export async function getProjectRecommendations(
   freelancerId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
 ): Promise<ServiceResult<ProjectRecommendation[]>> {
+  const cacheKey = `matching:projects:${freelancerId}:${limit}`;
+  const cached = await getCached<ProjectRecommendation[]>(cacheKey, localProjectRecCache);
+  if (cached) {
+    logger.debug('Returning cached project recommendations', { freelancerId, limit });
+    return successResult(cached);
+  }
+
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
@@ -73,26 +118,41 @@ export async function getProjectRecommendations(
 
   const freelancerSkills = profileEntity.skills.map(freelancerSkillToInfo);
 
-  const recommendations: ProjectRecommendation[] = await Promise.all(
-    projectEntities.map(async (projectEntity) => {
-      const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
+  // 1. Fast preliminary match using deterministic keyword matching
+  const preMatched = projectEntities.map((projectEntity) => {
+    const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
+    const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
+    return {
+      projectEntity,
+      projectRequirements,
+      keywordResult,
+    };
+  });
 
-      let matchResult: SkillMatchResult;
+  preMatched.sort((a, b) => b.keywordResult.matchScore - a.keywordResult.matchScore);
+
+  // 2. Take top items up to limit
+  const topCandidates = preMatched.slice(0, limit);
+
+  // 3. AI enhancement (if available) only for top candidates
+  const recommendations: ProjectRecommendation[] = await Promise.all(
+    topCandidates.map(async ({ projectEntity, projectRequirements, keywordResult }) => {
+      let matchResult: SkillMatchResult = keywordResult;
 
       if (isAIAvailable()) {
-        const aiResult = await analyzeSkillMatch({
-          freelancerSkills,
-          projectRequirements,
-          reputationScore: 0,
-        });
+        try {
+          const aiResult = await analyzeSkillMatch({
+            freelancerSkills,
+            projectRequirements,
+            reputationScore: 0,
+          });
 
-        if (isAIError(aiResult)) {
-          matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
-        } else {
-          matchResult = aiResult;
+          if (!isAIError(aiResult)) {
+            matchResult = aiResult;
+          }
+        } catch {
+          // fallback to keywordResult
         }
-      } else {
-        matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
       }
 
       return {
@@ -105,15 +165,21 @@ export async function getProjectRecommendations(
     })
   );
 
-  recommendations.sort((a, b) => b.matchScore - a.matchScore);
-
-  return successResult(recommendations.slice(0, limit));
+  await setCached(cacheKey, recommendations, localProjectRecCache, MATCHING_CACHE_TTL_SECONDS);
+  return successResult(recommendations);
 }
 
 export async function getFreelancerRecommendations(
   projectId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
 ): Promise<ServiceResult<FreelancerRecommendation[]>> {
+  const cacheKey = `matching:freelancers:${projectId}:${limit}`;
+  const cached = await getCached<FreelancerRecommendation[]>(cacheKey, localFreelancerRecCache);
+  if (cached) {
+    logger.debug('Returning cached freelancer recommendations', { projectId, limit });
+    return successResult(cached);
+  }
+
   const projectEntity = await projectRepository.findProjectById(projectId);
   if (!projectEntity) {
     return errorResult('PROJECT_NOT_FOUND', 'Project not found');
@@ -127,57 +193,79 @@ export async function getFreelancerRecommendations(
 
   const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
 
-  const recommendations: FreelancerRecommendation[] = [];
+  // 1. Fast preliminary scoring
+  const candidates = await Promise.all(
+    freelancerEntities.map(async (freelancerEntity) => {
+      const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
+      const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
 
-  for (const freelancerEntity of freelancerEntities) {
-    const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
-    
-    let reputationScore = 50; // Default if lookup fails
-    try {
-      const repResult = await getReputation(freelancerEntity.user_id);
-      if (repResult.success && repResult.data.score > 0) {
-        reputationScore = repResult.data.score;
+      let reputationScore = 50;
+      try {
+        const repResult = await getReputation(freelancerEntity.user_id);
+        if (repResult.success && repResult.data.score > 0) {
+          reputationScore = repResult.data.score;
+        }
+      } catch {
+        // default
       }
-    } catch {
-      // Use default score on failure
-    }
-    
-    let matchResult: SkillMatchResult;
-    
-    if (isAIAvailable()) {
-      const aiResult = await analyzeSkillMatch({
+
+      const combinedScore = Math.round(
+        keywordResult.matchScore * SKILL_MATCH_WEIGHT +
+        reputationScore * REPUTATION_WEIGHT
+      );
+
+      return {
+        freelancerEntity,
         freelancerSkills,
-        projectRequirements,
+        keywordResult,
         reputationScore,
-      });
-      
-      if (isAIError(aiResult)) {
-        matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
-      } else {
-        matchResult = aiResult;
+        combinedScore,
+      };
+    })
+  );
+
+  candidates.sort((a, b) => b.combinedScore - a.combinedScore);
+  const topCandidates = candidates.slice(0, limit);
+
+  // 2. Enhance top candidates only
+  const recommendations: FreelancerRecommendation[] = await Promise.all(
+    topCandidates.map(async ({ freelancerEntity, freelancerSkills, keywordResult, reputationScore }) => {
+      let matchResult = keywordResult;
+
+      if (isAIAvailable()) {
+        try {
+          const aiResult = await analyzeSkillMatch({
+            freelancerSkills,
+            projectRequirements,
+            reputationScore,
+          });
+          if (!isAIError(aiResult)) {
+            matchResult = aiResult;
+          }
+        } catch {
+          // fallback to keyword
+        }
       }
-    } else {
-      matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
-    }
 
-    const combinedScore = Math.round(
-      matchResult.matchScore * SKILL_MATCH_WEIGHT + 
-      reputationScore * REPUTATION_WEIGHT
-    );
+      const finalCombinedScore = Math.round(
+        matchResult.matchScore * SKILL_MATCH_WEIGHT +
+        reputationScore * REPUTATION_WEIGHT
+      );
 
-    recommendations.push({
-      freelancerId: freelancerEntity.user_id,
-      matchScore: matchResult.matchScore,
-      reputationScore,
-      combinedScore,
-      matchedSkills: matchResult.matchedSkills,
-      reasoning: matchResult.reasoning,
-    });
-  }
+      return {
+        freelancerId: freelancerEntity.user_id,
+        matchScore: matchResult.matchScore,
+        reputationScore,
+        combinedScore: finalCombinedScore,
+        matchedSkills: matchResult.matchedSkills,
+        reasoning: matchResult.reasoning,
+      };
+    })
+  );
 
   recommendations.sort((a, b) => b.combinedScore - a.combinedScore);
-
-  return successResult(recommendations.slice(0, limit));
+  await setCached(cacheKey, recommendations, localFreelancerRecCache, MATCHING_CACHE_TTL_SECONDS);
+  return successResult(recommendations);
 }
 
 export async function extractSkillsFromText(
@@ -185,6 +273,14 @@ export async function extractSkillsFromText(
 ): Promise<ServiceResult<ExtractedSkill[]>> {
   if (!text || text.trim().length === 0) {
     return errorResult('INVALID_INPUT', 'Text cannot be empty');
+  }
+
+  const hash = createHash('sha256').update(text.trim().toLowerCase()).digest('hex').slice(0, 16);
+  const cacheKey = `matching:extract-skills:${hash}`;
+  const cached = await getCached<ExtractedSkill[]>(cacheKey, localExtractSkillsCache);
+  if (cached) {
+    logger.debug('Returning cached extracted skills', { hash });
+    return successResult(cached);
   }
 
   const activeSkills = await getActiveSkills();
@@ -220,12 +316,20 @@ export async function extractSkillsFromText(
   const validSkillIds = new Set(availableSkills.map(s => s.skillId));
   const mappedSkills = extractedSkills.filter(skill => validSkillIds.has(skill.skillId));
 
+  await setCached(cacheKey, mappedSkills, localExtractSkillsCache, EXTRACT_SKILLS_CACHE_TTL_SECONDS);
   return successResult(mappedSkills);
 }
 
 export async function analyzeSkillGaps(
   freelancerId: string
 ): Promise<ServiceResult<SkillGapAnalysis>> {
+  const cacheKey = `matching:skill-gaps:${freelancerId}`;
+  const cached = await getCached<SkillGapAnalysis>(cacheKey, localSkillGapsCache);
+  if (cached) {
+    logger.debug('Returning cached skill gaps', { freelancerId });
+    return successResult(cached);
+  }
+
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
@@ -234,31 +338,27 @@ export async function analyzeSkillGaps(
   const currentSkills = profileEntity.skills.map(s => s.name);
 
   if (!isAIAvailable()) {
-    // Return basic analysis without AI
     return successResult({
       currentSkills,
       recommendedSkills: [],
       marketDemand: [],
-      reasoning: 'AI analysis unavailable. Please configure LLM API for detailed skill gap analysis.',
+      reasoning: 'AI analysis unavailable; no skill gap insights generated.',
     });
-    }
+  }
 
   const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
 
   const response = await generateContent(prompt);
 
-  logger.debug('[SkillGap] generateContent returned', { type: typeof response });
-
   if (typeof response !== 'string') {
-    // AI error, return basic analysis
-    logger.error('[SkillGap] AI returned non-string', { type: typeof response });
+    logger.warn('[SkillGap] AI unavailable or rate-limited, using fallback', { response });
     return successResult({
       currentSkills,
       recommendedSkills: [],
       marketDemand: [],
-      reasoning: 'AI analysis failed. Please try again later.',
+      reasoning: 'AI analysis failed or returned non-text response.',
     });
-    }
+  }
 
   try {
     const parsedAnalysis = parseJsonResponse<SkillGapAnalysis>(response, 'SkillGap');
@@ -271,16 +371,14 @@ export async function analyzeSkillGaps(
     // Be lenient - accept marketDemand items and fix missing fields
     const sanitizedMarketDemand = (analysis.marketDemand ?? [])
       .map(item => {
-        // Skip completely invalid items
         if (!item || typeof item.skillName !== 'string' || !item.skillName.trim()) {
           return null;
         }
         
-        // Fix missing or invalid demandLevel
         const validLevels = ['high', 'medium', 'low'];
         const demandLevel = validLevels.includes(item.demandLevel) 
           ? item.demandLevel 
-          : 'medium'; // Default to medium if missing/invalid
+          : 'medium';
         
         return {
           skillName: item.skillName.trim(),
@@ -289,30 +387,24 @@ export async function analyzeSkillGaps(
       })
       .filter(item => item !== null) as Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }>;
     
-    logger.debug('[SkillGap] Successfully parsed', {
-      currentSkills: analysis.currentSkills?.length ?? 0,
-      recommendedSkills: analysis.recommendedSkills?.length ?? 0,
-      marketDemand: sanitizedMarketDemand.length
-    });
-    
-    return successResult({
+    const result: SkillGapAnalysis = {
       currentSkills: analysis.currentSkills ?? currentSkills,
       recommendedSkills: analysis.recommendedSkills ?? [],
       marketDemand: sanitizedMarketDemand,
       reasoning: analysis.reasoning ?? 'Analysis completed.',
+    };
+
+    await setCached(cacheKey, result, localSkillGapsCache, SKILL_GAPS_CACHE_TTL_SECONDS);
+    return successResult(result);
+  } catch (error) {
+    logger.warn('[SkillGap] Failed to parse AI response, using fallback', { error });
+    return successResult({
+      currentSkills,
+      recommendedSkills: [],
+      marketDemand: [],
+      reasoning: 'Failed to parse AI response.',
     });
-      } catch (error) {
-      logger.error('[SkillGap] Failed to parse AI response', { error });
-      /* istanbul ignore next -- response is guaranteed string by line 313 early return */
-      logger.debug('[SkillGap] Response preview', { preview: typeof response === 'string' ? response.substring(0, 500) : String(response).substring(0, 500) });
-    
-      return successResult({
-        currentSkills,
-        recommendedSkills: [],
-        marketDemand: [],
-        reasoning: 'Failed to parse AI response. The AI may need to be reconfigured.',
-      });
-    }
+  }
 }
 
 /**

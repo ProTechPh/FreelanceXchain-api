@@ -10,13 +10,15 @@ import { safeJsonParse } from '../utils/index.js';
 import { normalizeSkillName } from '../utils/skill-utils.js';
 
 function mapPortfolioItemFromEntity(item: PortfolioItemEntity): PortfolioItem {
+  const parsedImages = safeJsonParse<PortfolioImage[]>(item.images);
+  const parsedSkills = safeJsonParse<string[]>(item.skills);
   return {
     id: item.id,
     freelancerId: item.freelancer_id,
     title: item.title,
     description: item.description,
-    images: safeJsonParse<PortfolioImage[]>(item.images),
-    skills: safeJsonParse<string[]>(item.skills),
+    images: Array.isArray(parsedImages) ? parsedImages : [],
+    skills: Array.isArray(parsedSkills) ? parsedSkills : [],
     createdAt: item.created_at,
     updatedAt: item.updated_at,
     ...(item.project_url != null ? { projectUrl: item.project_url } : {}),
@@ -26,45 +28,39 @@ function mapPortfolioItemFromEntity(item: PortfolioItemEntity): PortfolioItem {
 
 /**
  * Resolve a list of skill names against the global taxonomy.
- *
- * - Comparison is canonical (case/padding/unicode-insensitive) so "react"
- *   resolves to the existing "React" skill.
- * - Stored names are canonicalized to the taxonomy spelling for consistent matching.
- * - Duplicates are removed, so a portfolio cannot carry the same tag twice.
- * - DB failures surface as all-invalid (fail-closed) rather than silently accepted.
+ * - Standardizes known skills to their taxonomy casing (e.g. "react" -> "React").
+ * - Allows custom skills (e.g. "Wagmi", "IPFS") cleanly.
+ * - Deduplicates entries.
  */
 async function resolvePortfolioSkills(skills: string[]): Promise<{
   valid: boolean;
   invalidSkills: string[];
   resolved: string[];
 }> {
-  const allSkills = await skillRepository.getAllSkills();
-  const canonicalByName = new Map(allSkills.map(s => [normalizeSkillName(s.name), s.name]));
-  const seen = new Set<string>();
-  const resolved: string[] = [];
-  const invalidSkills: string[] = [];
+  try {
+    const allSkills = await skillRepository.getAllSkills().catch(() => []);
+    const canonicalByName = new Map(allSkills.map(s => [normalizeSkillName(s.name), s.name]));
+    const seen = new Set<string>();
+    const resolved: string[] = [];
 
-  for (const raw of skills) {
-    // Guard against non-string entries: reject them cleanly instead of crashing.
-    if (typeof raw !== 'string') {
-      invalidSkills.push(String(raw));
-      continue;
-    }
-    const trimmed = raw.trim();
-    const key = normalizeSkillName(trimmed);
-    if (!key) continue;
+    for (const raw of skills) {
+      if (typeof raw !== 'string') continue;
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const key = normalizeSkillName(trimmed);
+      if (!key) continue;
 
-    const canonical = canonicalByName.get(key);
-    if (!canonical) {
-      invalidSkills.push(trimmed);
-      continue;
+      const canonical = canonicalByName.get(key) || trimmed;
+      if (seen.has(canonical.toLowerCase())) continue;
+      seen.add(canonical.toLowerCase());
+      resolved.push(canonical);
     }
-    if (seen.has(canonical)) continue;
-    seen.add(canonical);
-    resolved.push(canonical);
+
+    return { valid: true, invalidSkills: [], resolved };
+  } catch {
+    const resolved = skills.filter((s): s is string => typeof s === 'string' && Boolean(s.trim()));
+    return { valid: true, invalidSkills: [], resolved };
   }
-
-  return { valid: invalidSkills.length === 0, invalidSkills, resolved };
 }
 
 export async function createPortfolioItem(
@@ -72,8 +68,18 @@ export async function createPortfolioItem(
   input: PortfolioItemInput
 ): Promise<ServiceResult<PortfolioItem>> {
   try {
-    if (!input.images || input.images.length === 0) {
-      return errorResult('VALIDATION_ERROR', 'At least one image is required');
+    let images = input.images;
+    if (!images || images.length === 0) {
+      if (input.projectUrl && typeof input.projectUrl === 'string' && input.projectUrl.trim()) {
+        images = [{
+          url: `https://api.microlink.io/?url=${encodeURIComponent(input.projectUrl.trim())}&screenshot=true&meta=false&embed=screenshot.url`,
+          filename: 'live-website-preview.png',
+          size: 0,
+          mimeType: 'image/png',
+        }];
+      } else {
+        return errorResult('VALIDATION_ERROR', 'At least one image or a project URL is required');
+      }
     }
 
     // Verify skills exist if provided (normalized + deduped)

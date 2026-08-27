@@ -1,6 +1,11 @@
 import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
 import type { Models } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
+import { emailPreferenceRepository } from '../repositories/email-preference-repository.js';
+import { favoriteRepository } from '../repositories/favorites-repository.js';
 import { account as adminAccount, createUserClient, users } from '../config/appwrite.js';
 import { UserRole } from '../models/user.js';
 import { getErrorMessage } from '../utils/index.js';
@@ -628,6 +633,7 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
   if (user.role === 'admin') {
     return {
       id: user.id,
+      name: user.name || user.email.split('@')[0] || 'Admin',
       email: user.email,
       role: user.role,
       walletAddress: user.wallet_address,
@@ -639,9 +645,14 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
 
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(userId);
-  
+  const kycFullName = [kycVerification?.first_name, kycVerification?.last_name].filter(Boolean).join(' ').trim();
+  const displayName: string = (kycVerification?.status === 'approved' || kycVerification?.status === 'completed') && kycFullName
+    ? kycFullName
+    : (user.name || user.email.split('@')[0] || 'User');
+
   return {
     id: user.id,
+    name: displayName,
     email: user.email,
     role: user.role,
     walletAddress: user.wallet_address,
@@ -1117,3 +1128,121 @@ export async function verifyAuthToken(userId: string, secret: string): Promise<A
     return { code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid or expired code/token' };
   }
 }
+
+/**
+ * Disconnects the user's wallet address from their profile.
+ */
+export async function disconnectUserWallet(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
+  try {
+    const existing = await userRepository.getUserById(userId);
+    if (!existing) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    // Check if user has active escrow contracts
+    const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
+    const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
+    const hasActiveContract =
+      freelancerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed') ||
+      employerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed');
+
+    if (hasActiveContract) {
+      return {
+        code: 'ACTIVE_CONTRACTS_EXIST',
+        message: 'Cannot disconnect wallet while you have active contracts with locked escrow funds.',
+      };
+    }
+
+    await userRepository.updateUser(userId, { wallet_address: '' });
+    return {
+      success: true,
+      message: 'Wallet disconnected successfully.',
+    };
+  } catch (error: unknown) {
+    logger.error('Failed to disconnect wallet', { error: getErrorMessage(error), userId });
+    return {
+      code: 'UPDATE_FAILED',
+      message: 'Failed to disconnect wallet.',
+    };
+  }
+}
+
+/**
+ * Permanently deletes the user's account and personal data (GDPR Right to Erasure).
+ */
+export async function deleteUserAccount(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
+  try {
+    const user = await userRepository.getUserById(userId);
+    if (!user) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    // Check for active or disputed contracts with locked escrow funds
+    const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
+    const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
+    const hasActiveContract =
+      freelancerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed') ||
+      employerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed');
+
+    if (hasActiveContract) {
+      return {
+        code: 'ACTIVE_CONTRACTS_EXIST',
+        message: 'Cannot delete account while you have active or disputed contracts with pending escrow funds. Please complete or resolve active contracts first.',
+      };
+    }
+
+    // Clean up profiles
+    if (user.role === 'freelancer') {
+      const profile = await freelancerProfileRepository.getProfileByUserId(userId).catch(() => null);
+      if (profile) {
+        await freelancerProfileRepository.delete(profile.id).catch(() => {});
+      }
+    } else if (user.role === 'employer') {
+      const profile = await employerProfileRepository.getProfileByUserId(userId).catch(() => null);
+      if (profile) {
+        await employerProfileRepository.delete(profile.id).catch(() => {});
+      }
+    }
+
+    // Clean up email preferences
+    const emailPref = await emailPreferenceRepository.findByUserId(userId).catch(() => null);
+    if (emailPref) {
+      await emailPreferenceRepository.delete(emailPref.id).catch(() => {});
+    }
+
+    // Clean up favorites
+    const favs = await favoriteRepository.findByUser(userId).catch(() => []);
+    for (const f of favs) {
+      await favoriteRepository.delete(f.id).catch(() => {});
+    }
+
+    // Delete user from Appwrite Authentication service
+    try {
+      await users.delete(userId);
+    } catch (appwriteErr) {
+      logger.warn('Failed to delete user from Appwrite auth service', { userId, error: getErrorMessage(appwriteErr) });
+    }
+
+    // Delete user record from database
+    await userRepository.deleteUser(userId);
+
+    logger.info('User account permanently deleted under data erasure compliance', { userId });
+    return {
+      success: true,
+      message: 'Account and associated data have been permanently deleted.',
+    };
+  } catch (error: unknown) {
+    logger.error('Account deletion failed', { error: getErrorMessage(error), userId });
+    return {
+      code: 'DELETE_FAILED',
+      message: 'Failed to delete account. Please try again or contact support.',
+    };
+  }
+}
+

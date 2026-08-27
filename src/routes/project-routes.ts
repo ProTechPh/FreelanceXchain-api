@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import {
   validateUUID,
+  validateAppwriteDocumentId,
   isValidUUID,
   validate,
   createProjectSchema,
@@ -360,7 +361,7 @@ router.get('/stats/categories', apiRateLimiter, asyncHandler(async (req: Request
  *       404:
  *         description: Project not found
  */
-router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -750,7 +751,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(updateProjectSchema), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(updateProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
@@ -845,7 +846,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(addMilestonesSchema), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(addMilestonesSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -892,6 +893,30 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
  *           type: string
  *           format: uuid
  *         description: Project ID (UUID)
+ *     requestBody:
+ *     responses:
+ *       200:
+ *         description: Proposals retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Proposal'
+ *                 hasMore:
+ *                   type: boolean
+ *                 continuationToken:
+ *                   type: string
+ *       400:
+ *         description: Invalid UUID format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Project not found
+ *     parameters:
  *       - in: query
  *         name: limit
  *         schema:
@@ -925,8 +950,30 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
  *         description: Unauthorized
  *       404:
  *         description: Project not found
+ *     responses:
+ *       200:
+ *         description: Proposals retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Proposal'
+ *                 hasMore:
+ *                   type: boolean
+ *                 continuationToken:
+ *                   type: string
+ *       400:
+ *         description: Invalid UUID format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Project not found
  */
-router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
