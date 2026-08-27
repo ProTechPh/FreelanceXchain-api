@@ -93,49 +93,11 @@ function extractAppwriteTokenSecret(secret: string): string {
   return secret;
 }
 
-async function createTokenSession(userId: string, rawSecret: string): Promise<string> {
-  const secret = extractAppwriteTokenSecret(rawSecret);
-  const wasJwt = secret !== rawSecret;
-
-  logger.info('createTokenSession: starting', {
-    userId,
-    wasJwt,
-    secretLen: secret.length,
-    rawSecretPrefix: rawSecret.substring(0, 10),
-  });
-
-  // In unit tests, use mocked adminAccount
-  if (config.server.nodeEnv === 'test') {
-    const adminSession = await adminAccount.createSession({ userId, secret });
-    if (adminSession?.secret) return adminSession.secret;
-  }
-
-  // 1. Try Appwrite Users API (Server API key has users/sessions scope)
-  try {
-    const userSession = await users.createSession(userId);
-    if (userSession?.secret) {
-      logger.info('createTokenSession: users.createSession succeeded', {
-        userId,
-        hasSecret: true,
-      });
-      return userSession.secret;
-    }
-  } catch (usersErr: unknown) {
-    logger.warn('createTokenSession: users.createSession failed, trying guest token exchange', {
-      userId,
-      error: getErrorMessage(usersErr),
-    });
-  }
-
-  // 2. Try Appwrite SDK with guest client (no API key — same as browser SDK)
+async function tryGuestSdkSession(userId: string, secret: string): Promise<string | null> {
   try {
     const guestClient = createUserClient('');
     const guestAccount = new Account(guestClient);
     const session = await guestAccount.createSession({ userId, secret });
-    logger.info('createTokenSession: SDK guest client succeeded', {
-      userId,
-      hasSecret: !!session?.secret,
-    });
     if (session?.secret) return session.secret;
   } catch (sdkError: unknown) {
     logger.warn('createTokenSession: SDK guest client failed', {
@@ -143,24 +105,10 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
       error: getErrorMessage(sdkError),
     });
   }
+  return null;
+}
 
-  // 2. If JWT was decoded, also try with the raw JWT
-  if (wasJwt) {
-    try {
-      const guestClient = createUserClient('');
-      const guestAccount = new Account(guestClient);
-      const session = await guestAccount.createSession({ userId, secret: rawSecret });
-      logger.info('createTokenSession: SDK guest client with raw JWT succeeded', { userId });
-      if (session?.secret) return session.secret;
-    } catch (sdkError: unknown) {
-      logger.warn('createTokenSession: SDK guest client with raw JWT failed', {
-        userId,
-        error: getErrorMessage(sdkError),
-      });
-    }
-  }
-
-  // 3. Direct HTTP request as fallback
+async function exchangeTokenViaHttp(userId: string, secret: string): Promise<string> {
   const url = `${config.appwrite.endpoint}/account/sessions/token`;
   const response = await fetch(url, {
     method: 'POST',
@@ -200,6 +148,54 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
   if (secretFromCookie) return secretFromCookie;
 
   throw new Error('Appwrite session response did not include a secret or session cookie');
+}
+
+async function createTokenSession(userId: string, rawSecret: string): Promise<string> {
+  const secret = extractAppwriteTokenSecret(rawSecret);
+  const wasJwt = secret !== rawSecret;
+
+  logger.info('createTokenSession: starting', {
+    userId,
+    wasJwt,
+    secretLen: secret.length,
+    rawSecretPrefix: rawSecret.substring(0, 10),
+  });
+
+  // In unit tests, use mocked adminAccount
+  if (config.server.nodeEnv === 'test') {
+    const adminSession = await adminAccount.createSession({ userId, secret });
+    if (adminSession?.secret) return adminSession.secret;
+  }
+
+  // 1. Try Appwrite Users API (Server API key has users/sessions scope)
+  try {
+    const userSession = await users.createSession(userId);
+    if (userSession?.secret) {
+      logger.info('createTokenSession: users.createSession succeeded', {
+        userId,
+        hasSecret: true,
+      });
+      return userSession.secret;
+    }
+  } catch (usersErr: unknown) {
+    logger.warn('createTokenSession: users.createSession failed, trying guest token exchange', {
+      userId,
+      error: getErrorMessage(usersErr),
+    });
+  }
+
+  // 2. Try Appwrite SDK with guest client (no API key — same as browser SDK)
+  const sdkSecret = await tryGuestSdkSession(userId, secret);
+  if (sdkSecret) return sdkSecret;
+
+  // 2. If JWT was decoded, also try with the raw JWT
+  if (wasJwt) {
+    const rawSdkSecret = await tryGuestSdkSession(userId, rawSecret);
+    if (rawSdkSecret) return rawSdkSecret;
+  }
+
+  // 3. Direct HTTP request as fallback
+  return exchangeTokenViaHttp(userId, secret);
 }
 
 async function createEmailPasswordSessionHelper(email: string, password: string): Promise<string> {
