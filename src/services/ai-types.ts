@@ -98,6 +98,49 @@ export type SkillGapAnalysis = {
   reasoning: string;
 };
 
+// AI Proposal Generation types
+export type ProposalMilestonePlan = {
+  title: string;
+  description: string;
+  amount: number;
+  durationDays: number;
+};
+
+export type AIProposalGenerationRequest = {
+  freelancerName: string;
+  freelancerTitle?: string | undefined;
+  freelancerBio?: string | undefined;
+  freelancerSkills: string[];
+  reputationScore: number;
+  completedProjectsCount: number;
+  disputeCount?: number | undefined;
+  portfolioItems: Array<{
+    title: string;
+    description: string;
+    skills?: string[] | undefined;
+    projectUrl?: string | undefined;
+  }>;
+  projectTitle: string;
+  projectDescription: string;
+  projectSkills: string[];
+  projectBudget: number;
+  projectMilestones?: Array<{
+    title: string;
+    description?: string | undefined;
+    amount?: number | undefined;
+  }> | undefined;
+  projectDeadline?: string | undefined;
+  customNotes?: string | undefined;
+};
+
+export type AIProposalResult = {
+  coverLetter: string;
+  proposedRate: number;
+  estimatedDuration: number;
+  proposedMilestones: ProposalMilestonePlan[];
+  highlights: string[];
+};
+
 // Error types
 export type AIError = {
   code: string;

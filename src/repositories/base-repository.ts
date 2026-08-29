@@ -31,9 +31,13 @@ function deserializeIfNeeded(value: string): string | unknown {
 
 /**
  * Serialize an attribute value for Appwrite storage.
- * Objects/arrays are JSON.stringify'd; primitives pass through.
+ * Objects and complex arrays are JSON.stringify'd; primitives and primitive arrays pass through.
  */
 function serializeAttributeValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value) && value.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')) {
+    return value;
+  }
   return typeof value === 'object' ? JSON.stringify(value) : value;
 }
 

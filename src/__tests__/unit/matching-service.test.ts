@@ -44,6 +44,8 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   extractSkills: mockExtractSkillsFn,
   keywordMatchSkills: realAiClient.keywordMatchSkills,
   keywordExtractSkills: realAiClient.keywordExtractSkills,
+  fallbackGenerateProposal: realAiClient.fallbackGenerateProposal,
+  generateAIProposal: jest.fn(),
   SKILL_MATCH_PROMPT: '',
   SKILL_EXTRACTION_PROMPT: '',
   SKILL_GAP_PROMPT: '',

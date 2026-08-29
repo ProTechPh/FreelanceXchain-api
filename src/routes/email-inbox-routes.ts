@@ -16,6 +16,7 @@ import {
   sendNewEmail,
   replyToEmail,
   getUnreadCount,
+  getSenderProfiles,
   type InboundEmailPayload,
 } from '../services/email-inbox-service.js';
 import type { EmailFolder } from '../repositories/email-inbox-repository.js';
@@ -113,6 +114,11 @@ router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter
   res.status(200).json(result.data);
 }));
 
+router.get('/profiles', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
+  const profiles = getSenderProfiles();
+  res.status(200).json({ profiles });
+}));
+
 router.get('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
@@ -171,14 +177,22 @@ router.post('/send', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
 
-  const { to, subject, text, html } = req.body;
+  const { to, subject, text, html, senderProfile, senderName } = req.body;
 
   if (!to || !subject) {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'to and subject are required', { requestId });
     return;
   }
 
-  const result = await sendNewEmail({ userId, to, subject, textBody: text || '', htmlBody: html || text || '' });
+  const result = await sendNewEmail({
+    userId,
+    to,
+    subject,
+    textBody: text || '',
+    htmlBody: html || text || '',
+    senderProfile,
+    senderName,
+  });
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
@@ -193,7 +207,7 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
   const requestId = getRequestId(req);
   const emailId = req.params['id'] as string;
 
-  const { text, html } = req.body;
+  const { text, html, senderProfile, senderName } = req.body;
 
   if (!text && !html) {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'text or html body is required', { requestId });
@@ -201,7 +215,9 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
   }
 
   /* istanbul ignore next -- validation guard above ensures at least one of text/html is truthy */
-  const result = await replyToEmail(userId, emailId, text || '', html || text || '');
+  const result = (senderProfile || senderName)
+    ? await replyToEmail(userId, emailId, text || '', { html: html || text || '', senderProfile, senderName })
+    : await replyToEmail(userId, emailId, text || '', html || text || '');
 
   if (!result.success) {
     const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;

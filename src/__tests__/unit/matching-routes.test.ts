@@ -10,6 +10,7 @@ const mockGetProjectRecommendations = jest.fn<any>();
 const mockGetFreelancerRecommendations = jest.fn<any>();
 const mockExtractSkillsFromText = jest.fn<any>();
 const mockAnalyzeSkillGaps = jest.fn<any>();
+const mockGenerateProposalForProject = jest.fn<any>();
 const mockIsMatchingError = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/matching-service.ts'), () => ({
@@ -17,6 +18,7 @@ jest.unstable_mockModule(resolveModule('src/services/matching-service.ts'), () =
   getFreelancerRecommendations: mockGetFreelancerRecommendations,
   extractSkillsFromText: mockExtractSkillsFromText,
   analyzeSkillGaps: mockAnalyzeSkillGaps,
+  generateProposalForProject: mockGenerateProposalForProject,
   isMatchingError: mockIsMatchingError,
 }));
 
@@ -34,6 +36,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -228,5 +231,41 @@ describe('Matching Routes - defensive guard', () => {
 
     const res = await request(app).get('/api/matching/freelancers/proj-123');
     expect(res.status).toBe(400);
+  });
+
+  describe('POST /generate-proposal/:projectId', () => {
+    it('generates a personalized proposal successfully', async () => {
+      mockGenerateProposalForProject.mockResolvedValue({
+        success: true,
+        data: {
+          coverLetter: '### Hello\nProposal content',
+          proposedRate: 5000,
+          estimatedDuration: 10,
+          proposedMilestones: [{ title: 'M1', description: 'D1', amount: 5000, durationDays: 10 }],
+          highlights: ['98% Reputation'],
+        },
+      });
+
+      const res = await request(app)
+        .post('/api/matching/generate-proposal/a0000000-0000-0000-0000-000000000001')
+        .send({ customNotes: 'Available immediately' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.coverLetter).toContain('Proposal content');
+      expect(res.body.proposedRate).toBe(5000);
+    });
+
+    it('returns 404 if project is not found', async () => {
+      mockGenerateProposalForProject.mockResolvedValue({
+        success: false,
+        error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' },
+      });
+
+      const res = await request(app)
+        .post('/api/matching/generate-proposal/a0000000-0000-0000-0000-000000000001')
+        .send({});
+
+      expect(res.status).toBe(404);
+    });
   });
 });

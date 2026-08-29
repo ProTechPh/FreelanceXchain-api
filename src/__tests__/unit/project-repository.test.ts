@@ -74,7 +74,7 @@ describe('ProjectRepository', () => {
       await repo.createProject(project as any);
 
       const createAttributes = mockCreateDocument.mock.calls[0][3] as Record<string, unknown>;
-      expect(createAttributes.required_skill_ids).toEqual('[]');
+      expect(createAttributes.required_skill_ids).toEqual([]);
     });
   });
 

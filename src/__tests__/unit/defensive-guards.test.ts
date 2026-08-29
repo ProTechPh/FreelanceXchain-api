@@ -116,6 +116,7 @@ jest.unstable_mockModule(resolveModule('src/services/matching-service.ts'), () =
   extractSkillsFromText: jest.fn<any>(),
   analyzeSkillGaps: jest.fn<any>(),
   isMatchingError: jest.fn<any>(),
+  generateProposalForProject: jest.fn<any>(),
 }));
 
 // ===== Storage uploader mocks (file-upload router) =====

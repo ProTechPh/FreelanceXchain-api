@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -10,6 +10,7 @@ import {
   getFreelancerRecommendations,
   extractSkillsFromText,
   analyzeSkillGaps,
+  generateProposalForProject,
   isMatchingError,
 } from '../services/matching-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -219,7 +220,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, asyncHandler(async (req:
  *       404:
  *         description: Project not found
  */
-router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUUID(['projectId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['projectId']), asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const projectId = req.params['projectId'];
 
@@ -332,6 +333,58 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, asyncHandler(async (re
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+/**
+ * @swagger
+ * /api/matching/generate-proposal/{projectId}:
+ *   post:
+ *     summary: Generate personalized AI proposal for a project
+ *     description: Uses AI to analyze the freelancer's portfolio, verified skills, and reputation score to craft a tailored, high-converting proposal.
+ *     tags:
+ *       - Matching
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the project to generate a proposal for (UUID)
+ *     responses:
+ *       200:
+ *         description: AI proposal generated successfully
+ *       400:
+ *         description: Validation error or missing parameters
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Project not found
+ */
+router.post('/generate-proposal/:projectId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['projectId']), asyncHandler(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const requestId = getRequestId(req);
+  const userId = authReq.user.userId;
+  const projectId = req.params['projectId'];
+
+  if (!projectId) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'projectId is required', { requestId });
+    return;
+  }
+
+  const { customNotes } = (req.body || {}) as { customNotes?: string };
+
+  const result = await generateProposalForProject(userId, projectId, customNotes);
+
+  if (isMatchingError(result)) {
+    const statusCode = result.error.code === 'PROJECT_NOT_FOUND' ? 404 : 400;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }

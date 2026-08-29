@@ -31,6 +31,7 @@ jest.unstable_mockModule(resolveModule('src/services/email-inbox-service.ts'), (
   sendNewEmail: mockSendNewEmail,
   replyToEmail: mockReplyToEmail,
   getUnreadCount: mockGetUnreadCount,
+  getSenderProfiles: jest.fn(() => []),
 }));
 
 jest.unstable_mockModule(resolveModule('src/repositories/email-inbox-repository.ts'), () => ({
@@ -256,6 +257,14 @@ describe('Email Inbox Routes', () => {
       mockGetUnreadCount.mockResolvedValueOnce({ success: false, error: { code: 'UNREAD_COUNT_FAILED', message: 'err' } });
       const res = await request(app).get('/api/emails/unread-count');
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /profiles', () => {
+    it('should return sender profiles without falling into /:id', async () => {
+      const res = await request(app).get('/api/emails/profiles');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('profiles');
     });
   });
 

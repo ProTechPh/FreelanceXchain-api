@@ -16,6 +16,8 @@ import {
   SkillInfo,
   SerializableAIRequest,
   SerializableAIResponse,
+  AIProposalGenerationRequest,
+  AIProposalResult,
 } from './ai-types.js';
 import { generateId } from '../utils/id.js';
 
@@ -69,6 +71,65 @@ Response format (return ONLY valid JSON, no markdown):
     { "skillName": "string", "demandLevel": "high" | "medium" | "low" }
   ],
   "reasoning": string
+}
+`;
+
+export const PROPOSAL_GENERATION_PROMPT = `
+You are a premier Web3 & software freelance proposal strategist and senior engineering copywriter.
+Your goal is to craft a winning, highly professional, compelling, and persuasive proposal for the freelancer applying to this project.
+
+Freelancer Profile:
+- Name: {freelancerName}
+- Title: {freelancerTitle}
+- Bio: {freelancerBio}
+- Verified Skills: {freelancerSkills}
+- Blockchain Reputation Status: {reputationSummary}
+- Relevant Portfolio Projects:
+{portfolioItems}
+
+Project Details:
+- Project Title: {projectTitle}
+- Project Description: {projectDescription}
+- Required Skills: {projectSkills}
+- Budget: {projectBudget} USDC
+- Project Milestones:
+{projectMilestones}
+- Deadline: {projectDeadline}
+- Freelancer Custom Notes / Instructions: {customNotes}
+
+Winning Proposal Strategy Guidelines:
+1. Tone & Positioning:
+   - Confident, articulate, solution-oriented, and client-centric.
+   - Position the freelancer as a top-tier engineer who deeply understands the technical stack, product requirements, and Web3 best practices.
+   - Regardless of past platform rating history or project count, NEVER apologize or focus on low numbers. Emphasize verified technical competence, portfolio proof, clean architecture, and 100% commitment to milestone delivery.
+2. Structure of the Cover Letter (in clean, readable GitHub-flavored Markdown):
+   - **Executive Summary / Greeting**: Acknowledge the client's project vision, technical stack, and core objectives with energy and precision.
+   - **Technical Fit & Proven Experience**: Connect the required skills ({projectSkills}) directly to the freelancer's portfolio work ({portfolioItems}) or domain experience. Mention specific technical components (e.g. state management, wallet connection, responsive UX, smart contract security).
+   - **Strategic 3-Phase Execution Plan**: Provide an actionable, transparent delivery roadmap (Phase 1: Architecture & UX, Phase 2: Core Feature Implementation & Integrations, Phase 3: Testing, Gas/Performance Optimization & Launch).
+   - **Client Assurance & Escrow De-risking**: Reassure the client that all funds remain securely protected in smart contract escrow and are only released upon their explicit review and approval of each completed milestone.
+   - **Clear Call to Action**: Professional sign-off welcoming a conversation to align on technical details.
+3. Pricing & Timeline:
+   - Recommend a realistic proposed rate (numeric USD) aligned with the project budget ({projectBudget} USDC).
+   - Recommend a realistic estimated delivery duration (numeric in days).
+   - Provide structured proposed milestone deliverables.
+4. Highlights (3-4 crisp selling badges):
+   - Provide strong positive selling points (e.g., "100% Escrow-Protected Milestone Delivery", "Direct Portfolio Match for DEX/Web3", "Clean Code & Fast Turnaround", "Verified Tech Stack Expertise").
+   - If reputation is high (>=85%), you may cite the on-chain score. If 0 or lower, highlight identity verification, escrow protection, and technical mastery.
+
+Return ONLY valid JSON (no markdown wrappers around the JSON, no extra text):
+{
+  "coverLetter": "string (in Markdown)",
+  "proposedRate": number,
+  "estimatedDuration": number,
+  "proposedMilestones": [
+    {
+      "title": "string",
+      "description": "string",
+      "amount": number,
+      "durationDays": number
+    }
+  ],
+  "highlights": ["string", "string", "string"]
 }
 `;
 
@@ -597,6 +658,174 @@ export function keywordExtractSkills(
   }
 
   return extracted;
+}
+
+/**
+ * Fallback AI Proposal Generator using portfolio, skills, and reputation
+ */
+export function fallbackGenerateProposal(
+  request: AIProposalGenerationRequest
+): AIProposalResult {
+  const matchingSkills = request.freelancerSkills.filter(s =>
+    request.projectSkills.some(ps => ps.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(ps.toLowerCase()))
+  );
+  const skillsMention = matchingSkills.length > 0
+    ? matchingSkills.join(', ')
+    : (request.freelancerSkills.slice(0, 4).join(', ') || 'Web3 Engineering');
+
+  const portfolioHighlight = request.portfolioItems.length > 0
+    ? `In my previous work, I successfully built **${request.portfolioItems[0]?.title}** (${request.portfolioItems[0]?.description}), which directly demonstrates the technical requirements needed for **${request.projectTitle}**.`
+    : `With my practical experience in **${skillsMention}**, I am well-prepared to deliver a secure, robust solution.`;
+
+  const hasRatings = request.completedProjectsCount > 0 && request.reputationScore > 0;
+  const reputationIntro = hasRatings
+    ? `and a blockchain-verified reputation score of **${Math.round(request.reputationScore)}%** across **${request.completedProjectsCount} completed contracts**`
+    : `and verified technical credentials on FreelanceXchain`;
+
+  const assuranceBullet = hasRatings
+    ? `Having completed **${request.completedProjectsCount} projects** with on-time delivery on FreelanceXchain, I follow disciplined testing and smart contract verification standards.`
+    : `As a verified talent on FreelanceXchain, I follow disciplined testing and smart contract verification standards with full escrow milestone protection.`;
+
+  const coverLetter = `### Dear Employer,
+
+I am excited to submit my proposal for **${request.projectTitle}**. With my background as a ${request.freelancerTitle || 'Web3 Developer'} ${reputationIntro}, I have the exact technical foundation and reliability required for this project.
+
+#### Why I'm the Right Fit:
+- **Core Skills & Domain Expertise**: Extensive practical experience in **${skillsMention}**.
+- **Relevant Track Record**: ${portfolioHighlight}
+- **Escrow & Quality Assurance**: ${assuranceBullet}
+
+#### Execution Plan:
+1. **Requirements Alignment & Setup**: Review project architecture, smart contract interfaces, and UI requirements.
+2. **Core Implementation**: Build and integrate responsive features, state management, and blockchain connectors.
+3. **Testing, QA & Deployment**: Comprehensive integration testing, gas optimization, and staging deployment.
+
+${request.customNotes ? `*Freelancer Note: ${request.customNotes}*\n\n` : ''}I look forward to discussing how we can bring **${request.projectTitle}** to a successful launch!
+
+Best regards,  
+**${request.freelancerName}**`;
+
+  const proposedMilestones = (request.projectMilestones && request.projectMilestones.length > 0)
+    ? request.projectMilestones.map((m) => ({
+        title: m.title,
+        description: m.description || 'Milestone delivery and review.',
+        amount: m.amount || Math.round(request.projectBudget / request.projectMilestones!.length),
+        durationDays: 7,
+      }))
+    : [
+        {
+          title: 'Phase 1: Architecture & UI Setup',
+          description: 'Initial wireframes, component library setup, and wallet provider integration.',
+          amount: Math.round((request.projectBudget || 1000) * 0.4),
+          durationDays: 5,
+        },
+        {
+          title: 'Phase 2: Core Functionality & Contracts',
+          description: 'Implementation of primary business logic and blockchain interactions.',
+          amount: Math.round((request.projectBudget || 1000) * 0.4),
+          durationDays: 7,
+        },
+        {
+          title: 'Phase 3: QA, Polish & Deployment',
+          description: 'Comprehensive end-to-end testing, optimization, and production deployment.',
+          amount: Math.round((request.projectBudget || 1000) * 0.2),
+          durationDays: 4,
+        },
+      ];
+
+  const highlights = [
+    hasRatings
+      ? `${Math.round(request.reputationScore)}% Verified On-Chain Reputation`
+      : 'Identity-Verified Talent (KYC Verified)',
+    hasRatings
+      ? `${request.completedProjectsCount} Completed Projects on Platform`
+      : 'Escrow-Protected Milestone Delivery',
+    `Expertise in ${matchingSkills.slice(0, 3).join(', ') || 'Web3 Engineering'}`,
+  ];
+
+  return {
+    coverLetter,
+    proposedRate: request.projectBudget || 1000,
+    estimatedDuration: proposedMilestones.reduce((acc, m) => acc + m.durationDays, 0) || 14,
+    proposedMilestones,
+    highlights,
+  };
+}
+
+/**
+ * Generate a personalized AI proposal based on freelancer portfolio, skills, and reputation
+ */
+export async function generateAIProposal(
+  request: AIProposalGenerationRequest
+): Promise<AIProposalResult | AIError> {
+  if (!isAIAvailable()) {
+    return fallbackGenerateProposal(request);
+  }
+
+  const portfolioSummary = request.portfolioItems.length > 0
+    ? request.portfolioItems.map((p, idx) => `${idx + 1}. ${p.title}: ${p.description} (Skills: ${(p.skills || []).join(', ')}${p.projectUrl ? `, URL: ${p.projectUrl}` : ''})`).join('\n')
+    : 'No explicit portfolio items provided; rely on verified skills and escrow commitment.';
+
+  const milestonesSummary = (request.projectMilestones && request.projectMilestones.length > 0)
+    ? request.projectMilestones.map((m, idx) => `${idx + 1}. ${m.title} ($${m.amount ?? 0}) - ${m.description ?? ''}`).join('\n')
+    : 'Standard milestone-based delivery.';
+
+  const hasRatings = request.completedProjectsCount > 0 && request.reputationScore > 0;
+  const reputationSummary = hasRatings
+    ? `${Math.round(request.reputationScore)}% score (${request.completedProjectsCount} completed projects, ${request.disputeCount ?? 0} disputes)`
+    : 'New talent on platform (0 platform contracts completed yet, identity-verified talent). Focus on technical skills, portfolio work, and escrow assurance.';
+
+  const prompt = buildPrompt(PROPOSAL_GENERATION_PROMPT, {
+    freelancerName: request.freelancerName || 'Freelancer',
+    freelancerTitle: request.freelancerTitle || 'Full-Stack Web3 Developer',
+    freelancerBio: request.freelancerBio || '',
+    freelancerSkills: JSON.stringify(request.freelancerSkills),
+    reputationSummary,
+    portfolioItems: portfolioSummary,
+    projectTitle: request.projectTitle,
+    projectDescription: request.projectDescription,
+    projectSkills: JSON.stringify(request.projectSkills),
+    projectBudget: String(request.projectBudget),
+    projectMilestones: milestonesSummary,
+    projectDeadline: request.projectDeadline || 'Not specified',
+    customNotes: request.customNotes || 'None',
+  });
+
+  const response = await generateContent(prompt);
+
+  if (typeof response !== 'string') {
+    return fallbackGenerateProposal(request);
+  }
+
+  const result = parseJsonResponse<AIProposalResult>(response, 'ProposalGenerate');
+  if (!result || !result.coverLetter) {
+    return fallbackGenerateProposal(request);
+  }
+
+  return {
+    coverLetter: result.coverLetter,
+    proposedRate: typeof result.proposedRate === 'number' && result.proposedRate > 0 ? result.proposedRate : (request.projectBudget || 1000),
+    estimatedDuration: typeof result.estimatedDuration === 'number' && result.estimatedDuration > 0 ? result.estimatedDuration : 14,
+    proposedMilestones: Array.isArray(result.proposedMilestones) && result.proposedMilestones.length > 0
+      ? result.proposedMilestones
+      : (request.projectMilestones || []).map((m) => ({
+          title: m.title,
+          description: m.description || '',
+          amount: m.amount || 0,
+          durationDays: 7,
+        })),
+    highlights: Array.isArray(result.highlights) && result.highlights.length > 0
+      ? result.highlights
+      : [
+          hasRatings
+            ? `${Math.round(request.reputationScore)}% On-Chain Reputation Score`
+            : 'Identity-Verified Talent (KYC Verified)',
+          hasRatings
+            ? `${request.completedProjectsCount} Completed Projects`
+            : 'Escrow-Protected Milestone Delivery',
+          `Expert in ${request.freelancerSkills.slice(0, 3).join(', ')}`,
+        ],
+  };
 }
 
 

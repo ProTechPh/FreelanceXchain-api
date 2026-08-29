@@ -394,14 +394,14 @@ describe('Email Inbox Service', () => {
       });
       mockEmailInboxRepository.create.mockResolvedValueOnce({ id: 'sent-1' });
 
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(true);
       expect(result.data.emailId).toBe('sent-1');
     });
 
     it('should return USER_NOT_FOUND when user not found', async () => {
       mockUserRepository.getUserById.mockResolvedValueOnce(null);
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('USER_NOT_FOUND');
     });
@@ -410,7 +410,7 @@ describe('Email Inbox Service', () => {
       delete process.env['CLOUDFLARE_API_TOKEN'];
       delete process.env['CLOUDFLARE_ACCOUNT_ID'];
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('EMAIL_CONFIG_MISSING');
     });
@@ -423,7 +423,7 @@ describe('Email Inbox Service', () => {
         json: () => Promise.resolve({ success: false, errors: [{ message: 'Rate limited' }] }),
       });
 
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('EMAIL_SEND_FAILED');
       expect(result.error.message).toBe('Rate limited');
@@ -437,7 +437,7 @@ describe('Email Inbox Service', () => {
         json: () => Promise.resolve({ success: false }),
       });
 
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.message).toBe('Cloudflare email send failed');
     });
@@ -450,7 +450,7 @@ describe('Email Inbox Service', () => {
         text: () => Promise.resolve(JSON.stringify({ success: false, errors: [{ message: 'Invalid token' }] })),
       });
 
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('EMAIL_SEND_FAILED');
       expect(result.error.message).toBe('Invalid token');
@@ -464,7 +464,7 @@ describe('Email Inbox Service', () => {
         text: () => Promise.resolve('<html>Bad Gateway</html>'),
       });
 
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.message).toBe('Cloudflare email send failed with HTTP 502');
       expect(mockEmailInboxRepository.create).not.toHaveBeenCalled();
@@ -478,21 +478,21 @@ describe('Email Inbox Service', () => {
         text: () => Promise.reject(new Error('stream closed')),
       });
 
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.message).toBe('Cloudflare email send failed with HTTP 500');
     });
 
     it('should handle errors', async () => {
       mockUserRepository.getUserById.mockRejectedValueOnce(new Error('Network error'));
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('SEND_EMAIL_FAILED');
     });
 
     it('should handle non-Error throws', async () => {
       mockUserRepository.getUserById.mockRejectedValueOnce(null);
-      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      const result = await sendNewEmail({ userId: 'u1', to: 'to@example.com', subject: 'Subject', textBody: 'text', htmlBody: '<p>text</p>' });
       expect(result.success).toBe(false);
       expect(result.error.message).toBe('Failed to send email');
     });
