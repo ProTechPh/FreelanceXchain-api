@@ -4,6 +4,7 @@ import { initializeScheduler, stopScheduler } from './services/scheduler-service
 import { stopHeartbeat } from './services/notification-delivery-service.js';
 import { logger } from './config/logger.js';
 import { redis } from './config/redis.js';
+import { isAIAvailable } from './services/ai-client.js';
 
 async function main(): Promise<void> {
   // Wait for Redis to be ready before accepting traffic.
@@ -30,6 +31,11 @@ async function main(): Promise<void> {
       logger.info(`API docs available at ${config.server.baseUrl}/api-docs`);
     } else {
       logger.info('API docs disabled (set ENABLE_API_DOCS=true to enable)');
+    }
+    if (isAIAvailable()) {
+      logger.info(`[llm] ready (model: ${config.llm.model})`);
+    } else {
+      logger.info('[llm] ready (keyword fallback)');
     }
   });
 

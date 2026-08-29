@@ -365,7 +365,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(mockSend).toHaveBeenCalledWith(
-        expect.objectContaining({ from: 'noreply@freelancexchain.com' })
+        expect.objectContaining({ from: 'FreelanceXchain <noreply@freelancexchain.works>' })
       );
     });
 

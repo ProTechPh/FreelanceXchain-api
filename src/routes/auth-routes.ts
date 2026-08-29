@@ -44,8 +44,20 @@ import {
 import { asyncHandler } from '../utils/async-handler.js';
 import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { getErrorMessage } from '../utils/index.js';
+import { auditLogRepository } from '../repositories/audit-log-repository.js';
 
 const router = Router();
+
+function extractClientInfo(req: Request): { ip: string | null; userAgent: string | null } {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = typeof forwarded === 'string'
+    ? forwarded.split(',')[0]?.trim() || req.ip || null
+    : Array.isArray(forwarded)
+    ? forwarded[0]?.trim() || req.ip || null
+    : req.ip || null;
+  const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+  return { ip, userAgent };
+}
 
 function extractBearerToken(req: Request, res: Response): string | null {
   const authHeader = req.headers.authorization;
@@ -198,6 +210,20 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
     return;
   }
 
+  const { ip, userAgent } = extractClientInfo(req);
+  void auditLogRepository.create({
+    user_id: result.user.id,
+    actor_id: result.user.id,
+    action: 'auth.register',
+    resource_type: 'user',
+    resource_id: result.user.id,
+    payload: { email: result.user.email, role: result.user.role },
+    ip_address: ip,
+    user_agent: userAgent,
+    status: 'success',
+    error_message: null,
+  });
+
   res.status(201).json(result);
 }));
 
@@ -246,6 +272,7 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
   }
 
   const result = await login(validation.input!);
+  const { ip, userAgent } = extractClientInfo(req);
 
   if (isAuthError(result)) {
     if (result.code === 'MFA_REQUIRED') {
@@ -257,9 +284,35 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
       return;
     }
 
+    void auditLogRepository.create({
+      user_id: null,
+      actor_id: null,
+      action: 'auth.login_failed',
+      resource_type: 'user',
+      resource_id: null,
+      payload: { email: validation.input!.email },
+      ip_address: ip,
+      user_agent: userAgent,
+      status: 'failure',
+      error_message: result.message || 'Invalid email or password',
+    });
+
     sendErrorResponse(res, 401, 'AUTH_INVALID_CREDENTIALS', result.message, { requestId });
     return;
   }
+
+  void auditLogRepository.create({
+    user_id: result.user.id,
+    actor_id: result.user.id,
+    action: 'auth.login',
+    resource_type: 'user',
+    resource_id: result.user.id,
+    payload: { email: result.user.email, role: result.user.role },
+    ip_address: ip,
+    user_agent: userAgent,
+    status: 'success',
+    error_message: null,
+  });
 
   res.status(200).json(result);
 }));
@@ -1027,6 +1080,22 @@ router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req:
     logger.error('Logout failed', { userId, requestId, error: result.message });
     sendErrorResponse(res, 500, result.code, result.message, { requestId });
     return;
+  }
+
+  const { ip, userAgent } = extractClientInfo(req);
+  if (userId) {
+    void auditLogRepository.create({
+      user_id: userId,
+      actor_id: userId,
+      action: 'auth.logout',
+      resource_type: 'user',
+      resource_id: userId,
+      payload: { email: req.user?.email },
+      ip_address: ip,
+      user_agent: userAgent,
+      status: 'success',
+      error_message: null,
+    });
   }
 
   logger.info('User logout successful', { userId, requestId });

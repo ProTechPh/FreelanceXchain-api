@@ -1,40 +1,44 @@
-# FreelanceXchain Email Templates
+# FreelanceXchain Branded Email Templates
 
-Professional, branded email templates for Appwrite authentication flows.
+Official email templates matching the **FreelanceXchain Landing Page Dark & Emerald Theme**.
 
 ## 📧 Available Templates
 
-1. **confirmation.html** - Email confirmation for new signups
-2. **magic-link.html** - Passwordless authentication magic link
-3. **recovery.html** - Password reset emails
-4. **invite.html** - User invitation emails
-5. **email-change.html** - Email address change confirmation
-6. **reauthentication.html** - Reauthentication verification
+### 🔐 Appwrite Authentication & Security Flows
+1. **confirmation.html** - Signup verification email with OTP & confirmation link
+2. **magic-link.html** - Passwordless instant login link
+3. **recovery.html** - Password reset email with recovery code
+4. **reauthentication.html** - Time-sensitive MFA / sensitive action code
+5. **email-change.html** - Email address update confirmation
+6. **invite.html** - Platform invitation link & token
 
-## 🎨 Design Features
+### 📬 Platform Event & Notification Flows (`email-delivery-service`)
+7. **proposal_accepted.html** - Freelancer proposal accepted & escrow notice
+8. **milestone_approved.html** - Deliverable approved & payment unlocked
+9. **payment_released.html** - On-chain escrow payout notice with Tx hash
+10. **contract_created.html** - New smart contract agreement ready to sign
+11. **dispute_created.html** - Dispute room alert for arbitration
+12. **kyc_approved.html** - Identity verification approved badge
+13. **kyc_rejected.html** - Identity verification resubmission notice
+14. **message_received.html** - Direct message notification & preview
+15. **review_received.html** - Star rating & on-chain review feedback
+16. **weekly_digest.html** - Weekly platform opportunities & activity digest
 
-- **Modern gradient headers** with unique colors for each template type
-- **Responsive design** that works on all devices
-- **Clear call-to-action buttons** with hover effects
-- **OTP code display** with monospace font for easy reading
-- **Security notices** with appropriate warning styles
-- **Consistent branding** with FreelanceXchain identity
-- **Professional footer** with copyright information
+## 🎨 Landing Page Design System Integration
 
-## 🚀 How to Apply Templates
+- **Cyber Dark Background**: `#0b0f19` deep space tone matching the landing page.
+- **Card Enclosures**: `#111827` (slate-900) card with `#1a2234` inner panels and subtle `rgba(255, 255, 255, 0.08)` borders.
+- **Hero Radial Glow**: `radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.22) 0%, rgba(17, 24, 39, 0) 70%), #0f172a`.
+- **Emerald Accent**: `#10b981` / `#34d399` matching FreelanceXchain Web3 brand identity.
+- **Typography & Wordmark**: `FreelanceXchain` with colored pivot `X`.
+- **Trust Badges**: Escrow protection, verification notices, and 2026 decentralized protocol copyright.
 
-### Method 1: Via Appwrite Dashboard (Recommended)
+## 🚀 How to Apply Templates to Appwrite
 
-1. Go to your Appwrite Dashboard: <https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates>
+### Appwrite Dashboard Mapping
 
-2. For each template:
-   - Click on the template name (e.g., "Confirm signup")
-   - Copy the content from the corresponding HTML file
-   - Paste it into the "Message Body (HTML)" field
-   - Update the subject line if desired
-   - Click "Save" to apply
-
-### Template Mapping
+1. Go to your Appwrite Dashboard: `Auth` -> `Templates`
+2. Copy and paste the HTML content from the corresponding template file:
 
 | Dashboard Template | HTML File |
 | ------------------- | ----------- |

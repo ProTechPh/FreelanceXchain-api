@@ -103,7 +103,7 @@ export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ m
     const client = await getEmailClient();
     const html = await renderTemplate(emailData.template, emailData.data);
 
-    const emailFrom = process.env['EMAIL_FROM'] || 'noreply@freelancexchain.com';
+    const emailFrom = process.env['EMAIL_FROM'] || 'FreelanceXchain <noreply@freelancexchain.works>';
 
     const result = await client.send({
       from: emailFrom,

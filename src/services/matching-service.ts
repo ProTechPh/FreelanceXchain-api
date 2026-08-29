@@ -8,6 +8,8 @@ import {
   generateContent,
   parseJsonResponse,
   SKILL_GAP_PROMPT,
+  generateAIProposal,
+  fallbackGenerateProposal,
 } from './ai-client.js';
 import { logger } from '../config/logger.js';
 import {
@@ -17,10 +19,16 @@ import {
   FreelancerRecommendation,
   SkillGapAnalysis,
   SkillInfo,
+  AIProposalResult,
+  AIProposalGenerationRequest,
 } from './ai-types.js';
 import { createHash } from 'node:crypto';
 import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { portfolioRepository } from '../repositories/portfolio-repository.js';
+import { databases, DATABASE_ID } from '../config/appwrite.js';
+import { COLLECTIONS } from '../config/collections.js';
+import { safeJsonParse } from '../utils/index.js';
 import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
 import { redis } from '../config/redis.js';
@@ -433,6 +441,88 @@ export function sortFreelancerRecommendationsByCombinedScore(
   recommendations: FreelancerRecommendation[]
 ): FreelancerRecommendation[] {
   return [...recommendations].sort((a, b) => b.combinedScore - a.combinedScore);
+}
+
+/**
+ * Generate a personalized AI proposal for a freelancer applying to a project
+ */
+export async function generateProposalForProject(
+  freelancerId: string,
+  projectId: string,
+  customNotes?: string
+): Promise<ServiceResult<AIProposalResult>> {
+  try {
+    const [freelancerProfile, userDoc, portfolioEntities, reputationResult, projectEntity] = await Promise.all([
+      freelancerProfileRepository.getProfileByUserId(freelancerId),
+      databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, freelancerId).catch(() => null),
+      portfolioRepository.findByFreelancer(freelancerId).catch(() => []),
+      getReputation(freelancerId).catch(() => null),
+      projectRepository.findProjectById(projectId),
+    ]);
+
+    if (!projectEntity) {
+      return errorResult('PROJECT_NOT_FOUND', 'Project not found');
+    }
+
+    const freelancerName = (userDoc?.['name'] as string) || freelancerProfile?.name || 'Freelancer';
+    const freelancerTitle = freelancerProfile?.bio ? freelancerProfile.bio.slice(0, 60) : 'Full-Stack Web3 Developer';
+    const freelancerBio = freelancerProfile?.bio || '';
+    const freelancerSkills = (freelancerProfile?.skills || []).map((s: { name: string }) => s.name);
+
+    // Calculate score / reputation accurately
+    const totalRatings = reputationResult && reputationResult.success ? reputationResult.data.totalRatings : 0;
+    const repScoreRaw = reputationResult && reputationResult.success ? reputationResult.data.score : 0;
+    const reputationScore = totalRatings > 0 && repScoreRaw > 0
+      ? Math.min(100, Math.round((repScoreRaw / 5) * 100))
+      : 0;
+    const completedProjectsCount = totalRatings;
+
+    // Map project skills & milestones
+    const projectSkills = (projectEntity.required_skills || [])
+      .map((s: { skill_name?: string }) => s.skill_name || '')
+      .filter(Boolean);
+
+    const projectMilestones = (projectEntity.milestones || []).map((m: { title: string; description?: string; amount?: number }) => ({
+      title: m.title,
+      description: m.description || '',
+      amount: m.amount || 0,
+    }));
+
+    const mappedPortfolio = portfolioEntities.map((item: { title: string; description: string; skills?: string; project_url?: string }) => ({
+      title: item.title,
+      description: item.description,
+      skills: item.skills ? (safeJsonParse<string[]>(item.skills) || []) : [],
+      projectUrl: item.project_url,
+    }));
+
+    const requestData: AIProposalGenerationRequest = {
+      freelancerName,
+      freelancerTitle,
+      freelancerBio,
+      freelancerSkills,
+      reputationScore,
+      completedProjectsCount,
+      portfolioItems: mappedPortfolio,
+      projectTitle: projectEntity.title,
+      projectDescription: projectEntity.description,
+      projectSkills,
+      projectBudget: projectEntity.budget,
+      projectMilestones,
+      projectDeadline: projectEntity.deadline,
+      ...(customNotes ? { customNotes } : {}),
+    };
+
+    const aiResult = await generateAIProposal(requestData);
+
+    if (isAIError(aiResult)) {
+      return successResult(fallbackGenerateProposal(requestData));
+    }
+
+    return successResult(aiResult);
+  } catch (error) {
+    logger.error('Failed to generate proposal for project', { error, freelancerId, projectId });
+    return errorResult('INTERNAL_ERROR', 'Failed to generate proposal');
+  }
 }
 
 export function isMatchingError<T>(
