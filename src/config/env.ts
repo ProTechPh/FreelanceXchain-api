@@ -48,6 +48,7 @@ export const config = {
     port: getEnvVarNumber('PORT', 3000),
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
+    frontendUrl: getEnvVarOptional('FRONTEND_URL') ?? getEnvVarOptional('PUBLIC_URL') ?? 'http://localhost:3000',
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
     logLevel: getEnvVar('LOG_LEVEL', 'error'),
     verboseLogs: getEnvVarBoolean('VERBOSE_LOGS', false),

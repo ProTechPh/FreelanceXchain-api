@@ -18,7 +18,7 @@ if (!getCsrfSecret()) {
 /* istanbul ignore next -- production-only config */
 const cookieName = getNodeEnv() === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
 /* istanbul ignore next */
-const sameSite: 'strict' | 'lax' = getNodeEnv() === 'production' ? 'strict' : 'lax';
+const sameSite: 'none' | 'lax' = getNodeEnv() === 'production' ? 'none' : 'lax';
 /* istanbul ignore next */
 const secure = getNodeEnv() === 'production';
 
