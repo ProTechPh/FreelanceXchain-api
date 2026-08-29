@@ -173,14 +173,15 @@ function renderTemplateFooter(): string {
   </tr>`;
 }
 
-function wrapInBrandedTemplate(subject: string, bodyTextOrHtml: string, senderTitle = 'FreelanceXchain Support'): string {
-  if (bodyTextOrHtml.includes('<html') || bodyTextOrHtml.includes('<!DOCTYPE')) {
-    return bodyTextOrHtml;
+function wrapInBrandedTemplate(subject: string, bodyTextOrHtml = '', senderTitle = 'FreelanceXchain Support'): string {
+  const content = bodyTextOrHtml || '';
+  if (content.includes('<html') || content.includes('<!DOCTYPE')) {
+    return content;
   }
 
-  const formattedContent = bodyTextOrHtml.includes('<p>') || bodyTextOrHtml.includes('<div>')
-    ? bodyTextOrHtml
-    : bodyTextOrHtml
+  const formattedContent = content.includes('<p>') || content.includes('<div>')
+    ? content
+    : content
         .split(/\n\n+/)
         .map((p) => `<p style="margin: 0 0 16px; color: #334155; font-size: 15px; line-height: 1.7;">${p.replace(/\n/g, '<br/>')}</p>`)
         .join('');
@@ -462,10 +463,116 @@ export type SendNewEmailInput = {
   senderName?: string;
 };
 
+async function dispatchCloudflareSend(params: {
+  formattedFrom: string;
+  to: string;
+  subject: string;
+  brandedHtml: string;
+  textBody: string;
+}): Promise<string | null> {
+  const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
+  const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
+
+  if (!apiToken || !accountId) {
+    return 'EMAIL_CONFIG_MISSING';
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: params.formattedFrom,
+        to: params.to,
+        subject: params.subject,
+        html: params.brandedHtml,
+        text: params.textBody,
+      }),
+    }
+  );
+
+  return readCloudflareSendError(response);
+}
+
+async function syncSendToRecipientInbox(params: {
+  userId: string;
+  messageId: string;
+  to: string;
+  formattedFrom: string;
+  subject: string;
+  textBody: string;
+  brandedHtml: string;
+}): Promise<void> {
+  try {
+    const recipientUser = await userRepository.getUserByEmail(params.to);
+    if (recipientUser && recipientUser.id !== params.userId) {
+      await emailInboxRepository.create({
+        id: '',
+        message_id: params.messageId,
+        user_id: recipientUser.id,
+        from_address: params.formattedFrom,
+        to_address: params.to,
+        subject: params.subject,
+        text_body: params.textBody,
+        html_body: params.brandedHtml,
+        attachments: '[]',
+        is_read: false,
+        is_starred: false,
+        folder: 'inbox',
+        in_reply_to: null,
+        references: null,
+        received_at: new Date().toISOString(),
+      });
+    }
+  } catch {
+    // Best-effort delivery to recipient inbox
+  }
+}
+
+export type SendNewEmailOptions = {
+  html?: string;
+  senderProfile?: SenderProfileKey | string;
+  senderName?: string;
+};
+
 export async function sendNewEmail(
-  input: SendNewEmailInput
+  userIdOrInput: string | SendNewEmailInput,
+  toParam?: string,
+  subjectParam?: string,
+  textBodyOrOptions?: string | SendNewEmailOptions,
+  ...rest: Array<string | undefined>
 ): Promise<ServiceResult<{ emailId: string }>> {
-  const { userId, to, subject, textBody, htmlBody, senderProfile, senderName } = input;
+  let userId = '';
+  let to = '';
+  let subject = '';
+  let textBody = '';
+  let htmlBody = '';
+  let senderProfile: SenderProfileKey | string | undefined;
+  let senderName: string | undefined;
+
+  if (typeof userIdOrInput === 'object') {
+    userId = userIdOrInput.userId;
+    to = userIdOrInput.to;
+    subject = userIdOrInput.subject;
+    textBody = userIdOrInput.textBody || '';
+    htmlBody = userIdOrInput.htmlBody || textBody;
+    senderProfile = userIdOrInput.senderProfile;
+    senderName = userIdOrInput.senderName;
+  } else {
+    userId = userIdOrInput;
+    to = toParam || '';
+    subject = subjectParam || '';
+    textBody = typeof textBodyOrOptions === 'string' ? textBodyOrOptions : '';
+    const [htmlParam, profileParam, nameParam] = rest;
+    htmlBody = typeof htmlParam === 'string' ? htmlParam : (typeof textBodyOrOptions === 'object' && textBodyOrOptions?.html ? textBodyOrOptions.html : textBody);
+    senderProfile = typeof textBodyOrOptions === 'object' && textBodyOrOptions?.senderProfile ? textBodyOrOptions.senderProfile : profileParam;
+    senderName = typeof textBodyOrOptions === 'object' && textBodyOrOptions?.senderName ? textBodyOrOptions.senderName : nameParam;
+  }
+
   try {
     const user = await userRepository.getUserById(userId);
     if (!user) {
@@ -476,38 +583,19 @@ export async function sendNewEmail(
     const formattedFrom = `${displayName} <${emailAddress}>`;
     const brandedHtml = wrapInBrandedTemplate(subject, htmlBody || textBody, `${displayName} (${title})`);
 
-    const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
-    const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
+    const sendError = await dispatchCloudflareSend({
+      formattedFrom,
+      to,
+      subject,
+      brandedHtml,
+      textBody: textBody || htmlBody,
+    });
 
-    if (apiToken && accountId) {
-      try {
-        const response = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              from: formattedFrom,
-              to,
-              subject,
-              html: brandedHtml,
-              text: textBody || htmlBody,
-            }),
-          }
-        );
-
-        const sendError = await readCloudflareSendError(response);
-        if (sendError) {
-          logger.warn(`Cloudflare email send warning: ${sendError}`);
-        }
-      } catch (cfError) {
-        logger.warn('Cloudflare email send failed, persisting locally:', { error: cfError instanceof Error ? cfError.message : String(cfError) });
-      }
-    } else {
-      logger.info(`[Email Service] Delivered simulated email to ${to}: "${subject}"`, { from: formattedFrom });
+    if (sendError === 'EMAIL_CONFIG_MISSING') {
+      return errorResult('EMAIL_CONFIG_MISSING', 'Cloudflare email configuration is missing');
+    }
+    if (sendError) {
+      return errorResult('EMAIL_SEND_FAILED', sendError);
     }
 
     const messageId = `<${crypto.randomUUID()}@${PLATFORM_DOMAIN}>`;
@@ -529,31 +617,15 @@ export async function sendNewEmail(
       received_at: new Date().toISOString(),
     });
 
-    // If recipient is also a registered user on the platform, deliver to their inbox
-    try {
-      const recipientUser = await userRepository.getUserByEmail(to);
-      if (recipientUser && recipientUser.id !== userId) {
-        await emailInboxRepository.create({
-          id: '',
-          message_id: messageId,
-          user_id: recipientUser.id,
-          from_address: formattedFrom,
-          to_address: to,
-          subject,
-          text_body: textBody || htmlBody,
-          html_body: brandedHtml,
-          attachments: '[]',
-          is_read: false,
-          is_starred: false,
-          folder: 'inbox',
-          in_reply_to: null,
-          references: null,
-          received_at: new Date().toISOString(),
-        });
-      }
-    } catch {
-      // Best-effort delivery to recipient inbox
-    }
+    await syncSendToRecipientInbox({
+      userId,
+      messageId,
+      to,
+      formattedFrom,
+      subject,
+      textBody: textBody || htmlBody,
+      brandedHtml,
+    });
 
     logger.info(`Email sent by user ${userId}`, { emailId: email.id, to, profile: displayName });
     return successResult({ emailId: email.id });
@@ -562,6 +634,7 @@ export async function sendNewEmail(
     return errorResult('SEND_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to send email');
   }
 }
+
 
 export interface ReplyToEmailOptions {
   html?: string;
@@ -577,45 +650,37 @@ async function dispatchCloudflareReply(params: {
   textBody: string;
   originalMessageId: string;
   refs: string;
-}): Promise<void> {
+}): Promise<string | null> {
   const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
   const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
 
   if (!apiToken || !accountId) {
-    logger.info(`[Email Service] Delivered simulated reply to ${params.replyTo}: "${params.subject}"`, { from: params.formattedFrom });
-    return;
+    return 'EMAIL_CONFIG_MISSING';
   }
 
-  try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
-      {
-        method: 'POST',
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: params.formattedFrom,
+        to: params.replyTo,
+        subject: params.subject,
+        html: params.brandedHtml,
+        text: params.textBody,
         headers: {
-          'Authorization': `Bearer ${apiToken}`,
-          'Content-Type': 'application/json',
+          'In-Reply-To': params.originalMessageId,
+          'References': params.refs,
         },
-        body: JSON.stringify({
-          from: params.formattedFrom,
-          to: params.replyTo,
-          subject: params.subject,
-          html: params.brandedHtml,
-          text: params.textBody,
-          headers: {
-            'In-Reply-To': params.originalMessageId,
-            'References': params.refs,
-          },
-        }),
-      }
-    );
-
-    const sendError = await readCloudflareSendError(response);
-    if (sendError) {
-      logger.warn(`Cloudflare email reply warning: ${sendError}`);
+      }),
     }
-  } catch (cfError) {
-    logger.warn('Cloudflare email reply failed, persisting locally:', { error: cfError instanceof Error ? cfError.message : String(cfError) });
-  }
+  );
+
+  return readCloudflareSendError(response);
 }
 
 async function syncReplyToRecipientInbox(params: {
@@ -682,7 +747,7 @@ export async function replyToEmail(
     const brandedHtml = wrapInBrandedTemplate(subject, htmlBody || textBody, `${displayName} (${title})`);
     const refs = original.references ? `${original.references} ${original.message_id}` : original.message_id;
 
-    await dispatchCloudflareReply({
+    const sendError = await dispatchCloudflareReply({
       formattedFrom,
       replyTo,
       subject,
@@ -691,6 +756,13 @@ export async function replyToEmail(
       originalMessageId: original.message_id,
       refs,
     });
+
+    if (sendError === 'EMAIL_CONFIG_MISSING') {
+      return errorResult('EMAIL_CONFIG_MISSING', 'Cloudflare email configuration is missing');
+    }
+    if (sendError) {
+      return errorResult('EMAIL_SEND_FAILED', sendError);
+    }
 
     const messageId = `<${crypto.randomUUID()}@${PLATFORM_DOMAIN}>`;
     const email = await emailInboxRepository.create({
@@ -730,6 +802,7 @@ export async function replyToEmail(
     return errorResult('REPLY_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to reply to email');
   }
 }
+
 
 
 export async function getUnreadCount(
