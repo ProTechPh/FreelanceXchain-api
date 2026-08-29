@@ -543,8 +543,7 @@ export async function sendNewEmail(
   userIdOrInput: string | SendNewEmailInput,
   toParam?: string,
   subjectParam?: string,
-  textBodyOrOptions?: string | SendNewEmailOptions,
-  ...rest: Array<string | undefined>
+  textBodyOrOptions?: string | SendNewEmailOptions
 ): Promise<ServiceResult<{ emailId: string }>> {
   let userId = '';
   let to = '';
@@ -566,11 +565,15 @@ export async function sendNewEmail(
     userId = userIdOrInput;
     to = toParam || '';
     subject = subjectParam || '';
-    textBody = typeof textBodyOrOptions === 'string' ? textBodyOrOptions : '';
-    const [htmlParam, profileParam, nameParam] = rest;
-    htmlBody = typeof htmlParam === 'string' ? htmlParam : (typeof textBodyOrOptions === 'object' && textBodyOrOptions?.html ? textBodyOrOptions.html : textBody);
-    senderProfile = typeof textBodyOrOptions === 'object' && textBodyOrOptions?.senderProfile ? textBodyOrOptions.senderProfile : profileParam;
-    senderName = typeof textBodyOrOptions === 'object' && textBodyOrOptions?.senderName ? textBodyOrOptions.senderName : nameParam;
+    if (typeof textBodyOrOptions === 'string') {
+      textBody = textBodyOrOptions;
+      htmlBody = textBodyOrOptions;
+    } else {
+      textBody = '';
+      htmlBody = textBodyOrOptions?.html || textBody;
+      senderProfile = textBodyOrOptions?.senderProfile;
+      senderName = textBodyOrOptions?.senderName;
+    }
   }
 
   try {
