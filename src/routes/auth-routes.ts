@@ -32,6 +32,7 @@ import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVeri
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
+import { config } from '../config/env.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
 import {
   validateEmail,
@@ -750,9 +751,24 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
 
     const customRedirect = typeof req.query['redirect_to'] === 'string' ? req.query['redirect_to'] : undefined;
     const url = await getOAuthUrl(provider, customRedirect);
+
+    // If caller requested JSON (e.g. frontend API call), return JSON payload
+    if (req.headers.accept?.includes('application/json') || req.query['format'] === 'json') {
+      res.status(200).json({ url });
+      return;
+    }
+
     res.redirect(url);
   } catch (error: unknown) {
     logger.error('Failed to initiate OAuth flow', { requestId, provider, error: getErrorMessage(error) });
+    
+    // If browser navigation, redirect to frontend login with error query param
+    if (req.headers.accept?.includes('text/html')) {
+      const frontendUrl = config.server.frontendUrl || 'https://www.freelancexchain.works';
+      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent('Failed to initiate OAuth flow')}`);
+      return;
+    }
+
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to initiate OAuth flow', { requestId });
   }
 }));

@@ -441,14 +441,23 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   }
 }
 
+async function resolvePublicUser(appwriteUser: Models.User<Models.Preferences>): Promise<UserEntity | null> {
+  let publicUser = await userRepository.getUserById(appwriteUser.$id);
+
+  if (!publicUser && appwriteUser.email) {
+    publicUser = await userRepository.getUserByEmail(appwriteUser.email.toLowerCase().trim());
+  }
+
+  return publicUser;
+}
+
 export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
   try {
     const userClient = createUserClient(refreshToken);
     const account = new Account(userClient);
 
     const appwriteUser = await account.get();
-
-    const publicUser = await userRepository.getUserById(appwriteUser.$id);
+    const publicUser = await resolvePublicUser(appwriteUser);
 
     if (!publicUser) {
       return {
@@ -476,8 +485,7 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
     const account = new Account(userClient);
 
     const appwriteUser = await account.get();
-
-    const publicUser = await userRepository.getUserById(appwriteUser.$id);
+    const publicUser = await resolvePublicUser(appwriteUser);
 
     if (!publicUser) {
       return {
@@ -516,7 +524,10 @@ export async function validateTokenAndGetUser(accessToken: string): Promise<Auth
     return tokenResult; // Return AuthError
   }
 
-  const userEntity = await userRepository.getUserById(tokenResult.userId);
+  let userEntity = await userRepository.getUserById(tokenResult.userId);
+  if (!userEntity && tokenResult.email) {
+    userEntity = await userRepository.getUserByEmail(tokenResult.email);
+  }
   
   if (!userEntity) {
     return {

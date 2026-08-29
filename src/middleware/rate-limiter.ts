@@ -27,6 +27,16 @@ type RateLimitConfig = {
  */
 function sendRateLimitError(res: Response, req: Request, message: string | undefined, retryAfter: number): void {
   res.set('Retry-After', String(retryAfter));
+
+  // If it's a browser GET navigation (e.g. direct OAuth link), redirect to frontend login with error param
+  const acceptsHtml = req.headers.accept?.includes('text/html');
+  if (req.method === 'GET' && acceptsHtml && req.path.includes('/oauth')) {
+    const frontendUrl = config.server.frontendUrl || 'https://www.freelancexchain.works';
+    const errorMsg = message ?? 'Too many authentication attempts. Please try again later.';
+    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
+    return;
+  }
+
   sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', message ?? 'Too many requests, please try again later', { requestId: getRequestId(req), retryAfter });
 }
 
