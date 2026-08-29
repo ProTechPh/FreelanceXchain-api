@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Deployments
 
+- **1.0.23+build.2b90458** (2026-08-29) - commit `2b90458`: Merge pull request #256 from ProTechPh/employee
 - **1.0.22+build.d6711ad** (2026-08-27) - commit `d6711ad`: Merge pull request #255 from ProTechPh/freelancer
 - **1.0.21+build.8501712** (2026-08-26) - commit `8501712`: fix(csrf): return token in response body and safely handle cross-domain CSRF without throwing
 - **1.0.20+build.1c7a000** (2026-08-26) - commit `1c7a000`: fix(auth): use users.createSession for reliable session creation with full-scope Appwrite API key
