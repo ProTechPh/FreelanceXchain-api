@@ -3,6 +3,7 @@ import { ValidationError } from './error-handler.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const APPWRITE_ID_PATTERN = /^[0-9a-f]{20}$/i;
 const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
 
 export function isValidUUID(value: string): boolean {
@@ -20,7 +21,7 @@ export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
 
     for (const paramName of paramNames) {
       const value = req.params[paramName];
-      if (value && !isValidUUID(value)) {
+      if (value && !isValidUUID(value) && !APPWRITE_ID_PATTERN.test(value)) {
         errors.push({
           field: paramName,
           message: `${paramName} must be a valid UUID`,

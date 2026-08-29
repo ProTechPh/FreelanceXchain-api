@@ -31,62 +31,69 @@ router.post('/', authMiddleware, requireRole('freelancer'), fileUploadRateLimite
 async function handleMultipartPortfolio(req: Request, res: Response) {
   const middleware = uploadPortfolioImages;
   let index = 0;
-  const executeMiddleware = async () => {
+  const executeMiddleware = async (): Promise<void> => {
     if (index >= middleware.length) {
-      return processMultipartPortfolio(req, res);
+      await processMultipartPortfolio(req, res);
+      return;
     }
     const currentMiddleware = middleware[index++];
     if (!currentMiddleware) return;
     await new Promise<void>((resolve, reject) => {
-      currentMiddleware(req, res, (err?: unknown) => {
+      currentMiddleware(req, res, (err: any) => {
         if (err) reject(err);
         else resolve();
       });
     });
-    return executeMiddleware();
+    await executeMiddleware();
   };
-  
+
   try {
     await executeMiddleware();
-  } catch {
-    if (res.headersSent) return;
+  } catch (error: any) {
     const requestId = getRequestId(req);
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', { requestId });
+    sendErrorResponse(res, 400, 'FILE_UPLOAD_ERROR', error.message || 'File upload failed', { requestId });
   }
 }
 
 async function processMultipartPortfolio(req: Request, res: Response) {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
-  const files = req.files as Express.Multer.File[] | undefined;
+  const files = (req.files as Express.Multer.File[]) || [];
   const { title, description, projectUrl, skills, completedAt } = req.body;
 
   if (!userId) {
-    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
   }
 
-  let images: any[] = [];
-  if (files && files.length > 0) {
+  if (!title || !description) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Title and description are required', { requestId });
+    return;
+  }
+
+  let uploadedImages: any[] = [];
+  if (files.length > 0) {
     const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PORTFOLIO_IMAGES, userId);
     const failedUploads = uploadResults.filter(r => !r.success);
-    
     if (failedUploads.length > 0) {
-      const successfulUploads = uploadResults.filter(r => r.success && r.metadata);
+      const successfulUploads = uploadResults.filter(r => r.success && r.metadata).map(r => r.metadata!);
       if (successfulUploads.length > 0) {
-        await cleanupUploadedFiles(successfulUploads.map(r => r.metadata!), STORAGE_BUCKETS.PORTFOLIO_IMAGES);
+        await cleanupUploadedFiles(successfulUploads, STORAGE_BUCKETS.PORTFOLIO_IMAGES);
       }
-      return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
+      sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
+      return;
     }
-    images = uploadResults.map(r => r.metadata!);
+    uploadedImages = uploadResults.map(r => r.metadata!);
   } else if (projectUrl && typeof projectUrl === 'string' && projectUrl.trim()) {
-    images = [{
+    uploadedImages = [{
       url: `https://api.microlink.io/?url=${encodeURIComponent(projectUrl.trim())}&screenshot=true&meta=false&embed=screenshot.url`,
       filename: 'live-website-preview.png',
       size: 0,
       mimeType: 'image/png',
     }];
   } else {
-    return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 image or a project URL is required', { requestId });
+    sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 image or a project URL is required', { requestId });
+    return;
   }
 
   const skillsArray = typeof skills === 'string' ? skills.split(',').map((s: string) => s.trim()).filter(Boolean) : (skills || []);
@@ -95,17 +102,18 @@ async function processMultipartPortfolio(req: Request, res: Response) {
     title,
     description,
     projectUrl,
-    images,
+    images: uploadedImages,
     skills: skillsArray,
     completedAt,
   });
 
   if (!result.success) {
-    await cleanupUploadedFiles(images, STORAGE_BUCKETS.PORTFOLIO_IMAGES);
-    return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    await cleanupUploadedFiles(uploadedImages, STORAGE_BUCKETS.PORTFOLIO_IMAGES);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
   }
 
-  return res.status(201).json(result.data);
+  res.status(201).json(result.data);
 }
 
 async function handleJsonPortfolio(req: Request, res: Response) {
@@ -115,6 +123,10 @@ async function handleJsonPortfolio(req: Request, res: Response) {
 
   if (!userId) {
     return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+  }
+
+  if (!title || !description) {
+    return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Title and description are required', { requestId });
   }
 
   const result = await createPortfolioItem(userId, {
