@@ -177,6 +177,14 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   parseJsonResponse: mockParseJsonResponse,
   isAIError: mockIsAIError,
   generateContent: mockGenerateContent,
+  fallbackGenerateProposal: jest.fn().mockReturnValue({
+    coverLetter: 'Fallback proposal',
+    proposedRate: 1000,
+    estimatedDuration: 14,
+    proposedMilestones: [],
+    highlights: [],
+  }),
+  generateAIProposal: jest.fn(),
   SKILL_GAP_PROMPT: 'Test prompt {currentSkills}',
 }));
 
@@ -346,10 +354,12 @@ function resetAllMocks() {
   mockProjectRepo.listAllProjects.mockReset().mockResolvedValue([]);
   mockProjectRepo.listRecentOpenProjects.mockReset().mockResolvedValue([]);
   mockProjectRepo.findByFilters.mockReset().mockResolvedValue([]);
+  mockProjectRepo.findProjectById.mockReset().mockResolvedValue(undefined);
   mockContractRepo.findAllByFreelancer.mockReset().mockResolvedValue([]);
   mockContractRepo.findAllByFreelancers.mockReset().mockResolvedValue(new Map());
   mockContractRepo.countCompletedByFreelancer.mockReset().mockResolvedValue(0);
   mockContractRepo.findActiveContracts.mockReset().mockResolvedValue([]);
+  mockContractRepo.getUserContracts.mockReset().mockResolvedValue({ items: [], total: 0, hasMore: false });
   mockMessageRepo.getUnreadMessageCountForUser.mockReset().mockResolvedValue(0);
   mockMessageRepo.getUnreadMessageCountsForUsers.mockReset().mockResolvedValue(new Map());
   mockFreelancerProfileRepo.findByFilters.mockReset().mockResolvedValue([]);
