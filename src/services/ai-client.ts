@@ -163,6 +163,19 @@ function isGeminiApi(): boolean {
   return url.includes('googleapis.com') || url.includes('generativelanguage');
 }
 
+function isOpenAiCompatibleProvider(): boolean {
+  const url = config.llm.apiUrl.toLowerCase();
+  return (
+    url.includes('groq.com') ||
+    url.includes('openai.com') ||
+    url.includes('openrouter.ai') ||
+    url.includes('deepseek.com') ||
+    url.includes('together.xyz') ||
+    url.endsWith('/v1') ||
+    url.includes('/openai')
+  );
+}
+
 /**
  * Build the AI API URL.
  */
@@ -173,6 +186,9 @@ function buildApiUrl(): string {
   }
   if (baseUrl.toLowerCase().endsWith('/chat/completions') || baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
     return baseUrl;
+  }
+  if (isOpenAiCompatibleProvider()) {
+    return `${baseUrl}/chat/completions`;
   }
   return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
 }
