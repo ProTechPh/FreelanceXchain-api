@@ -5,6 +5,7 @@ Official email templates matching the **FreelanceXchain Landing Page Dark & Emer
 ## 📧 Available Templates
 
 ### 🔐 Appwrite Authentication & Security Flows
+
 1. **confirmation.html** - Signup verification email with OTP & confirmation link
 2. **magic-link.html** - Passwordless instant login link
 3. **recovery.html** - Password reset email with recovery code
@@ -13,16 +14,17 @@ Official email templates matching the **FreelanceXchain Landing Page Dark & Emer
 6. **invite.html** - Platform invitation link & token
 
 ### 📬 Platform Event & Notification Flows (`email-delivery-service`)
-7. **proposal_accepted.html** - Freelancer proposal accepted & escrow notice
-8. **milestone_approved.html** - Deliverable approved & payment unlocked
-9. **payment_released.html** - On-chain escrow payout notice with Tx hash
-10. **contract_created.html** - New smart contract agreement ready to sign
-11. **dispute_created.html** - Dispute room alert for arbitration
-12. **kyc_approved.html** - Identity verification approved badge
-13. **kyc_rejected.html** - Identity verification resubmission notice
-14. **message_received.html** - Direct message notification & preview
-15. **review_received.html** - Star rating & on-chain review feedback
-16. **weekly_digest.html** - Weekly platform opportunities & activity digest
+
+1. **proposal_accepted.html** - Freelancer proposal accepted & escrow notice
+2. **milestone_approved.html** - Deliverable approved & payment unlocked
+3. **payment_released.html** - On-chain escrow payout notice with Tx hash
+4. **contract_created.html** - New smart contract agreement ready to sign
+5. **dispute_created.html** - Dispute room alert for arbitration
+6. **kyc_approved.html** - Identity verification approved badge
+7. **kyc_rejected.html** - Identity verification resubmission notice
+8. **message_received.html** - Direct message notification & preview
+9. **review_received.html** - Star rating & on-chain review feedback
+10. **weekly_digest.html** - Weekly platform opportunities & activity digest
 
 ## 🎨 Landing Page Design System Integration
 

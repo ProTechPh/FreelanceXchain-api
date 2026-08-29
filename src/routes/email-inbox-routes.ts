@@ -216,7 +216,7 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
 
   /* istanbul ignore next -- validation guard above ensures at least one of text/html is truthy */
   const result = (senderProfile || senderName)
-    ? await replyToEmail(userId, emailId, text || '', html || text || '', { senderProfile, senderName })
+    ? await replyToEmail(userId, emailId, text || '', { html: html || text || '', senderProfile, senderName })
     : await replyToEmail(userId, emailId, text || '', html || text || '');
 
   if (!result.success) {

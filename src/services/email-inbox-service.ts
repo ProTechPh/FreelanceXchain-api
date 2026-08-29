@@ -71,6 +71,108 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+function renderTemplateNav(subject: string): string {
+  return `<tr>
+    <td align="center" style="padding-bottom: 24px;">
+      <div style="display: inline-block; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 9999px; padding: 10px 24px; box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05);">
+        <table role="presentation" style="border-collapse: collapse; margin: 0 auto;">
+          <tr>
+            <td style="vertical-align: middle; padding-right: 8px;">
+              <svg width="26" height="26" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(45 50 50)" fill="none" stroke="#10b981" stroke-width="11" />
+                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(-45 50 50)" fill="none" stroke="#059669" stroke-width="11" />
+              </svg>
+            </td>
+            <td style="vertical-align: middle;">
+              <span style="font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1;">
+                Freelance<span style="color: #10b981; font-weight: 900;">X</span>chain
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding: 8px 16px 28px; text-align: center;">
+      <div style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 6px 16px; margin-bottom: 18px;">
+        <span style="color: #065f46; font-size: 12px; font-weight: 700; letter-spacing: 0.2px;">
+          ✨ AI Skill Matching &bull; Smart Contract Escrow &rarr;
+        </span>
+      </div>
+      <h1 style="margin: 0 0 12px; font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1.25;">
+        ${escapeHtml(subject)}
+      </h1>
+      <div style="margin: 24px 0 20px;">
+        <a href="https://freelancexchain.works/dashboard" target="_blank" style="display: inline-block; padding: 14px 38px; background-color: #064e3b; color: #ffffff; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 9999px; box-shadow: 0 4px 14px rgba(6, 78, 59, 0.3); letter-spacing: 0.1px;">
+          Open Dashboard &rarr;
+        </a>
+      </div>
+      <table role="presentation" style="margin: 0 auto; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 4px 10px; font-size: 12px; color: #475569; font-weight: 600;">
+            <span style="color: #10b981; font-weight: 800; margin-right: 4px;">✓</span> 100% Smart Contract Escrow
+          </td>
+          <td style="padding: 4px 10px; font-size: 12px; color: #475569; font-weight: 600;">
+            <span style="color: #10b981; font-weight: 800; margin-right: 4px;">✓</span> AI Skill Matching
+          </td>
+          <td style="padding: 4px 10px; font-size: 12px; color: #475569; font-weight: 600;">
+            <span style="color: #10b981; font-weight: 800; margin-right: 4px;">✓</span> Verified Escrow
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
+function renderTemplateCard(senderTitle: string, formattedContent: string): string {
+  return `<tr>
+    <td style="padding: 0 12px;">
+      <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.06), 0 8px 10px -6px rgba(0, 0, 0, 0.04); overflow: hidden;">
+        <tr>
+          <td style="padding: 20px 28px 16px; border-bottom: 1px solid #f1f5f9; background-color: #ffffff;">
+            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td>
+                  <div style="font-size: 15px; font-weight: 700; color: #0f172a;">Official Platform Dispatch</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 2px;">From: ${escapeHtml(senderTitle)}</div>
+                </td>
+                <td align="right">
+                  <span style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 4px 12px; font-size: 11px; font-weight: 700; color: #065f46;">Verified 🛡️</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 28px;">
+            <div style="color: #334155; font-size: 15px; line-height: 1.7;">${formattedContent}</div>
+            <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px; margin-top: 20px;">
+              <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="width: 24px; vertical-align: middle; font-size: 16px;">🛡️</td>
+                  <td style="vertical-align: middle; font-size: 12px; color: #166534; line-height: 1.4;">
+                    <strong>Escrow Protected:</strong> FreelanceXchain automatically safeguards communication and contract agreements on-chain.
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
+function renderTemplateFooter(): string {
+  return `<tr>
+    <td align="center" style="padding: 32px 16px; text-align: center;">
+      <p style="margin: 0 0 6px; color: #64748b; font-size: 12px; font-weight: 600;">&copy; 2026 FreelanceXchain. The Next-Gen Decentralized Freelance Marketplace.</p>
+      <p style="margin: 0; color: #94a3b8; font-size: 11px; line-height: 1.5;">Polygon Network &bull; Smart Contract Escrow &bull; Portable On-Chain Reputation &bull; AI Skill Matching</p>
+    </td>
+  </tr>`;
+}
+
 function wrapInBrandedTemplate(subject: string, bodyTextOrHtml: string, senderTitle = 'FreelanceXchain Support'): string {
   if (bodyTextOrHtml.includes('<html') || bodyTextOrHtml.includes('<!DOCTYPE')) {
     return bodyTextOrHtml;
@@ -95,133 +197,9 @@ function wrapInBrandedTemplate(subject: string, bodyTextOrHtml: string, senderTi
     <tr>
       <td align="center" style="padding: 32px 12px;">
         <table role="presentation" style="max-width: 620px; width: 100%; border-collapse: collapse;">
-          
-          <!-- Floating Top Navbar Pill -->
-          <tr>
-            <td align="center" style="padding-bottom: 24px;">
-              <div style="display: inline-block; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 9999px; padding: 10px 24px; box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05);">
-                <table role="presentation" style="border-collapse: collapse; margin: 0 auto;">
-                  <tr>
-                    <td style="vertical-align: middle; padding-right: 8px;">
-                      <svg width="26" height="26" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
-                        <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(45 50 50)" fill="none" stroke="#10b981" stroke-width="11" />
-                        <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(-45 50 50)" fill="none" stroke="#059669" stroke-width="11" />
-                      </svg>
-                    </td>
-                    <td style="vertical-align: middle;">
-                      <span style="font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1;">
-                        Freelance<span style="color: #10b981; font-weight: 900;">X</span>chain
-                      </span>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Hero Section -->
-          <tr>
-            <td align="center" style="padding: 8px 16px 28px; text-align: center;">
-              <!-- Top Pill Badge -->
-              <div style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 6px 16px; margin-bottom: 18px;">
-                <span style="color: #065f46; font-size: 12px; font-weight: 700; letter-spacing: 0.2px;">
-                  ✨ AI Skill Matching &bull; Smart Contract Escrow &rarr;
-                </span>
-              </div>
-
-              <!-- Hero Headline -->
-              <h1 style="margin: 0 0 12px; font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1.25;">
-                ${escapeHtml(subject)}
-              </h1>
-
-              <!-- Primary Action CTA Button -->
-              <div style="margin: 24px 0 20px;">
-                <a href="https://freelancexchain.works/dashboard" target="_blank" style="display: inline-block; padding: 14px 38px; background-color: #064e3b; color: #ffffff; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 9999px; box-shadow: 0 4px 14px rgba(6, 78, 59, 0.3); letter-spacing: 0.1px;">
-                  Open Dashboard &rarr;
-                </a>
-              </div>
-
-              <!-- Trust Badges Row -->
-              <table role="presentation" style="margin: 0 auto; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 4px 10px; font-size: 12px; color: #475569; font-weight: 600;">
-                    <span style="color: #10b981; font-weight: 800; margin-right: 4px;">✓</span> 100% Smart Contract Escrow
-                  </td>
-                  <td style="padding: 4px 10px; font-size: 12px; color: #475569; font-weight: 600;">
-                    <span style="color: #10b981; font-weight: 800; margin-right: 4px;">✓</span> AI Skill Matching
-                  </td>
-                  <td style="padding: 4px 10px; font-size: 12px; color: #475569; font-weight: 600;">
-                    <span style="color: #10b981; font-weight: 800; margin-right: 4px;">✓</span> Verified Escrow
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Landing Page Interactive Card Mockup -->
-          <tr>
-            <td style="padding: 0 12px;">
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.06), 0 8px 10px -6px rgba(0, 0, 0, 0.04); overflow: hidden;">
-                
-                <!-- Card Header -->
-                <tr>
-                  <td style="padding: 20px 28px 16px; border-bottom: 1px solid #f1f5f9; background-color: #ffffff;">
-                    <table role="presentation" style="width: 100%; border-collapse: collapse;">
-                      <tr>
-                        <td>
-                          <div style="font-size: 15px; font-weight: 700; color: #0f172a;">
-                            Official Platform Dispatch
-                          </div>
-                          <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
-                            From: ${escapeHtml(senderTitle)}
-                          </div>
-                        </td>
-                        <td align="right">
-                          <span style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 4px 12px; font-size: 11px; font-weight: 700; color: #065f46;">
-                            Verified 🛡️
-                          </span>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-
-                <!-- Card Content -->
-                <tr>
-                  <td style="padding: 28px;">
-                    <div style="color: #334155; font-size: 15px; line-height: 1.7;">
-                      ${formattedContent}
-                    </div>
-
-                    <!-- Escrow Protection Callout Banner -->
-                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px; margin-top: 20px;">
-                      <table role="presentation" style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                          <td style="width: 24px; vertical-align: middle; font-size: 16px;">🛡️</td>
-                          <td style="vertical-align: middle; font-size: 12px; color: #166534; line-height: 1.4;">
-                            <strong>Escrow Protected:</strong> FreelanceXchain automatically safeguards communication and contract agreements on-chain.
-                          </td>
-                        </tr>
-                      </table>
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer Section -->
-          <tr>
-            <td align="center" style="padding: 32px 16px; text-align: center;">
-              <p style="margin: 0 0 6px; color: #64748b; font-size: 12px; font-weight: 600;">
-                &copy; 2026 FreelanceXchain. The Next-Gen Decentralized Freelance Marketplace.
-              </p>
-              <p style="margin: 0; color: #94a3b8; font-size: 11px; line-height: 1.5;">
-                Polygon Network &bull; Smart Contract Escrow &bull; Portable On-Chain Reputation &bull; AI Skill Matching
-              </p>
-            </td>
-          </tr>
-
+          ${renderTemplateNav(subject)}
+          ${renderTemplateCard(senderTitle, formattedContent)}
+          ${renderTemplateFooter()}
         </table>
       </td>
     </tr>
@@ -585,12 +563,103 @@ export async function sendNewEmail(
   }
 }
 
+export interface ReplyToEmailOptions {
+  html?: string;
+  senderProfile?: string;
+  senderName?: string;
+}
+
+async function dispatchCloudflareReply(params: {
+  formattedFrom: string;
+  replyTo: string;
+  subject: string;
+  brandedHtml: string;
+  textBody: string;
+  originalMessageId: string;
+  refs: string;
+}): Promise<void> {
+  const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
+  const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
+
+  if (!apiToken || !accountId) {
+    logger.info(`[Email Service] Delivered simulated reply to ${params.replyTo}: "${params.subject}"`, { from: params.formattedFrom });
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: params.formattedFrom,
+          to: params.replyTo,
+          subject: params.subject,
+          html: params.brandedHtml,
+          text: params.textBody,
+          headers: {
+            'In-Reply-To': params.originalMessageId,
+            'References': params.refs,
+          },
+        }),
+      }
+    );
+
+    const sendError = await readCloudflareSendError(response);
+    if (sendError) {
+      logger.warn(`Cloudflare email reply warning: ${sendError}`);
+    }
+  } catch (cfError) {
+    logger.warn('Cloudflare email reply failed, persisting locally:', { error: cfError instanceof Error ? cfError.message : String(cfError) });
+  }
+}
+
+async function syncReplyToRecipientInbox(params: {
+  userId: string;
+  messageId: string;
+  formattedFrom: string;
+  replyTo: string;
+  subject: string;
+  textBody: string;
+  brandedHtml: string;
+  originalMessageId: string;
+  refs: string;
+}): Promise<void> {
+  try {
+    const recipientUser = await userRepository.getUserByEmail(params.replyTo);
+    if (recipientUser && recipientUser.id !== params.userId) {
+      await emailInboxRepository.create({
+        id: '',
+        message_id: params.messageId,
+        user_id: recipientUser.id,
+        from_address: params.formattedFrom,
+        to_address: params.replyTo,
+        subject: params.subject,
+        text_body: params.textBody,
+        html_body: params.brandedHtml,
+        attachments: '[]',
+        is_read: false,
+        is_starred: false,
+        folder: 'inbox',
+        in_reply_to: params.originalMessageId,
+        references: params.refs,
+        received_at: new Date().toISOString(),
+      });
+    }
+  } catch {
+    // Best-effort delivery to recipient inbox
+  }
+}
+
 export async function replyToEmail(
   userId: string,
   emailId: string,
   textBody: string,
-  htmlBody: string,
-  options?: { senderProfile?: string; senderName?: string }
+  htmlBodyOrOptions?: string | ReplyToEmailOptions
 ): Promise<ServiceResult<{ emailId: string }>> {
   try {
     const original = await emailInboxRepository.getFullEmail(emailId, userId);
@@ -603,53 +672,25 @@ export async function replyToEmail(
       return errorResult('USER_NOT_FOUND', 'User not found');
     }
 
+    const options = typeof htmlBodyOrOptions === 'object' ? htmlBodyOrOptions : undefined;
+    const htmlBody = typeof htmlBodyOrOptions === 'string' ? htmlBodyOrOptions : options?.html || textBody;
+
     const { displayName, emailAddress, title } = resolveSenderProfile(options?.senderProfile, options?.senderName || user.name);
     const formattedFrom = `${displayName} <${emailAddress}>`;
     const replyTo = original.from_address;
     const subject = original.subject.startsWith('Re: ') ? original.subject : `Re: ${original.subject}`;
     const brandedHtml = wrapInBrandedTemplate(subject, htmlBody || textBody, `${displayName} (${title})`);
+    const refs = original.references ? `${original.references} ${original.message_id}` : original.message_id;
 
-    const refs = original.references
-      ? `${original.references} ${original.message_id}`
-      : original.message_id;
-
-    const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
-    const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
-
-    if (apiToken && accountId) {
-      try {
-        const response = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              from: formattedFrom,
-              to: replyTo,
-              subject,
-              html: brandedHtml,
-              text: textBody || htmlBody,
-              headers: {
-                'In-Reply-To': original.message_id,
-                'References': refs,
-              },
-            }),
-          }
-        );
-
-        const sendError = await readCloudflareSendError(response);
-        if (sendError) {
-          logger.warn(`Cloudflare email reply warning: ${sendError}`);
-        }
-      } catch (cfError) {
-        logger.warn('Cloudflare email reply failed, persisting locally:', { error: cfError instanceof Error ? cfError.message : String(cfError) });
-      }
-    } else {
-      logger.info(`[Email Service] Delivered simulated reply to ${replyTo}: "${subject}"`, { from: formattedFrom });
-    }
+    await dispatchCloudflareReply({
+      formattedFrom,
+      replyTo,
+      subject,
+      brandedHtml,
+      textBody: textBody || htmlBody,
+      originalMessageId: original.message_id,
+      refs,
+    });
 
     const messageId = `<${crypto.randomUUID()}@${PLATFORM_DOMAIN}>`;
     const email = await emailInboxRepository.create({
@@ -670,31 +711,17 @@ export async function replyToEmail(
       received_at: new Date().toISOString(),
     });
 
-    // If original sender is a registered user, deliver to their inbox
-    try {
-      const recipientUser = await userRepository.getUserByEmail(replyTo);
-      if (recipientUser && recipientUser.id !== userId) {
-        await emailInboxRepository.create({
-          id: '',
-          message_id: messageId,
-          user_id: recipientUser.id,
-          from_address: formattedFrom,
-          to_address: replyTo,
-          subject,
-          text_body: textBody || htmlBody,
-          html_body: brandedHtml,
-          attachments: '[]',
-          is_read: false,
-          is_starred: false,
-          folder: 'inbox',
-          in_reply_to: original.message_id,
-          references: refs,
-          received_at: new Date().toISOString(),
-        });
-      }
-    } catch {
-      // Best-effort delivery to recipient inbox
-    }
+    await syncReplyToRecipientInbox({
+      userId,
+      messageId,
+      formattedFrom,
+      replyTo,
+      subject,
+      textBody: textBody || htmlBody,
+      brandedHtml,
+      originalMessageId: original.message_id,
+      refs,
+    });
 
     logger.info(`Reply sent by user ${userId}`, { emailId: email.id, to: replyTo });
     return successResult({ emailId: email.id });
@@ -703,6 +730,7 @@ export async function replyToEmail(
     return errorResult('REPLY_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to reply to email');
   }
 }
+
 
 export async function getUnreadCount(
   userId: string,
