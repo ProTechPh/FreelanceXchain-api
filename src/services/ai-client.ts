@@ -156,8 +156,6 @@ export function isAIAvailable(): boolean {
   return Boolean(config.llm.apiKey);
 }
 
-const AI_RECOMMENDATIONS_ENDPOINT = '/FreelanceXchain/AI/Recommendations';
-
 function isGeminiApi(): boolean {
   const url = config.llm.apiUrl.toLowerCase();
   return url.includes('googleapis.com') || url.includes('generativelanguage');
@@ -171,10 +169,10 @@ function buildApiUrl(): string {
   if (isGeminiApi()) {
     return `${baseUrl}/models/${config.llm.model}:generateContent?key=${config.llm.apiKey}`;
   }
-  if (baseUrl.toLowerCase().endsWith('/chat/completions') || baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
+  if (baseUrl.toLowerCase().endsWith('/chat/completions')) {
     return baseUrl;
   }
-  return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
+  return `${baseUrl}/chat/completions`;
 }
 
 /**
