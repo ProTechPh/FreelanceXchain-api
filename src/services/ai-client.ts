@@ -156,9 +156,24 @@ export function isAIAvailable(): boolean {
   return Boolean(config.llm.apiKey);
 }
 
+const AI_RECOMMENDATIONS_ENDPOINT = '/FreelanceXchain/AI/Recommendations';
+
 function isGeminiApi(): boolean {
   const url = config.llm.apiUrl.toLowerCase();
   return url.includes('googleapis.com') || url.includes('generativelanguage');
+}
+
+function isOpenAiCompatibleProvider(): boolean {
+  const url = config.llm.apiUrl.toLowerCase();
+  return (
+    url.includes('groq.com') ||
+    url.includes('openai.com') ||
+    url.includes('openrouter.ai') ||
+    url.includes('deepseek.com') ||
+    url.includes('together.xyz') ||
+    url.endsWith('/v1') ||
+    url.includes('/openai')
+  );
 }
 
 /**
@@ -169,10 +184,13 @@ function buildApiUrl(): string {
   if (isGeminiApi()) {
     return `${baseUrl}/models/${config.llm.model}:generateContent?key=${config.llm.apiKey}`;
   }
-  if (baseUrl.toLowerCase().endsWith('/chat/completions')) {
+  if (baseUrl.toLowerCase().endsWith('/chat/completions') || baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
     return baseUrl;
   }
-  return `${baseUrl}/chat/completions`;
+  if (isOpenAiCompatibleProvider()) {
+    return `${baseUrl}/chat/completions`;
+  }
+  return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
 }
 
 /**
