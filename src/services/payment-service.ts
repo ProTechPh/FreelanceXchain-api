@@ -1,5 +1,6 @@
 import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { logger } from '../config/logger.js';
+import { config } from '../config/env.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
@@ -25,7 +26,7 @@ import {
   approveMilestoneOnRegistry,
 } from './milestone-registry.js';
 import { completeAgreement } from './agreement-contract.js';
-import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow } from './escrow-blockchain.js';
+import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow, getMilestoneStatus, submitMilestone as submitMilestoneOnChain, type OnChainMilestoneStatus } from './escrow-blockchain.js';
 import { isWeb3Available } from './web3-client.js';
 import { getBlockchainMode } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
@@ -156,6 +157,87 @@ async function validateMilestoneSubmission(
  * Submit milestone to blockchain registry first (blockchain-first pattern).
  * Non-critical: the DB remains the source of truth for status.
  */
+/**
+ * Real-mode: advance the on-chain escrow milestone to Submitted so the
+ * employer can subsequently approve it. Best-effort — the DB stays the source
+ * of truth, and the approval flow self-heals a still-Pending on-chain state.
+ */
+async function submitMilestoneOnChainIfReal(input: {
+  contract: Contract;
+  milestoneIndex: number;
+}): Promise<void> {
+  if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
+    return;
+  }
+  if (!input.contract.escrowAddress) {
+    return;
+  }
+  try {
+    const status = await getMilestoneStatus(input.contract.escrowAddress, input.milestoneIndex);
+    if (status === 'pending') {
+      await submitMilestoneOnChain(input.contract.escrowAddress, input.milestoneIndex);
+      logger.info('Real blockchain milestone submitted', {
+        escrowAddress: input.contract.escrowAddress,
+        milestoneIndex: input.milestoneIndex,
+      });
+    }
+  } catch (error) {
+    logger.warn('Failed to submit milestone on-chain (approval will self-heal)', {
+      escrowAddress: input.contract.escrowAddress,
+      milestoneIndex: input.milestoneIndex,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Real-mode: ensure the on-chain escrow milestone is Submitted before the
+ * payment release, so approveMilestone() does not revert with
+ * MilestoneNotSubmitted. Heals legacy desyncs where the DB says 'submitted'
+ * but the chain is still 'pending' (e.g. records created before the platform
+ * could submit on-chain). The platform signs submissions on the freelancer's
+ * behalf (FreelanceEscrow.submitMilestone allows the platform).
+ */
+async function ensureMilestoneSubmittedOnChain(
+  contract: Contract,
+  milestoneIndex: number
+): Promise<{ error?: ServiceResult<MilestoneApprovalResult> }> {
+  if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
+    return {};
+  }
+  const escrowAddress = contract.escrowAddress;
+  if (!escrowAddress) {
+    return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow contract address found on this contract.') };
+  }
+
+  let status: OnChainMilestoneStatus;
+  try {
+    status = await getMilestoneStatus(escrowAddress, milestoneIndex);
+  } catch (error) {
+    logger.error('Failed to read on-chain milestone state before approval', {
+      escrowAddress, milestoneIndex, error: error instanceof Error ? error.message : String(error),
+    });
+    return { error: errorResult('ESCROW_STATE_MISMATCH', 'The escrow could not be synchronized on the blockchain before release. Please contact support.') };
+  }
+
+  if (status === 'submitted') {
+    return {};
+  }
+  if (status === 'pending') {
+    try {
+      await submitMilestoneOnChain(escrowAddress, milestoneIndex);
+      return {};
+    } catch (error) {
+      logger.error('Failed to submit milestone on-chain before release', {
+        escrowAddress, milestoneIndex, error: error instanceof Error ? error.message : String(error),
+      });
+      return { error: errorResult('ESCROW_STATE_MISMATCH', 'The milestone could not be advanced on the blockchain before release. Please contact support.') };
+    }
+  }
+  logger.error('On-chain milestone in incompatible state before approval', { escrowAddress, milestoneIndex, status });
+  return { error: errorResult('ESCROW_STATE_MISMATCH', `The on-chain milestone is '${status}' and cannot be approved. Please contact support.`) };
+}
+
 async function submitMilestoneToBlockchainRegistry(input: {
   contract: Contract;
   milestone: NonNullable<Project['milestones'][number]>;
@@ -169,6 +251,13 @@ async function submitMilestoneToBlockchainRegistry(input: {
     const employer = await userRepository.getUserById(contract.employerId);
 
     if (freelancer?.wallet_address && employer?.wallet_address) {
+      try {
+        const { signAgreement } = await import('./agreement-contract.js');
+        await signAgreement(contractId, freelancer.wallet_address);
+      } catch {
+        // Safe if already signed or agreement not found
+      }
+
       await submitMilestoneToRegistry({
         milestoneId,
         contractId,
@@ -180,7 +269,7 @@ async function submitMilestoneToBlockchainRegistry(input: {
       });
     }
   } catch (error) {
-    logger.error('Failed to submit milestone to blockchain registry', { error });
+    logger.error('Failed to submit milestone to blockchain registry', error);
   }
 }
 
@@ -236,6 +325,7 @@ export async function requestMilestoneCompletion(
     const { contract, project, projectEntity, milestone, milestoneIndex } = validated;
 
     await submitMilestoneToBlockchainRegistry({ contract, milestone, milestoneId, contractId, freelancerId });
+    await submitMilestoneOnChainIfReal({ contract, milestoneIndex });
 
     const updatedMilestones = buildSubmittedMilestones(
       projectEntity,
@@ -512,7 +602,7 @@ async function approveMilestoneOnBlockchainRegistry(
       await approveMilestoneOnRegistry(milestoneId, employer.wallet_address);
     }
   } catch (error) {
-    logger.error('Failed to approve milestone on blockchain registry', { error });
+    logger.error('Failed to approve milestone on blockchain registry', error);
   }
 }
 
@@ -539,10 +629,22 @@ async function completeContractIfAllMilestonesDone(input: CompleteContractInput)
   try {
     const employer = await userRepository.getUserById(employerId);
     if (employer?.wallet_address) {
+      const contractDoc = await contractRepository.getContractById(contractId);
+      if (contractDoc?.freelancer_id) {
+        const freelancer = await userRepository.getUserById(contractDoc.freelancer_id);
+        if (freelancer?.wallet_address) {
+          try {
+            const { signAgreement } = await import('./agreement-contract.js');
+            await signAgreement(contractId, freelancer.wallet_address);
+          } catch {
+            // Safe if already signed or agreement not found
+          }
+        }
+      }
       await completeAgreement(contractId, employer.wallet_address);
     }
   } catch (error) {
-    logger.error('Failed to complete agreement on blockchain', { error });
+    logger.error('Failed to complete agreement on blockchain', error);
   }
 
   return true;
@@ -568,8 +670,14 @@ async function finalizeMilestoneApproval(
 ): Promise<MilestoneApprovalResult> {
   const { contractId, contract, project, milestoneId, milestone, milestoneIndex, employerId, releasingBaseEntity, transactionHash } = input;
 
+  const nowIso = new Date().toISOString();
   const updatedMilestones = releasingBaseEntity.milestones.map((m, i) =>
-    i === milestoneIndex ? { ...m, status: 'approved' as const } : m
+    i === milestoneIndex ? {
+      ...m,
+      status: 'approved' as const,
+      approved_at: nowIso,
+      completed_at: nowIso,
+    } : m
   );
   await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
 
@@ -647,6 +755,13 @@ export async function approveMilestone(
     const pendingRefund = await refundRequestRepository.findPendingByContract(contractId);
     if (pendingRefund) {
       return errorResult('PENDING_REFUND', 'Cannot approve milestone while a refund request is pending. Resolve the refund first.');
+    }
+
+    // Real-mode: make sure the on-chain escrow milestone is Submitted before
+    // releasing, so the contract call cannot revert with MilestoneNotSubmitted.
+    const chainSync = await ensureMilestoneSubmittedOnChain(contract, milestoneIndex);
+    if (chainSync.error) {
+      return chainSync.error;
     }
 
     const released = await releaseEscrowPaymentWithSaga({
@@ -1025,7 +1140,7 @@ async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promis
   // Use a dedicated platform arbiter address.
   // The server wallet (msg.sender) is the on-chain "employer" (deployer).
   // The arbiter must differ from both the deployer and the freelancer.
-  const platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'];
+  const platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress;
   if (!platformArbiterAddress) {
     throw new Error('PLATFORM_ARBITER_ADDRESS environment variable is required for real escrow deployment');
   }
@@ -1039,7 +1154,7 @@ async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promis
     totalAmount: contractTotalAmount,
   });
 
-  logger.info('Real escrow deployed', { escrowAddress: realDeployment.escrowAddress, contractTotalAmount });
+  logger.info('Real escrow deployed', { escrowAddress: realDeployment.escrowAddress, contractTotalAmount: contractTotalAmount.toString() });
 
   // Also save to simulated escrow DB for status tracking
   try {

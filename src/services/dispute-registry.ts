@@ -124,7 +124,6 @@ export async function createDisputeOnBlockchain(
   };
 
   await blockchainDisputeRecordRepository.createDisputeRecord({
-    id: disputeIdHash,
     dispute_id_hash: record.disputeIdHash,
     contract_id_hash: record.contractIdHash,
     milestone_id_hash: record.milestoneIdHash,

@@ -101,6 +101,7 @@ const {
   respondToRushUpgrade,
   acceptCounterOffer,
   declineCounterOffer,
+  payRushUpgradeFee,
   getRushUpgradeRequestsByContract,
   getRushUpgradeRequestsForContract,
   getRushUpgradeRequestById,
@@ -300,23 +301,16 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, counter_percentage: 20, status: 'counter_offered',
     });
 
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
-
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
 
     expect(result.success).toBe(true);
-    // total_amount intentionally stays at base — the fee is paid directly.
-    expect(mockContractRepo.updateContract).toHaveBeenCalledWith(
-      contract.id,
-      expect.objectContaining({ rush_fee: 200 }),
-    );
-    expect(mockContractRepo.updateContract).not.toHaveBeenCalledWith(
-      contract.id,
-      expect.objectContaining({ total_amount: 1200 }),
-    );
+    if (!result.success) return;
+    const data = result.data as any;
+    expect(data.request.status).toBe('accepted');
+    expect(data.request.counterPercentage).toBe(20);
   });
 
-  it('should reject if contract update fails', async () => {
+  it('should reject if request update fails on accept', async () => {
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
     const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
@@ -325,7 +319,7 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    mockContractRepo.updateContract.mockResolvedValueOnce(null);
+    mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(false);
@@ -526,7 +520,6 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, counter_percentage: 20, status: 'counter_offered',
     });
 
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
     await acceptCounterOffer(employer.id, request.id);
 
     const notifications = Array.from(notificationStore.values()) as any[];
@@ -1126,8 +1119,6 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
-
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(true);
     const notifications = Array.from(notificationStore.values()) as any[];
@@ -1144,8 +1135,6 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
     const request = seedRushUpgradeRequest({
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
-
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(true);
@@ -1183,8 +1172,6 @@ describe('rush-upgrade-service - accept leaves milestones at base amounts', () =
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1000 });
-
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(true);
 
@@ -1212,8 +1199,6 @@ describe('rush-upgrade-service - accept leaves milestones at base amounts', () =
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1000 });
-
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(true);
 
@@ -1235,8 +1220,6 @@ describe('rush-upgrade-service - accept leaves milestones at base amounts', () =
     const request = seedRushUpgradeRequest({
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
-
-    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1000 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(true);
@@ -1265,10 +1248,10 @@ describe('rush upgrade - direct fee transfer', () => {
     });
     seedProject({ id: contract.project_id });
     const request = seedRushUpgradeRequest({
-      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -1309,10 +1292,10 @@ describe('rush upgrade - direct fee transfer', () => {
     });
     seedProject({ id: contract.project_id });
     const request = seedRushUpgradeRequest({
-      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'pending',
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'accepted',
     });
 
-    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(true);
     if (!result.success) return;
@@ -1324,7 +1307,7 @@ describe('rush upgrade - direct fee transfer', () => {
     expect(payments[0].tx_hash).toBe(txHash);
   });
 
-  it('rejects accept and leaves the request pending when the on-chain transfer fails', async () => {
+  it('rejects pay when the on-chain transfer fails', async () => {
     mockGetBlockchainMode.mockReturnValue('real');
     mockIsWeb3Available.mockReturnValue(true);
     mockSendTransaction.mockRejectedValue(new Error('insufficient funds'));
@@ -1336,21 +1319,19 @@ describe('rush upgrade - direct fee transfer', () => {
     });
     seedProject({ id: contract.project_id });
     const request = seedRushUpgradeRequest({
-      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('RUSH_FEE_TRANSFER_FAILED');
-    // Nothing applied: contract untouched, request still pending for retry.
+    // Nothing applied: contract untouched
     expect(mockContractRepo.updateContract).not.toHaveBeenCalled();
     expect(Array.from(paymentStore.values())).toHaveLength(0);
-    const storedRequest = rushUpgradeStore.get(request.id) as any;
-    expect(storedRequest.status).toBe('pending');
   });
 
-  it('rejects accept when the freelancer has no wallet in real mode', async () => {
+  it('rejects pay when the freelancer has no wallet in real mode', async () => {
     mockGetBlockchainMode.mockReturnValue('real');
     mockIsWeb3Available.mockReturnValue(true);
 
@@ -1361,10 +1342,10 @@ describe('rush upgrade - direct fee transfer', () => {
     });
     seedProject({ id: contract.project_id });
     const request = seedRushUpgradeRequest({
-      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('MISSING_WALLET');
@@ -1399,7 +1380,7 @@ describe('rush upgrade - direct fee transfer', () => {
     );
   });
 
-  it('rejects accept when the payment record cannot be saved', async () => {
+  it('rejects pay when the payment record cannot be saved', async () => {
     mockPaymentRepo.create.mockRejectedValueOnce(new Error('db down'));
 
     const employer = seedUser({ role: 'employer' });
@@ -1409,20 +1390,18 @@ describe('rush upgrade - direct fee transfer', () => {
     });
     seedProject({ id: contract.project_id });
     const request = seedRushUpgradeRequest({
-      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('PAYMENT_RECORD_FAILED');
     // The fee was transferred but the record failed — nothing applied to the contract.
     expect(mockContractRepo.updateContract).not.toHaveBeenCalled();
-    const storedRequest = rushUpgradeStore.get(request.id) as any;
-    expect(storedRequest.status).toBe('pending');
   });
 
-  it('rejects accept when the computed rush fee is not positive', async () => {
+  it('rejects pay when the computed rush fee is not positive', async () => {
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
     const contract = seedContract({
@@ -1430,10 +1409,10 @@ describe('rush upgrade - direct fee transfer', () => {
     });
     seedProject({ id: contract.project_id });
     const request = seedRushUpgradeRequest({
-      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('VALIDATION_ERROR');
@@ -1489,11 +1468,9 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
     expect(mockSendTransaction).not.toHaveBeenCalled();
     expect(Array.from(paymentStore.values())).toHaveLength(0);
     // Request accepted, contract records the fee.
-    const storedRequest = rushUpgradeStore.get(request.id) as any;
-    expect(storedRequest.status).toBe('accepted');
-    const storedContract = contractStore.get(contract.id) as any;
-    expect(storedContract.rush_fee).toBe(250);
-    expect(storedContract.total_amount).toBe(1250);
+    const data = result.data as any;
+    expect(data.contract.rushFee).toBe(250);
+    expect(data.contract.totalAmount).toBe(1250);
   });
 
   it('acceptCounterOffer on an escrow-less contract folds the fee into the escrow', async () => {
@@ -1524,7 +1501,12 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
 
     expect(result.success).toBe(true);
     if (!result.success) return;
-    // Escrow present -> paid directly: total_amount stays at base.
+    expect((result.data as any).request.status).toBe('accepted');
+
+    const payResult = await payRushUpgradeFee(employer.id, { requestId: request.id });
+    expect(payResult.success).toBe(true);
+    if (!payResult.success) return;
+
     expect(mockContractRepo.updateContract).toHaveBeenCalledWith(
       contract.id,
       expect.objectContaining({ rush_fee: 250 }),

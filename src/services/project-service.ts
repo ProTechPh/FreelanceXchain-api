@@ -1,6 +1,8 @@
 import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
 import { proposalRepository } from '../repositories/proposal-repository.js';
 import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
+import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
@@ -42,24 +44,53 @@ type AddMilestoneInput = {
   dueDate: string;
 };
 
+type EmployerSummary = {
+  id: string;
+  userId: string;
+  name: string;
+  companyName?: string;
+  description?: string;
+  industry?: string;
+};
+
 type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
+  employer?: EmployerSummary;
 };
 
 async function addProposalCounts(
   result: PaginatedResult<ProjectEntity>
 ): Promise<PaginatedResult<ProjectWithProposalCount>> {
   const projectIds = result.items.map(project => project.id);
-  const proposalCounts = projectIds.length > 0
-    ? await proposalRepository.getProposalCountsByProjects(projectIds)
-    : new Map<string, number>();
+  const employerIds = [...new Set(result.items.map(project => project.employer_id).filter(Boolean))];
+
+  const [proposalCounts, users] = await Promise.all([
+    projectIds.length > 0
+      ? proposalRepository.getProposalCountsByProjects(projectIds)
+      : new Map<string, number>(),
+    employerIds.length > 0
+      ? userRepository.getUsersByIds(employerIds).catch(() => [])
+      : [],
+  ]);
+
+  const userMap = new Map(users.map(u => [u.id, u]));
 
   return {
     ...result,
-    items: result.items.map(project => ({
-      ...project,
-      proposalCount: proposalCounts.get(project.id) ?? 0,
-    })),
+    items: result.items.map(project => {
+      const user = userMap.get(project.employer_id);
+      const name = user?.name || user?.full_name || 'Employer';
+      return {
+        ...project,
+        proposalCount: proposalCounts.get(project.id) ?? 0,
+        employer: {
+          id: project.employer_id,
+          userId: project.employer_id,
+          name,
+          companyName: name,
+        },
+      };
+    }),
   };
 }
 
@@ -164,8 +195,23 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
   if (!project) {
     return errorResult('NOT_FOUND', 'Project not found');
   }
-  const proposalCount = await proposalRepository.getProposalCountByProject(projectId);
-  return successResult({ ...project, proposalCount });
+  const [proposalCount, employerProfile, employerUser] = await Promise.all([
+    proposalRepository.getProposalCountByProject(projectId),
+    project.employer_id ? employerProfileRepository.getProfileByUserId(project.employer_id).catch(() => null) : null,
+    project.employer_id ? userRepository.getUserById(project.employer_id).catch(() => null) : null,
+  ]);
+
+  const employerName = employerProfile?.company_name || employerProfile?.name || employerUser?.name || employerUser?.full_name || 'Employer';
+  const employer: EmployerSummary | undefined = (employerProfile || employerUser) ? {
+    id: employerProfile?.id || project.employer_id,
+    userId: project.employer_id,
+    name: employerName,
+    companyName: employerProfile?.company_name || employerName,
+    description: employerProfile?.description || '',
+    industry: employerProfile?.industry || '',
+  } : undefined;
+
+  return successResult({ ...project, proposalCount, ...(employer ? { employer } : {}) });
 }
 
 export async function updateProject(
@@ -208,10 +254,10 @@ export async function updateProject(
     }
   }
 
-  if (input.status) {
+  if (input.status && input.status !== existingProject.status) {
     const validTransitions: Record<string, string[]> = {
       draft: ['open', 'cancelled'],
-      open: ['in_progress', 'cancelled'],
+      open: ['draft', 'in_progress', 'cancelled'],
       in_progress: ['completed', 'cancelled'],
       completed: [],        // Terminal state - no transitions allowed
       cancelled: [],        // Terminal state - no transitions allowed

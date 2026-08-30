@@ -4,9 +4,10 @@
  */
 
 import type { Contract, ContractTransactionResponse, ContractTransactionReceipt, TransactionReceipt } from 'ethers';
-import { getContractWithSigner, getContractWithArbiterSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
+import { getContractWithSigner, getContractWithArbiterSigner, getContract, isWeb3Available, getWallet, getArbiterWallet } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis.js';
 import { ContractFactory } from 'ethers';
+import { logger } from '../config/logger.js';
 import type { BlockchainMilestoneStatus } from './blockchain/adapter.js';
 
 export type EscrowMilestone = {
@@ -14,6 +15,16 @@ export type EscrowMilestone = {
   status: BlockchainMilestoneStatus;
   description: string;
 };
+
+/**
+ * On-chain FreelanceEscrow.MilestoneStatus mirrored into plain names.
+ * Enum values: 0=Pending, 1=Submitted, 2=Approved, 3=Disputed, 4=Refunded.
+ */
+export type OnChainMilestoneStatus = 'pending' | 'submitted' | 'approved' | 'disputed' | 'refunded';
+
+const ON_CHAIN_MILESTONE_STATUS_NAMES: readonly OnChainMilestoneStatus[] = [
+  'pending', 'submitted', 'approved', 'disputed', 'refunded',
+];
 
 export type EscrowDeploymentParams = {
   contractId: string;
@@ -172,6 +183,25 @@ export async function getEscrowInfo(escrowAddress: string): Promise<EscrowInfo> 
 }
 
 /**
+ * Get the on-chain milestone status (mirrored to a plain string).
+ */
+export async function getMilestoneStatus(
+  escrowAddress: string,
+  milestoneIndex: number
+): Promise<OnChainMilestoneStatus> {
+  if (!isWeb3Available()) {
+    throw new Error('Web3 is not configured');
+  }
+
+  const [, status] = await getEscrowContract(escrowAddress).getMilestone(milestoneIndex);
+  const name = ON_CHAIN_MILESTONE_STATUS_NAMES[Number(status)];
+  if (!name) {
+    throw new Error(`Unknown on-chain milestone status: ${status}`);
+  }
+  return name;
+}
+
+/**
  * Submit milestone for approval (freelancer)
  */
 export async function submitMilestone(
@@ -255,6 +285,54 @@ export async function resolveDispute(
   }
   if (freelancerBps < 0 || freelancerBps > 10000) {
     throw new Error('freelancerBps must be between 0 and 10000');
+  }
+
+  // 1. If 100% in favor of freelancer (10000 bps) and milestone is not in Disputed state on-chain,
+  // directly approve and release payment to freelancer via the platform wallet.
+  if (freelancerBps === 10000) {
+    try {
+      const escrow = getEscrowContract(escrowAddress);
+      const onChainMilestone = await escrow.getMilestone(milestoneIndex).catch(() => null);
+      if (onChainMilestone) {
+        const status = Number(onChainMilestone[1]);
+        if (status === 0) {
+          await submitMilestone(escrowAddress, milestoneIndex);
+          return await approveMilestone(escrowAddress, milestoneIndex);
+        } else if (status === 1) {
+          return await approveMilestone(escrowAddress, milestoneIndex);
+        }
+      }
+    } catch (approveErr) {
+      logger.warn('Direct milestone approval fallback during dispute resolution failed, proceeding to arbiter resolve', { error: approveErr });
+    }
+  }
+
+  // 2. If 100% in favor of employer (0 bps) and milestone is Pending on-chain:
+  if (freelancerBps === 0) {
+    try {
+      const escrow = getEscrowContract(escrowAddress);
+      const onChainMilestone = await escrow.getMilestone(milestoneIndex).catch(() => null);
+      if (onChainMilestone && Number(onChainMilestone[1]) === 0) {
+        return await refundMilestone(escrowAddress, milestoneIndex);
+      }
+    } catch (refundErr) {
+      logger.warn('Direct refund fallback during dispute resolution failed, proceeding to arbiter resolve', { error: refundErr });
+    }
+  }
+
+  // 3. For disputed milestones or split resolutions, execute arbiter resolution on-chain
+  try {
+    const escrow = getEscrowContract(escrowAddress);
+    const onChainMilestone = await escrow.getMilestone(milestoneIndex).catch(() => null);
+    if (onChainMilestone && Number(onChainMilestone[1]) !== 3 && Number(onChainMilestone[1]) !== 2) {
+      try {
+        await disputeMilestone(escrowAddress, milestoneIndex);
+      } catch (dispErr) {
+        logger.warn('Could not transition milestone to Disputed on-chain', { error: dispErr });
+      }
+    }
+  } catch (checkErr) {
+    logger.warn('Could not verify on-chain status before dispute resolution', { error: checkErr });
   }
 
   // Requires PLATFORM_ARBITER_PRIVATE_KEY — throws a clear error if missing

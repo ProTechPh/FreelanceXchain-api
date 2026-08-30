@@ -39,6 +39,14 @@ export type Project = {
   tags: string[];
   attachments: FileAttachment[];
   proposalCount?: number;
+  employer?: {
+    id: string;
+    userId?: string;
+    name: string;
+    companyName?: string;
+    description?: string;
+    industry?: string;
+  };
   createdAt: string;
   updatedAt: string;
 };

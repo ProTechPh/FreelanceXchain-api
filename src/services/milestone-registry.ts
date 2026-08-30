@@ -118,7 +118,6 @@ export async function submitMilestoneToRegistry(
   };
 
   await blockchainMilestoneRecordRepository.createMilestoneRecord({
-    id: milestoneIdHash,
     milestone_id_hash: record.milestoneIdHash,
     contract_id_hash: record.contractIdHash,
     work_hash: record.workHash,

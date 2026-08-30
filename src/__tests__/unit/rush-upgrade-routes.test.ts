@@ -10,6 +10,7 @@ const mockRequestRushUpgrade = jest.fn<any>();
 const mockRespondToRushUpgrade = jest.fn<any>();
 const mockAcceptCounterOffer = jest.fn<any>();
 const mockDeclineCounterOffer = jest.fn<any>();
+const mockPayRushUpgradeFee = jest.fn<any>();
 const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
@@ -17,6 +18,7 @@ jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), 
   respondToRushUpgrade: mockRespondToRushUpgrade,
   acceptCounterOffer: mockAcceptCounterOffer,
   declineCounterOffer: mockDeclineCounterOffer,
+  payRushUpgradeFee: mockPayRushUpgradeFee,
   getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
   getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
 }));
@@ -52,7 +54,7 @@ const rushUpgradeRouter = router;
 function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
 const ok = (data: any) => ({ success: true, data });
 const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
-const mockRushUpgradeService = { requestRushUpgrade: mockRequestRushUpgrade, respondToRushUpgrade: mockRespondToRushUpgrade, acceptCounterOffer: mockAcceptCounterOffer, declineCounterOffer: mockDeclineCounterOffer, getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract };
+const mockRushUpgradeService = { requestRushUpgrade: mockRequestRushUpgrade, respondToRushUpgrade: mockRespondToRushUpgrade, acceptCounterOffer: mockAcceptCounterOffer, declineCounterOffer: mockDeclineCounterOffer, payRushUpgradeFee: mockPayRushUpgradeFee, getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract };
 const mockContractRepository = { getContractById: mockGetContractById };
 
 describe('Rush Upgrade Routes', () => {
@@ -359,6 +361,7 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
   const mockRespondToRushUpgrade = jest.fn<any>();
   const mockAcceptCounterOffer = jest.fn<any>();
   const mockDeclineCounterOffer = jest.fn<any>();
+  const mockPayRushUpgradeFee = jest.fn<any>();
   const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
   const mockRepoGetContractById = jest.fn<any>();
 
@@ -373,6 +376,7 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
       respondToRushUpgrade: mockRespondToRushUpgrade,
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
+      payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
@@ -462,6 +466,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       respondToRushUpgrade: mockRespondToRushUpgrade,
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
+      payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
@@ -502,6 +507,21 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
     expect(res.status).toBe(500);
   });
 
+  it('POST pay rush fee succeeds', async () => {
+    mockPayRushUpgradeFee.mockResolvedValueOnce(ok({ request: { id: 'r1', status: 'accepted' }, contract: { id: 'c1', rushFee: 1 } }));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/pay').send({ transactionHash: '0x123' });
+    expect(res.status).toBe(200);
+    expect(res.body.request.status).toBe('accepted');
+  });
+
+  it('POST pay rush fee handles failure', async () => {
+    mockPayRushUpgradeFee.mockResolvedValueOnce(fail('NOT_FOUND', 'Request not found'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/pay');
+    expect(res.status).toBe(404);
+  });
+
   it('L397: GET rush-upgrade-requests returns 401 when userId is undefined', async () => {
     jest.resetModules();
     // Auth middleware that does NOT set userId
@@ -531,6 +551,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       respondToRushUpgrade: mockRespondToRushUpgrade,
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
+      payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
@@ -578,6 +599,7 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
   const mockRespondToRushUpgrade = jest.fn<any>();
   const mockAcceptCounterOffer = jest.fn<any>();
   const mockDeclineCounterOffer = jest.fn<any>();
+  const mockPayRushUpgradeFee = jest.fn<any>();
   const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
   const mockRepoGetContractById = jest.fn<any>();
 
@@ -613,6 +635,7 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
       respondToRushUpgrade: mockRespondToRushUpgrade,
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
+      payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));

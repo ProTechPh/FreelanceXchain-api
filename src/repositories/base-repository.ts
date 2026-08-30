@@ -30,12 +30,18 @@ function deserializeIfNeeded(value: string): string | unknown {
 }
 
 /**
- * Serialize an attribute value for Appwrite storage.
- * Objects and complex arrays are JSON.stringify'd; primitives and primitive arrays pass through.
+ * Attributes defined with `array: true` in Appwrite schema that accept native string arrays.
+ * All other array and object fields are serialized as JSON strings before storage.
  */
-function serializeAttributeValue(value: unknown): unknown {
+const NATIVE_ARRAY_ATTRIBUTES = new Set(['required_skill_ids', 'requester_ids']);
+
+/**
+ * Serialize an attribute value for Appwrite storage.
+ * Objects and non-native arrays are JSON.stringify'd; primitives and native Appwrite arrays pass through.
+ */
+function serializeAttributeValue(key: string, value: unknown): unknown {
   if (value === null || value === undefined) return value;
-  if (Array.isArray(value) && value.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')) {
+  if (NATIVE_ARRAY_ATTRIBUTES.has(key) && Array.isArray(value)) {
     return value;
   }
   return typeof value === 'object' ? JSON.stringify(value) : value;
@@ -97,7 +103,7 @@ export class BaseRepository<T extends BaseEntity> {
     const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
       if (key !== 'created_at' && key !== 'updated_at' && value !== undefined) {
-        attrs[key] = serializeAttributeValue(value);
+        attrs[key] = serializeAttributeValue(key, value);
       }
     }
 
@@ -126,7 +132,7 @@ export class BaseRepository<T extends BaseEntity> {
       for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
         if (key === 'id' || key === 'created_at' || key === 'updated_at') continue;
         if (value !== undefined) {
-          attrs[key] = serializeAttributeValue(value);
+          attrs[key] = serializeAttributeValue(key, value);
         }
       }
 

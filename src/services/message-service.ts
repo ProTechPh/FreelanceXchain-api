@@ -1,6 +1,7 @@
 import { logger } from '../config/logger.js';
 import { messageRepository } from '../repositories/message-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { notificationRepository } from '../repositories/notification-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
@@ -100,12 +101,28 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
 
     await messageRepository.updateConversation(conversation.id, updates);
 
-    // Push real-time message event to the receiver only via SSE.
+    // Persist notification in DB and push real-time message event to the receiver via SSE.
     // The sender already has the message from the API response, so we do NOT
     // emit to them here to avoid duplication in their chat UI.
     const now = new Date().toISOString();
+    const notificationId = generateId();
+
+    try {
+      await notificationRepository.createNotification({
+        id: notificationId,
+        user_id: resolvedReceiverId,
+        type: 'message',
+        title: 'New message',
+        message: content.substring(0, 100),
+        data: { message, conversation_id: conversation.id },
+        is_read: false,
+      });
+    } catch (e) {
+      logger.warn('Failed to persist message notification in DB', { error: e });
+    }
+
     const messageEvent = {
-      id: generateId(),
+      id: notificationId,
       userId: resolvedReceiverId,
       type: 'message' as const,
       title: 'New message',
@@ -117,20 +134,31 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
     };
     notificationEmitter.emitToUser(resolvedReceiverId, messageEvent);
 
-    // Transactional email gated by the receiver's email preferences. Best-effort:
-    // a failure to look up the sender or send the email never breaks the message.
-    try {
-      const sender = await userRepository.getUserById(senderId);
-      await sendGatedEmail(resolvedReceiverId, 'message_received', (recipient) =>
-        sendMessageReceivedEmail(recipient.email, {
-          recipientName: recipient.name,
-          senderName: sender?.name || 'Someone',
-          messagePreview: content.substring(0, 100),
-          conversationUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/messages/${conversation.id}`,
-        })
-      );
-    } catch (error) {
-      logger.error('Failed to send message-received email', { error, senderId, receiverId: resolvedReceiverId });
+    // Check if we should send an email notification:
+    // Only send on the first message or if the last message was over 15 minutes ago
+    // to prevent email spamming during an active ongoing chat conversation.
+    const isNewConversation = !conversation.last_message_at;
+    const lastMessageTime = conversation.last_message_at ? new Date(conversation.last_message_at).getTime() : 0;
+    const shouldSendEmail = isNewConversation || (Date.now() - lastMessageTime > 15 * 60 * 1000);
+
+    if (shouldSendEmail) {
+      try {
+        const [sender, receiver] = await Promise.all([
+          userRepository.getUserById(senderId),
+          userRepository.getUserById(resolvedReceiverId),
+        ]);
+        const receiverRole = receiver?.role || 'freelancer';
+        await sendGatedEmail(resolvedReceiverId, 'message_received', (recipient) =>
+          sendMessageReceivedEmail(recipient.email, {
+            recipientName: recipient.name,
+            senderName: sender?.name || 'Someone',
+            messagePreview: content.substring(0, 100),
+            conversationUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/dashboard/${receiverRole}/messages?recipientId=${senderId}`,
+          })
+        );
+      } catch (error) {
+        logger.error('Failed to send message-received email', { error, senderId, receiverId: resolvedReceiverId });
+      }
     }
 
     logger.debug('Message sent successfully', { messageId: message.id, conversationId: conversation.id });

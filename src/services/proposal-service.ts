@@ -23,6 +23,7 @@ type CreateProposalInput = {
   attachments: FileAttachment[];
   proposedRate: number;
   estimatedDuration: number;
+  coverLetter?: string | null;
 };
 
 
@@ -79,7 +80,7 @@ export async function submitProposal(
     id: generateId(),
     project_id: input.projectId,
     freelancer_id: freelancerId,
-    cover_letter: null,
+    cover_letter: input.coverLetter ?? null,
     attachments: input.attachments,
     proposed_rate: input.proposedRate,
     estimated_duration: input.estimatedDuration,
@@ -401,28 +402,12 @@ async function initializeEscrowForContract(
         },
       });
 
-      // H11: Do NOT auto-sign the agreement on behalf of the freelancer.
-      // The freelancer must explicitly sign the agreement after reviewing the final terms.
-      // The agreement is created on-chain but left unsigned by the freelancer until they confirm.
-
-      const { initializeContractEscrow } = await import('./payment-service.js');
-      const escrowResult = await initializeContractEscrow(
-        contract,
-        project,
-        employer.wallet_address,
-        freelancer.wallet_address
-      );
-
-      if (escrowResult.success) {
-        await contractRepository.updateContract(contract.id, {
-          status: 'active',
-          escrow_address: escrowResult.data.escrowAddress,
-        });
-      }
+      // The agreement is created on-chain with pending status.
+      // The contract remains in pending status until the employer funds the escrow from their wallet (client-side MetaMask).
     }
   } catch (error) {
-    logger.error('Failed to create blockchain agreement or initialize escrow', { error });
-    // Continue - blockchain is secondary, contract remains pending
+    logger.error('Failed to create blockchain agreement for contract', { error });
+    // Continue - blockchain agreement is non-critical, contract remains pending
   }
 
   // Update project status based on freelancer limit
@@ -561,6 +546,7 @@ export async function acceptProposal(
     // Best-effort: a preference lookup or send failure must not roll back the acceptance.
     await sendGatedEmail(validatedProposal.freelancer_id, 'proposal_accepted', (recipient) =>
       sendProposalAcceptedEmail(recipient.email, {
+        recipientName: recipient.name,
         freelancerName: recipient.name,
         projectTitle: project.title,
         projectUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${project.id}`,

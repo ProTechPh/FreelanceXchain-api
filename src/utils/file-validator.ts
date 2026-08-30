@@ -21,6 +21,7 @@ export const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
+  'text/markdown',
   'text/csv',
   // Images (SVG excluded — can contain embedded JavaScript)
   'image/png',
@@ -48,6 +49,7 @@ export const ALLOWED_EXTENSIONS = [
   '.xlsx',
   '.pptx',
   '.txt',
+  '.md',
   '.csv',
   '.png',
   '.jpg',

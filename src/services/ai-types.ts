@@ -82,6 +82,8 @@ export type FreelancerRecommendation = {
   freelancerId: string;
   matchScore: number;
   reputationScore: number;
+  averageRating?: number;
+  totalRatings?: number;
   combinedScore: number;
   matchedSkills: string[];
   reasoning: string;

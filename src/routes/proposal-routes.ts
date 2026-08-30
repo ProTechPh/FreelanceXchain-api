@@ -228,11 +228,10 @@ async function processMultipartProposal(req: Request, res: Response) {
   if (!userId) {
     return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
   }
-  
-  const files = req.files as Express.Multer.File[] | undefined;
+    const files = req.files as Express.Multer.File[] | undefined;
   // Field presence/types are enforced by the middleware (submitProposalMultipartSchema),
   // which also coerces proposedRate/estimatedDuration to numbers.
-  const { projectId, proposedRate, estimatedDuration } = req.body;
+  const { projectId, proposedRate, estimatedDuration, coverLetter } = req.body;
   const rate = Number(proposedRate);
   const duration = Number(estimatedDuration);
 
@@ -262,7 +261,8 @@ async function processMultipartProposal(req: Request, res: Response) {
     projectId, 
     attachments, 
     proposedRate: rate, 
-    estimatedDuration: duration
+    estimatedDuration: duration,
+    ...(coverLetter ? { coverLetter: String(coverLetter) } : {}),
   });
   
   if (!result.success) {
@@ -275,7 +275,7 @@ async function processMultipartProposal(req: Request, res: Response) {
     
     return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
   }
-
+  
   return res.status(201).json(result.data.proposal);
 }
 
@@ -283,7 +283,7 @@ async function processMultipartProposal(req: Request, res: Response) {
  * Handle proposal submission with application/json (URL-reference pattern)
  */
 async function handleJsonProposalSubmission(req: Request, res: Response) {
-  const { projectId, attachments, proposedRate, estimatedDuration } = req.body;
+  const { projectId, attachments, proposedRate, estimatedDuration, coverLetter } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -315,7 +315,8 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     projectId, 
     attachments, 
     proposedRate, 
-    estimatedDuration
+    estimatedDuration,
+    ...(coverLetter ? { coverLetter: String(coverLetter) } : {}),
   });
 
   if (!result.success) {

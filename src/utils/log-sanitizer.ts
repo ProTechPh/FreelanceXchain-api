@@ -121,6 +121,10 @@ export function sanitizeObject<T>(obj: T): T {
  * Shared-but-non-circular references are still fully sanitized.
  */
 function sanitizeObjectInternal<T>(obj: T, seen: WeakSet<object>): T {
+  if (typeof obj === 'bigint') {
+    return (obj as bigint).toString() as unknown as T;
+  }
+
   if (!obj || typeof obj !== 'object') {
     return obj;
   }
@@ -146,7 +150,9 @@ function sanitizeObjectInternal<T>(obj: T, seen: WeakSet<object>): T {
       continue;
     }
 
-    if (typeof value === 'object' && value !== null) {
+    if (typeof value === 'bigint') {
+      sanitized[key] = value.toString();
+    } else if (typeof value === 'object' && value !== null) {
       sanitized[key] = sanitizeObjectInternal(value, seen);
     } else if (typeof value === 'string') {
       sanitized[key] = sanitizeString(value);
@@ -164,6 +170,10 @@ function sanitizeObjectInternal<T>(obj: T, seen: WeakSet<object>): T {
  * The generic preserves the input's shape so callers keep their types.
  */
 export function sanitizeLogData<T>(data: T): T {
+  if (typeof data === 'bigint') {
+    return (data as bigint).toString() as unknown as T;
+  }
+
   if (typeof data === 'string') {
     return sanitizeString(data) as T;
   }

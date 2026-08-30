@@ -6,6 +6,7 @@ const mockGetContractWithSigner = jest.fn();
 const mockGetContractWithArbiterSigner = jest.fn();
 const mockIsWeb3Available = jest.fn();
 const mockGetWallet = jest.fn();
+const mockGetArbiterWallet = jest.fn();
 
 jest.unstable_mockModule(path.resolve(process.cwd(), 'src/services/web3-client.ts'), () => ({
   getContract: mockGetContract,
@@ -13,6 +14,7 @@ jest.unstable_mockModule(path.resolve(process.cwd(), 'src/services/web3-client.t
   getContractWithArbiterSigner: mockGetContractWithArbiterSigner,
   isWeb3Available: mockIsWeb3Available,
   getWallet: mockGetWallet,
+  getArbiterWallet: mockGetArbiterWallet,
   getProvider: jest.fn(),
   getSigner: jest.fn(),
 }));
@@ -41,11 +43,12 @@ describe('Escrow Blockchain Integration - Refactored', () => {
       address: '0xEmployer',
     };
     mockGetWallet.mockReturnValue(mockWallet);
+    mockGetArbiterWallet.mockReturnValue({ address: '0xArbiter' });
 
     mockContract = {
       employer: jest.fn(),
       freelancer: jest.fn(),
-      arbiter: jest.fn(),
+      arbiter: (jest.fn() as any).mockResolvedValue('0xArbiter'),
       totalAmount: jest.fn(),
       releasedAmount: jest.fn(),
       isActive: jest.fn(),
@@ -115,6 +118,31 @@ describe('Escrow Blockchain Integration - Refactored', () => {
         contractId: 'contract-123',
         balance: BigInt('2000000000000000000'),
       });
+    });
+  });
+
+  describe('getMilestoneStatus', () => {
+    it('should map the on-chain enum to a plain status name', async () => {
+      mockContract.getMilestone.mockResolvedValue([
+        BigInt('1000000000000000000'),
+        BigInt(1),
+        'Milestone 1',
+      ]);
+
+      const { getMilestoneStatus } = await import('../../services/escrow-blockchain.js');
+      const status = await getMilestoneStatus('0xEscrowContract', 0);
+
+      expect(status).toBe('submitted');
+      expect(mockContract.getMilestone).toHaveBeenCalledWith(0);
+      expect(mockGetContract).toHaveBeenCalledWith('0xEscrowContract', []);
+    });
+
+    it('should throw when web3 is not available', async () => {
+      mockIsWeb3Available.mockReturnValue(false);
+
+      const { getMilestoneStatus } = await import('../../services/escrow-blockchain.js');
+      await expect(getMilestoneStatus('0xEscrowContract', 0)).rejects.toThrow('Web3 is not configured');
+      expect(mockContract.getMilestone).not.toHaveBeenCalled();
     });
   });
 

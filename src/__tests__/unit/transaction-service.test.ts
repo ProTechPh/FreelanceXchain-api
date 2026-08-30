@@ -23,6 +23,15 @@ jest.unstable_mockModule(resolveModule('src/repositories/transaction-repository.
   transactionRepository: mockTransactionRepository,
 }));
 
+const mockPaymentRepository = {
+  findByUserId: jest.fn<any>().mockResolvedValue({ items: [], total: 0, hasMore: false }),
+  findByContractId: jest.fn<any>().mockResolvedValue([]),
+  getById: jest.fn<any>().mockResolvedValue(null),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
+  paymentRepository: mockPaymentRepository,
+}));
+
 const mockContractRepository = {
   getContractById: jest.fn<any>(),
 };

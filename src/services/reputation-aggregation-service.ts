@@ -91,10 +91,20 @@ async function computeOnTimeDeliveryRate(userId: string): Promise<number> {
     const project = await projectRepository.getProjectById(contract.project_id);
     if (!project) return { approved: 0, onTime: 0 };
 
+    let milestones: any = project.milestones;
+    if (typeof milestones === 'string') {
+      try {
+        milestones = JSON.parse(milestones);
+      } catch {
+        milestones = [];
+      }
+    }
+    if (!Array.isArray(milestones)) return { approved: 0, onTime: 0 };
+
     let approved = 0;
     let onTime = 0;
-    for (const m of project.milestones) {
-      if (m.status === 'approved') {
+    for (const m of milestones) {
+      if (m && typeof m === 'object' && m.status === 'approved') {
         approved++;
         if (m.approved_at && m.due_date && new Date(m.approved_at) <= new Date(m.due_date)) {
           onTime++;
@@ -107,7 +117,7 @@ async function computeOnTimeDeliveryRate(userId: string): Promise<number> {
   const totalApproved = contractResults.reduce((sum, result) => sum + result.approved, 0);
   const onTimeCount = contractResults.reduce((sum, result) => sum + result.onTime, 0);
 
-  return totalApproved > 0 ? (onTimeCount / totalApproved) * 100 : 0;
+  return totalApproved > 0 ? Math.round((onTimeCount / totalApproved) * 100) : 0;
 }
 
 function emptyScore(userId: string): ReputationScore {

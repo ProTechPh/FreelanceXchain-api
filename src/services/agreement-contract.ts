@@ -122,8 +122,7 @@ export async function createAgreementOnBlockchain(
     blockNumber: confirmed.blockNumber!,
   };
 
-  const createData: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at'> = {
-    id: contractIdHash,
+  const createData: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at' | 'id'> = {
     contract_id_hash: agreement.contractIdHash,
     terms_hash: agreement.termsHash,
     employer_wallet: agreement.employerWallet,

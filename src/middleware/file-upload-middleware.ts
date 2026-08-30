@@ -32,6 +32,7 @@ export const ALLOWED_MIME_TYPES = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': true,
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': true,
   'text/plain': true,
+  'text/markdown': true,
   'text/csv': true,
   'image/png': true,
   'image/jpeg': true,
@@ -47,7 +48,7 @@ export const ALLOWED_MIME_TYPES = {
 } as const;
 
 const ALLOWED_EXTENSIONS = [
-  '.pdf', '.doc', '.docx', '.xlsx', '.pptx', '.txt', '.csv',
+  '.pdf', '.doc', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.csv',
   '.png', '.jpg', '.jpeg', '.gif', '.webp',
   '.zip', '.rar', '.7z',
   '.mp4', '.webm', '.mov',
@@ -75,13 +76,14 @@ function hasValidExtension(filename: string): boolean {
  */
 async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{ valid: boolean; detectedType?: string; error?: string }> {
   try {
-    // Special handling for text files (no magic number)
-    if (filename.toLowerCase().endsWith('.txt')) {
+    // Special handling for text and markdown files (no magic number)
+    const lower = filename.toLowerCase();
+    if (lower.endsWith('.txt') || lower.endsWith('.md')) {
       const isText = buffer.slice(0, 1024).every(byte =>
-        (byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13
+        (byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13 || byte >= 128
       );
       if (isText) {
-        return { valid: true, detectedType: 'text/plain' };
+        return { valid: true, detectedType: lower.endsWith('.md') ? 'text/markdown' : 'text/plain' };
       }
     }
 

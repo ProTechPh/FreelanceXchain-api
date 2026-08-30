@@ -136,11 +136,21 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     try {
       // fetchAll (cursor pagination) instead of Query.limit(1000): AI matching
       // silently ignored available freelancers past the first 1000.
-      const profiles = await this.fetchAll([
+      const rawProfiles = await this.fetchAll([
         Query.equal('availability', 'available'),
         Query.orderDesc('$createdAt'),
       ]);
-      return profiles.map(normalizeProfileEntity);
+      const seen = new Set<string>();
+      const uniqueProfiles: FreelancerProfileEntity[] = [];
+      for (const p of rawProfiles) {
+        const normalized = normalizeProfileEntity(p);
+        const key = normalized.user_id || normalized.id;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          uniqueProfiles.push(normalized);
+        }
+      }
+      return uniqueProfiles;
     } catch {
       return [];
     }

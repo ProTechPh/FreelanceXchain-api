@@ -3,6 +3,8 @@ import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/a
 import {
   validateAppwriteDocumentId,
   isValidUUID,
+  isValidSkillId,
+  isValidAppwriteDocumentId,
   validate,
   createProjectSchema,
   createProjectWithAttachmentsSchema,
@@ -442,12 +444,12 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
     return;
   }
 
-  // Deep check the middleware cannot express: per-item skillId UUIDs.
+  // Deep check the middleware cannot express: per-item skillId format.
   const errors: { field: string; message: string }[] = [];
   if (Array.isArray(requiredSkills)) {
     for (let i = 0; i < requiredSkills.length; i++) {
       const skill = requiredSkills[i];
-      if (skill.skillId && !isValidUUID(skill.skillId)) {
+      if (skill?.skillId && !isValidSkillId(skill.skillId)) {
         errors.push({ field: `requiredSkills[${i}].skillId`, message: 'skillId must be a valid UUID' });
       }
     }
@@ -565,10 +567,10 @@ function validateProjectWithAttachments(body: Record<string, unknown>): WithAtta
     if (!Array.isArray(parsedRequiredSkills) || parsedRequiredSkills.length === 0) {
       errors.push({ field: 'requiredSkills', message: 'At least one skill is required' });
     } else {
-      // Validate skillId UUIDs in requiredSkills array
+      // Validate skillId format in requiredSkills array
       for (let i = 0; i < parsedRequiredSkills.length; i++) {
         const skill = parsedRequiredSkills[i];
-        if (skill?.skillId && !isValidUUID(skill.skillId)) {
+        if (skill?.skillId && !isValidSkillId(skill.skillId)) {
           errors.push({ field: `requiredSkills[${i}].skillId`, message: 'skillId must be a valid UUID' });
         }
       }
@@ -752,7 +754,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
  */
 router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(updateProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
-  const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage } = req.body;
+  const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage, attachments, tags } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -768,6 +770,8 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
     title, description, requiredSkills, budget, deadline, status,
     ...(isRush !== undefined && { isRush }),
     ...(rushFeePercentage !== undefined && { rushFeePercentage }),
+    ...(attachments !== undefined && { attachments }),
+    ...(tags !== undefined && { tags }),
   });
 
   if (!result.success) {

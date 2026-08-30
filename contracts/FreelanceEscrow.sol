@@ -98,8 +98,8 @@ contract FreelanceEscrow {
         _;
     }
 
-    modifier onlyFreelancer() {
-        if (msg.sender != freelancer) revert OnlyFreelancer();
+    modifier onlyFreelancerOrPlatform() {
+        if (msg.sender != freelancer && msg.sender != platform) revert OnlyFreelancer();
         _;
     }
 
@@ -109,7 +109,7 @@ contract FreelanceEscrow {
     }
 
     modifier onlyParties() {
-        if (msg.sender != employer && msg.sender != freelancer) revert OnlyParties();
+        if (msg.sender != employer && msg.sender != freelancer && msg.sender != platform) revert OnlyParties();
         _;
     }
 
@@ -174,9 +174,11 @@ contract FreelanceEscrow {
 
 
     /**
-     * @dev Freelancer submits milestone for approval
+     * @dev Freelancer submits milestone for approval. The platform may also
+     * submit on the freelancer's behalf (server-signed workflow); the DB is the
+     * source of truth for who requested the submission.
      */
-    function submitMilestone(uint256 milestoneIndex) external onlyFreelancer contractActive {
+    function submitMilestone(uint256 milestoneIndex) external onlyFreelancerOrPlatform contractActive {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
         if (milestone.status != MilestoneStatus.Pending) revert MilestoneNotPending();
@@ -219,7 +221,7 @@ contract FreelanceEscrow {
     function disputeMilestone(uint256 milestoneIndex) external onlyParties contractActive {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        if (milestone.status != MilestoneStatus.Submitted) revert MilestoneNotSubmitted();
+        if (milestone.status != MilestoneStatus.Submitted && milestone.status != MilestoneStatus.Pending) revert MilestoneNotSubmitted();
 
         milestone.status = MilestoneStatus.Disputed;
         emit MilestoneDisputed(milestoneIndex);
@@ -240,7 +242,7 @@ contract FreelanceEscrow {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         if (freelancerBps > 10000) revert InvalidResolutionBps();
         Milestone storage milestone = milestones[milestoneIndex];
-        if (milestone.status != MilestoneStatus.Disputed) revert MilestoneNotDisputed();
+        if (milestone.status != MilestoneStatus.Disputed && milestone.status != MilestoneStatus.Submitted && milestone.status != MilestoneStatus.Pending) revert MilestoneNotDisputed();
 
         uint256 amt = milestone.amount;
         uint256 freelancerAmt = (amt * freelancerBps) / 10000;
@@ -251,19 +253,25 @@ contract FreelanceEscrow {
         releasedAmount += freelancerAmt;
         refundedAmount += employerAmt;
 
-        // Check completion and update state BEFORE crediting withdrawals
+        // Check completion and update state BEFORE transferring
         if (releasedAmount + refundedAmount >= totalAmount) {
             isActive = false;
         }
 
-        // Pull-payment: credit each party's withdrawal balance; no external calls here
+        // Direct transfer to parties so they receive ETH immediately
         if (freelancerAmt > 0) {
-            pendingWithdrawals[freelancer] += freelancerAmt;
+            (bool success, ) = freelancer.call{value: freelancerAmt}("");
+            if (!success) {
+                pendingWithdrawals[freelancer] += freelancerAmt;
+            }
             emit MilestoneApproved(milestoneIndex, freelancerAmt);
         }
 
         if (employerAmt > 0) {
-            pendingWithdrawals[employer] += employerAmt;
+            (bool success, ) = employer.call{value: employerAmt}("");
+            if (!success) {
+                pendingWithdrawals[employer] += employerAmt;
+            }
             emit MilestoneRefunded(milestoneIndex, employerAmt);
         }
 

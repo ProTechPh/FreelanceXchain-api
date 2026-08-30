@@ -100,8 +100,9 @@ async function transferRushFee(params: {
   employerId: string;
   freelancerId: string;
   amount: number;
+  clientTxHash?: string | undefined;
 }): Promise<RushFeeTransferResult> {
-  const { requestId, contractId, employerId, freelancerId, amount } = params;
+  const { requestId, contractId, employerId, freelancerId, amount, clientTxHash } = params;
 
   if (typeof amount !== 'number' || !isFinite(amount) || amount <= 0) {
     return { error: errorResult('VALIDATION_ERROR', 'Rush fee must be a positive amount') };
@@ -110,7 +111,9 @@ async function transferRushFee(params: {
   const freelancer = await userRepository.getUserById(freelancerId);
 
   let transactionHash: string;
-  if (getBlockchainMode() === 'real' && isWeb3Available()) {
+  if (clientTxHash) {
+    transactionHash = clientTxHash;
+  } else if (getBlockchainMode() === 'real' && isWeb3Available()) {
     if (!freelancer?.wallet_address) {
       return { error: errorResult('MISSING_WALLET', 'Freelancer wallet address is required to pay the rush fee') };
     }
@@ -159,6 +162,7 @@ type ApplyAcceptedRushFeeInput = {
   contractEntity: ContractEntity;
   agreedPercentage: number;
   respondedBy: string;
+  clientTxHash?: string | undefined;
 };
 
 type ApplyAcceptedRushFeeResult =
@@ -191,7 +195,7 @@ type ApplyAcceptedRushFeeResult =
 async function applyAcceptedRushFee(
   input: ApplyAcceptedRushFeeInput
 ): Promise<ApplyAcceptedRushFeeResult> {
-  const { requestId, contractEntity, agreedPercentage, respondedBy } = input;
+  const { requestId, contractEntity, agreedPercentage, respondedBy, clientTxHash } = input;
   const now = new Date().toISOString();
 
   // Re-check milestone state under the lock (TOCTOU) BEFORE moving money: a
@@ -213,6 +217,7 @@ async function applyAcceptedRushFee(
       employerId: contractEntity.employer_id,
       freelancerId: contractEntity.freelancer_id,
       amount: newRushFee,
+      clientTxHash,
     });
     if ('error' in transferResult) return { error: transferResult.error };
     transactionHash = transferResult.transactionHash;
@@ -365,8 +370,51 @@ async function acceptRushUpgrade(
   input: RespondToRushUpgradeInput
 ): Promise<RushUpgradeResponseResult> {
   const { requestEntity, contractEntity } = context;
-  const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
 
+  // Re-check milestone state under the lock (TOCTOU) BEFORE moving money or accepting
+  if (await hasProgressedMilestones(contractEntity.project_id)) {
+    return errorResult('INVALID_STATUS', 'Rush upgrade can only be accepted before any milestone has been submitted, approved, or refunded');
+  }
+
+  const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
+  const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
+  const escrowDeployed = hasDeployedEscrow(contractEntity);
+  const now = new Date().toISOString();
+
+  if (escrowDeployed) {
+    // When the contract is already active, the freelancer accepting sets the request
+    // to 'accepted', and the employer is prompted to pay the rush fee directly from MetaMask.
+    const updatedEntity = await rushUpgradeRequestRepository.updateRequest(input.requestId, {
+      status: 'accepted',
+      responded_by: freelancerId,
+      responded_at: now,
+    });
+
+    if (!updatedEntity) {
+      return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
+    }
+
+    const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
+    await sendNotificationSafe({
+      user_id: contractEntity.employer_id,
+      type: 'rush_upgrade_accepted',
+      title: 'Rush Upgrade Accepted - Payment Required',
+      message: `The freelancer has accepted the rush upgrade for "${projectEntity?.title ?? 'your contract'}". Please pay the ${newRushFee} ETH rush fee from your contract workspace to activate rush mode.`,
+      data: {
+        requestId: input.requestId,
+        contractId: requestEntity.contract_id,
+        rushFeePercentage: agreedPercentage,
+        rushFee: newRushFee,
+      },
+    });
+
+    return successResult({
+      request: mapRushUpgradeRequestFromEntity(updatedEntity),
+      contract: mapContractFromEntity(contractEntity),
+    });
+  }
+
+  // Escrow not deployed yet (pending contract): fold into escrow
   const applied = await applyAcceptedRushFee({
     requestId: input.requestId,
     contractEntity,
@@ -376,24 +424,18 @@ async function acceptRushUpgrade(
   if ('error' in applied) return applied.error;
 
   const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
-  const settlementNote = applied.escrowDeployed
-    ? ' The fee was paid directly to the freelancer.'
-    : ' The fee will be included in the escrow when it is funded.';
   const data: Record<string, unknown> = {
     requestId: input.requestId,
     contractId: requestEntity.contract_id,
     rushFeePercentage: agreedPercentage,
     rushFee: applied.rushFee,
   };
-  if (applied.transactionHash !== undefined) {
-    data['transactionHash'] = applied.transactionHash;
-  }
 
   await sendNotificationSafe({
     user_id: contractEntity.employer_id,
     type: 'rush_upgrade_accepted',
     title: 'Rush Upgrade Accepted',
-    message: `The freelancer has accepted the rush upgrade for "${projectEntity?.title ?? 'your contract'}". Rush fee: ${agreedPercentage}% (${applied.rushFee} ETH).${settlementNote}`,
+    message: `The freelancer has accepted the rush upgrade for "${projectEntity?.title ?? 'your contract'}". The ${applied.rushFee} ETH rush fee will be included in the escrow when funded.`,
     data,
   });
 
@@ -505,7 +547,8 @@ export async function respondToRushUpgrade(
 
 export async function acceptCounterOffer(
   employerId: string,
-  requestId: string
+  requestId: string,
+  options?: { transactionHash?: string | undefined }
 ): Promise<ServiceResult<RushUpgradeWithContract>> {
   const initialRequest = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!initialRequest) {
@@ -539,6 +582,7 @@ export async function acceptCounterOffer(
     contractEntity,
     agreedPercentage: requestEntity.counter_percentage,
     respondedBy: employerId,
+    clientTxHash: options?.transactionHash,
   });
   if ('error' in applied) return applied.error;
 
@@ -565,6 +609,83 @@ export async function acceptCounterOffer(
 
   return successResult({ request: applied.updatedRequest, contract: applied.updatedContract });
   }); // M19: end withLock
+}
+
+export type PayRushUpgradeFeeInput = {
+  requestId: string;
+  transactionHash?: string | undefined;
+};
+
+export async function payRushUpgradeFee(
+  employerId: string,
+  input: PayRushUpgradeFeeInput
+): Promise<ServiceResult<RushUpgradeWithContract>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(input.requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+    const requestEntity = await rushUpgradeRequestRepository.getRequestById(input.requestId);
+    if (!requestEntity) {
+      return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+    }
+
+    const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
+    if (!contractEntity || contractEntity.employer_id !== employerId) {
+      return errorResult('UNAUTHORIZED', 'Only the employer can pay the rush fee');
+    }
+
+    if (requestEntity.status !== 'accepted') {
+      return errorResult('INVALID_STATUS', 'Can only pay for an accepted rush upgrade request');
+    }
+
+    if (contractEntity.rush_fee > 0) {
+      return errorResult('ALREADY_PAID', 'Rush fee has already been paid for this contract');
+    }
+
+    const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
+    const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
+
+    const transferResult = await transferRushFee({
+      requestId: input.requestId,
+      contractId: contractEntity.id,
+      employerId: contractEntity.employer_id,
+      freelancerId: contractEntity.freelancer_id,
+      amount: newRushFee,
+      clientTxHash: input.transactionHash,
+    });
+
+    if ('error' in transferResult) {
+      return transferResult.error;
+    }
+
+    const updatedContractEntity = await contractRepository.updateContract(contractEntity.id, {
+      rush_fee: newRushFee,
+    });
+
+    if (!updatedContractEntity) {
+      return errorResult('UPDATE_FAILED', 'Failed to update contract with rush fee');
+    }
+
+    await sendNotificationSafe({
+      user_id: contractEntity.freelancer_id,
+      type: 'rush_upgrade_accepted',
+      title: 'Rush Fee Paid',
+      message: `The employer has paid the ${newRushFee} ETH rush fee for your contract.`,
+      data: {
+        requestId: input.requestId,
+        contractId: requestEntity.contract_id,
+        rushFee: newRushFee,
+        transactionHash: transferResult.transactionHash,
+      },
+    });
+
+    return successResult({
+      request: mapRushUpgradeRequestFromEntity(requestEntity),
+      contract: mapContractFromEntity(updatedContractEntity),
+    });
+  });
 }
 
 export async function declineCounterOffer(

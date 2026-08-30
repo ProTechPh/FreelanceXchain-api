@@ -30,7 +30,7 @@ export class BlockchainAgreementRepository extends BaseRepository<BlockchainAgre
     return this.getById(id);
   }
 
-  async createAgreement(data: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at'>): Promise<BlockchainAgreementEntity> {
+  async createAgreement(data: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at' | 'id'> & { id?: string }): Promise<BlockchainAgreementEntity> {
     return this.create(data);
   }
 

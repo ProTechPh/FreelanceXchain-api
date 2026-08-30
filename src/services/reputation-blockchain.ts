@@ -4,9 +4,15 @@
  */
 
 import type { Contract, ContractTransactionResponse, TransactionReceipt } from 'ethers';
+import { createHash } from 'node:crypto';
 import { getContractWithSigner, getContract, isWeb3Available } from './web3-client.js';
 import { getContractAddress } from '../config/contracts.js';
 import { FreelanceReputationABI } from './contract-abis.js';
+
+/** Hash a UUID/string to a bytes32 hex value (SHA-256, 0x-prefixed). */
+function toBytes32Hash(value: string): string {
+  return '0x' + createHash('sha256').update(value).digest('hex');
+}
 
 export type BlockchainRating = {
   rater: string;
@@ -115,7 +121,7 @@ export async function submitRatingToBlockchain(
     params.rateeAddress,
     params.rating,
     params.comment || '',
-    params.contractId
+    toBytes32Hash(params.contractId)
   );
 
   const receipt = await tx.wait();

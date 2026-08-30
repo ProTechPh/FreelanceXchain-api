@@ -30,7 +30,7 @@ export class BlockchainMilestoneRecordRepository extends BaseRepository<Blockcha
     return this.getById(id);
   }
 
-  async createMilestoneRecord(data: Omit<BlockchainMilestoneRecordEntity, 'created_at' | 'updated_at'>): Promise<BlockchainMilestoneRecordEntity> {
+  async createMilestoneRecord(data: Omit<BlockchainMilestoneRecordEntity, 'created_at' | 'updated_at' | 'id'> & { id?: string }): Promise<BlockchainMilestoneRecordEntity> {
     return this.create(data);
   }
 

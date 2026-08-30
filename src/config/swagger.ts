@@ -5,6 +5,7 @@ import {
   createProjectSchema,
   createProjectWithAttachmentsSchema,
   emptyBodySchema,
+  fundContractSchema,
   sendMessageSchema,
   submitProposalMultipartSchema,
   submitProposalSchema,
@@ -239,7 +240,7 @@ export const VALIDATED_ENDPOINTS: ValidatedEndpoint[] = [
   {
     path: '/api/contracts/{id}/fund',
     method: 'post',
-    schema: emptyBodySchema.body!,
+    schema: fundContractSchema.body!,
     operation: {
       summary: 'Fund contract escrow',
       description: 'Employer funds the escrow for a pending contract, activating it',

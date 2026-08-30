@@ -20,12 +20,43 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
   };
 }
 
+/**
+ * Populate project details (title, description, deadline, milestones) on contract entities
+ * so list views show project titles and milestone counts accurately. Fetches projects in parallel (O(N) queries).
+ */
+async function withProjectMilestones(entities: ContractEntity[]): Promise<ContractEntity[]> {
+  const { projectRepository } = await import('../repositories/project-repository.js');
+  const populated = await Promise.all(
+    entities.map(async (entity) => {
+      try {
+        const project = await projectRepository.findProjectById(entity.project_id);
+        if (project) {
+          return {
+            ...entity,
+            project: {
+              ...(entity as any).project,
+              id: project.id,
+              title: project.title,
+              description: project.description,
+              deadline: project.deadline,
+              milestones: project.milestones,
+            },
+          } as ContractEntity;
+        }
+      } catch { /* ignore — leave entity unchanged */ }
+      return entity;
+    })
+  );
+  return populated;
+}
+
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractByIdWithRelations(contractId);
   if (!entity) {
     return errorResult('NOT_FOUND', 'Contract not found');
   }
-  return successResult(mapContractFromEntity(entity));
+  // Cast to avoid exactOptionalPropertyTypes mismatch between ContractWithRelations and ContractRelations
+  return successResult(mapContractFromEntity(entity as any));
 }
 
 export async function getUserContracts(
@@ -33,6 +64,7 @@ export async function getUserContracts(
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getUserContracts(userId, options);
+  result.items = await withProjectMilestones(result.items);
   return successResult(mapPaginatedContracts(result));
 }
 
@@ -41,6 +73,7 @@ export async function getContractsByFreelancer(
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getContractsByFreelancer(freelancerId, options);
+  result.items = await withProjectMilestones(result.items);
   return successResult(mapPaginatedContracts(result));
 }
 
@@ -49,6 +82,7 @@ export async function getContractsByEmployer(
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getContractsByEmployer(employerId, options);
+  result.items = await withProjectMilestones(result.items);
   return successResult(mapPaginatedContracts(result));
 }
 

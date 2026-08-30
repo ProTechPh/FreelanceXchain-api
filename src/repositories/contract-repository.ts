@@ -38,6 +38,8 @@ export type ContractWithRelations = ContractEntity & {
     id?: string;
     title?: string | undefined;
     description?: string | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    milestones?: any[] | undefined;
   } | null;
   freelancer?: {
     id?: string;

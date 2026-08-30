@@ -4,40 +4,41 @@ import { successResult, errorResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
 import { transactionRepository, type TransactionEntity } from '../repositories/transaction-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
+import { paymentRepository } from '../repositories/payment-repository.js';
 
 export interface Transaction {
   id: string;
-  contract_id?: string;
-  milestone_id?: string;
-  from_user_id?: string;
-  to_user_id?: string;
+  contract_id?: string | undefined;
+  milestone_id?: string | undefined;
+  from_user_id?: string | undefined;
+  to_user_id?: string | undefined;
   amount: number;
   type: string;
   status: string;
-  transaction_hash?: string;
+  transaction_hash?: string | undefined;
   metadata?: unknown;
   created_at: string;
   updated_at: string;
 }
 
 interface TransactionOptions {
-  page?: number;
-  limit?: number;
-  type?: string;
-  status?: string;
-  startDate?: string;
-  endDate?: string;
+  page?: number | undefined;
+  limit?: number | undefined;
+  type?: string | undefined;
+  status?: string | undefined;
+  startDate?: string | undefined;
+  endDate?: string | undefined;
 }
 
 export interface TransactionInput {
-  contract_id?: string;
-  milestone_id?: string;
-  from_user_id?: string;
-  to_user_id?: string;
+  contract_id?: string | undefined;
+  milestone_id?: string | undefined;
+  from_user_id?: string | undefined;
+  to_user_id?: string | undefined;
   amount: number;
   type: string;
   status: string;
-  transaction_hash?: string;
+  transaction_hash?: string | undefined;
   metadata?: unknown;
 }
 
@@ -53,14 +54,39 @@ export async function getUserTransactions(
     const limit = options.limit || 20;
     const offset = (page - 1) * limit;
 
-    // Fetch the COMPLETE list: findByUser already fetchAll's internally (cursor
-    // pagination), so an unbounded limit adds no DB cost — and the in-memory
-    // filters + pagination below must run over ALL of the user's transactions.
-    // Capping at 200 here silently dropped everything older: total/hasMore were
-    // wrong and page 2+ was unreachable for users with >200 transactions (the
-    // limit(1000) truncation class of bug).
-    const pagedResult = await transactionRepository.findByUser(userId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
-    let filtered = pagedResult.items;
+    const [pagedResult, pagedPayments] = await Promise.all([
+      transactionRepository.findByUser(userId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 }),
+      paymentRepository.findByUserId(userId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 }).catch(() => ({ items: [], total: 0, hasMore: false })),
+    ]);
+
+    const txList = pagedResult.items;
+    let filtered: TransactionEntity[];
+
+    if (pagedPayments.items.length > 0) {
+      const existingTxIds = new Set(txList.map(t => t.id));
+      const existingHashes = new Set(txList.map(t => t.transaction_hash).filter(Boolean));
+
+      const mappedPayments: TransactionEntity[] = pagedPayments.items
+        .filter(p => !existingTxIds.has(p.id) && (!p.tx_hash || !existingHashes.has(p.tx_hash)))
+        .map(p => ({
+          id: p.id,
+          contract_id: p.contract_id,
+          milestone_id: p.milestone_id || undefined,
+          from_user_id: p.payer_id,
+          to_user_id: p.payee_id,
+          amount: p.amount,
+          type: p.payment_type,
+          status: p.status,
+          transaction_hash: p.tx_hash || undefined,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+        }));
+
+      filtered = [...txList, ...mappedPayments]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else {
+      filtered = txList;
+    }
 
     // Apply filters in-memory (Appwrite doesn't support complex WHERE)
     if (options.type) {
@@ -84,10 +110,10 @@ export async function getUserTransactions(
       total,
       hasMore: offset + limit < total,
     });
-      } catch (error) {
-      logger.error('Unexpected error in getUserTransactions', { error, userId, options });
-      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
-    }
+  } catch (error) {
+    logger.error('Unexpected error in getUserTransactions', { error, userId, options });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
 }
 
 /**
@@ -98,7 +124,26 @@ export async function getTransactionById(
   userId: string
 ): Promise<ServiceResult<Transaction>> {
   try {
-    const transaction = await transactionRepository.getById(transactionId);
+    let transaction = await transactionRepository.getById(transactionId);
+
+    if (!transaction) {
+      const payment = await paymentRepository.getById(transactionId).catch(() => null);
+      if (payment) {
+        transaction = {
+          id: payment.id,
+          contract_id: payment.contract_id,
+          milestone_id: payment.milestone_id || undefined,
+          from_user_id: payment.payer_id,
+          to_user_id: payment.payee_id,
+          amount: payment.amount,
+          type: payment.payment_type,
+          status: payment.status,
+          transaction_hash: payment.tx_hash || undefined,
+          created_at: payment.created_at,
+          updated_at: payment.updated_at,
+        };
+      }
+    }
 
     if (!transaction) {
       return errorResult('NOT_FOUND', 'Transaction not found');
@@ -135,9 +180,34 @@ export async function getContractTransactions(
       return errorResult('UNAUTHORIZED', 'You are not authorized to view transactions for this contract');
     }
 
-    const transactions = await transactionRepository.findByContract(contractId);
+    const [txList, paymentList] = await Promise.all([
+      transactionRepository.findByContract(contractId).catch(() => []),
+      paymentRepository.findByContractId(contractId).catch(() => []),
+    ]);
 
-    return successResult(transactions);
+    const existingTxIds = new Set(txList.map(t => t.id));
+    const existingHashes = new Set(txList.map(t => t.transaction_hash).filter(Boolean));
+
+    const mappedPayments: TransactionEntity[] = paymentList
+      .filter(p => !existingTxIds.has(p.id) && (!p.tx_hash || !existingHashes.has(p.tx_hash)))
+      .map(p => ({
+        id: p.id,
+        contract_id: p.contract_id,
+        milestone_id: p.milestone_id || undefined,
+        from_user_id: p.payer_id,
+        to_user_id: p.payee_id,
+        amount: p.amount,
+        type: p.payment_type,
+        status: p.status,
+        transaction_hash: p.tx_hash || undefined,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+      }));
+
+    const combined = [...txList, ...mappedPayments]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return successResult(combined);
   } catch (error) {
     logger.error('Unexpected error in getContractTransactions', { error, contractId, userId });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');

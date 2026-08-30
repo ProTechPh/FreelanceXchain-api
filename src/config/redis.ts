@@ -8,10 +8,10 @@ import { logger } from './logger.js';
 // client that hasn't connected yet throws "Stream isn't writeable", which is
 // the startup-race we observed in production.
 export const redis = new Redis({
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password || undefined,
-  tls: config.redis.tls ? {} : undefined,
+  host: config?.redis?.host || '127.0.0.1',
+  port: config?.redis?.port || 6379,
+  password: config?.redis?.password || undefined,
+  tls: config?.redis?.tls ? {} : undefined,
   enableOfflineQueue: false,
   connectTimeout: 5000,
   maxRetriesPerRequest: 1,

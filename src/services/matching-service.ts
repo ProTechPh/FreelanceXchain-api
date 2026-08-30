@@ -207,11 +207,19 @@ export async function getFreelancerRecommendations(
       const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
       const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
 
-      let reputationScore = 50;
+      let actualReputationScore = 0; // 0-100 percentage
+      let averageRating = 0; // 0.0-5.0
+      let totalRatings = 0;
+      let rankingReputationScore = 70; // baseline neutral reputation for matching rank if unrated
+
       try {
         const repResult = await getReputation(freelancerEntity.user_id);
-        if (repResult.success && repResult.data.score > 0) {
-          reputationScore = repResult.data.score;
+        if (repResult.success && repResult.data.totalRatings > 0) {
+          totalRatings = repResult.data.totalRatings;
+          averageRating = repResult.data.averageRating || repResult.data.score || 0;
+          // Scale from 1-5 star rating to 0-100 percentage:
+          actualReputationScore = Math.min(100, Math.max(0, Math.round((averageRating / 5) * 100)));
+          rankingReputationScore = actualReputationScore;
         }
       } catch {
         // default
@@ -219,14 +227,17 @@ export async function getFreelancerRecommendations(
 
       const combinedScore = Math.round(
         keywordResult.matchScore * SKILL_MATCH_WEIGHT +
-        reputationScore * REPUTATION_WEIGHT
+        rankingReputationScore * REPUTATION_WEIGHT
       );
 
       return {
         freelancerEntity,
         freelancerSkills,
         keywordResult,
-        reputationScore,
+        reputationScore: actualReputationScore,
+        averageRating,
+        totalRatings,
+        rankingReputationScore,
         combinedScore,
       };
     })
@@ -237,7 +248,7 @@ export async function getFreelancerRecommendations(
 
   // 2. Enhance top candidates only
   const recommendations: FreelancerRecommendation[] = await Promise.all(
-    topCandidates.map(async ({ freelancerEntity, freelancerSkills, keywordResult, reputationScore }) => {
+    topCandidates.map(async ({ freelancerEntity, freelancerSkills, keywordResult, reputationScore, averageRating, totalRatings, rankingReputationScore }) => {
       let matchResult = keywordResult;
 
       if (isAIAvailable()) {
@@ -245,7 +256,7 @@ export async function getFreelancerRecommendations(
           const aiResult = await analyzeSkillMatch({
             freelancerSkills,
             projectRequirements,
-            reputationScore,
+            reputationScore: rankingReputationScore,
           });
           if (!isAIError(aiResult)) {
             matchResult = aiResult;
@@ -257,13 +268,15 @@ export async function getFreelancerRecommendations(
 
       const finalCombinedScore = Math.round(
         matchResult.matchScore * SKILL_MATCH_WEIGHT +
-        reputationScore * REPUTATION_WEIGHT
+        rankingReputationScore * REPUTATION_WEIGHT
       );
 
       return {
         freelancerId: freelancerEntity.user_id,
         matchScore: matchResult.matchScore,
         reputationScore,
+        averageRating,
+        totalRatings,
         combinedScore: finalCombinedScore,
         matchedSkills: matchResult.matchedSkills,
         reasoning: matchResult.reasoning,
