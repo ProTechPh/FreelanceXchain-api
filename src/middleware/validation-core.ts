@@ -26,7 +26,7 @@ export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
 
     for (const paramName of paramNames) {
       const value = req.params[paramName];
-      if (value && !isValidUUID(value)) {
+      if (value && !isValidUUID(value) && !APPWRITE_ID_PATTERN.test(value)) {
         errors.push({
           field: paramName,
           message: `${paramName} must be a valid UUID`,

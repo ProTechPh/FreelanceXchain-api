@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import {
   addFavorite,
   removeFavorite,
@@ -18,10 +18,34 @@ const router = Router();
  * @swagger
  * /api/favorites:
  *   post:
- *     summary: Add favorite
+ *     summary: Add a project or freelancer to favorites
  *     tags: [Favorites]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - targetType
+ *               - targetId
+ *             properties:
+ *               targetType:
+ *                 type: string
+ *                 enum: [project, freelancer]
+ *               targetId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Favorite added
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: Already favorited
  */
 router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
@@ -33,30 +57,39 @@ router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Reques
     return;
   }
 
-  if (!targetType || !targetId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetType and targetId are required', { requestId });
+  if (!targetType || !targetId || !['project', 'freelancer'].includes(targetType)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetType must be "project" or "freelancer", and targetId is required', { requestId });
     return;
   }
 
   const result = await addFavorite(userId, targetType, targetId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
+    const statusCode = result.error?.code === 'ALREADY_FAVORITED' ? 409 : 400;
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
   res.status(201).json(result.data);
 }));
 
-
 /**
  * @swagger
  * /api/favorites:
  *   get:
- *     summary: Get user favorites
+ *     summary: Get user's favorites
  *     tags: [Favorites]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: targetType
+ *         schema:
+ *           type: string
+ *           enum: [project, freelancer]
+ *     responses:
+ *       200:
+ *         description: List of favorites
  */
 router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
@@ -104,7 +137,7 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
     return;
   }
 
-  sendSuccessResponse(res, 200, { message: 'Favorite removed' }, requestId);
+  res.status(200).json({ message: 'Favorite removed' });
 }));
 
 /**
