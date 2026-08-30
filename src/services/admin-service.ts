@@ -13,7 +13,6 @@ import {
   updateKycVerification,
 } from '../repositories/didit-kyc-repository.js';
 import type { KycVerification } from '../models/didit-kyc.js';
-import type { DisputeEntity } from '../repositories/dispute-repository.js';
 import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';

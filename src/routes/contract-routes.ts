@@ -298,6 +298,52 @@ async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowRes
   return { escrowAddress: escrowResult.data.escrowAddress };
 }
 
+interface ClientEscrowFundingParams {
+  clientEscrowAddress: string;
+  clientTxHash?: string | undefined;
+  contract: Contract;
+  requestId: string;
+  res: Response;
+}
+
+async function handleClientEscrowFunding({
+  clientEscrowAddress,
+  clientTxHash,
+  contract,
+  requestId,
+  res,
+}: ClientEscrowFundingParams): Promise<string | null> {
+  const walletResult = await getContractWalletAddresses(contract.id);
+  if (!walletResult.success) {
+    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
+    return null;
+  }
+  const { employerWallet, freelancerWallet } = walletResult.data;
+  const verification = await verifyClientEscrowOnChain(clientEscrowAddress, contract, employerWallet, freelancerWallet);
+  if (!verification.success) {
+    sendErrorResponse(res, 400, 'ESCROW_VERIFICATION_FAILED', verification.error || 'Escrow verification failed', { requestId });
+    return null;
+  }
+
+  try {
+    const { createPaymentRecord } = await import('../utils/payment-records.js');
+    await createPaymentRecord({
+      contractId: contract.id,
+      milestoneId: null,
+      payerId: contract.employerId,
+      payeeId: contract.freelancerId,
+      amount: contract.totalAmount,
+      paymentType: 'escrow_deposit',
+      txHash: clientTxHash || null,
+      status: 'completed',
+    });
+  } catch (recordError) {
+    logger.error('Failed to record client escrow deposit payment', { error: recordError, contractId: contract.id });
+  }
+
+  return clientEscrowAddress;
+}
+
 router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(fundContractSchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
@@ -343,35 +389,9 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
   let escrowAddress = contract.escrowAddress;
 
   if (clientEscrowAddress) {
-    const walletResult = await getContractWalletAddresses(contract.id);
-    if (!walletResult.success) {
-      sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
-      return;
-    }
-    const { employerWallet, freelancerWallet } = walletResult.data;
-    const verification = await verifyClientEscrowOnChain(clientEscrowAddress, contract, employerWallet, freelancerWallet);
-    if (!verification.success) {
-      sendErrorResponse(res, 400, 'ESCROW_VERIFICATION_FAILED', verification.error || 'Escrow verification failed', { requestId });
-      return;
-    }
-    escrowAddress = clientEscrowAddress;
-
-    // Record client-funded escrow deposit
-    try {
-      const { createPaymentRecord } = await import('../utils/payment-records.js');
-      await createPaymentRecord({
-        contractId: contract.id,
-        milestoneId: null,
-        payerId: contract.employerId,
-        payeeId: contract.freelancerId,
-        amount: contract.totalAmount,
-        paymentType: 'escrow_deposit',
-        txHash: clientTxHash || null,
-        status: 'completed',
-      });
-    } catch (recordError) {
-      logger.error('Failed to record client escrow deposit payment', { error: recordError, contractId: contract.id });
-    }
+    const address = await handleClientEscrowFunding({ clientEscrowAddress, clientTxHash, contract, requestId, res });
+    if (!address) return;
+    escrowAddress = address;
   } else if (!escrowAddress) {
     // No escrow yet — deploy server-side fallback
     const escrowResult = await ensureContractEscrow(contract);

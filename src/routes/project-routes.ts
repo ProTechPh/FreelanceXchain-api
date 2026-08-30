@@ -2,9 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import {
   validateAppwriteDocumentId,
-  isValidUUID,
   isValidSkillId,
-  isValidAppwriteDocumentId,
   validate,
   createProjectSchema,
   createProjectWithAttachmentsSchema,

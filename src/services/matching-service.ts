@@ -177,6 +177,48 @@ export async function getProjectRecommendations(
   return successResult(recommendations);
 }
 
+async function scoreFreelancerCandidate(
+  freelancerEntity: (typeof freelancerProfileRepository extends { getAvailableProfiles: () => Promise<(infer T)[]> } ? T : any),
+  projectRequirements: SkillInfo[]
+) {
+  const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
+  const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
+
+  let actualReputationScore = 0; // 0-100 percentage
+  let averageRating = 0; // 0.0-5.0
+  let totalRatings = 0;
+  let rankingReputationScore = 70; // baseline neutral reputation for matching rank if unrated
+
+  try {
+    const repResult = await getReputation(freelancerEntity.user_id);
+    if (repResult.success && repResult.data.totalRatings > 0) {
+      totalRatings = repResult.data.totalRatings;
+      averageRating = repResult.data.averageRating || repResult.data.score || 0;
+      // Scale from 1-5 star rating to 0-100 percentage:
+      actualReputationScore = Math.min(100, Math.max(0, Math.round((averageRating / 5) * 100)));
+      rankingReputationScore = actualReputationScore;
+    }
+  } catch {
+    // default
+  }
+
+  const combinedScore = Math.round(
+    keywordResult.matchScore * SKILL_MATCH_WEIGHT +
+    rankingReputationScore * REPUTATION_WEIGHT
+  );
+
+  return {
+    freelancerEntity,
+    freelancerSkills,
+    keywordResult,
+    reputationScore: actualReputationScore,
+    averageRating,
+    totalRatings,
+    rankingReputationScore,
+    combinedScore,
+  };
+}
+
 export async function getFreelancerRecommendations(
   projectId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
@@ -203,44 +245,7 @@ export async function getFreelancerRecommendations(
 
   // 1. Fast preliminary scoring
   const candidates = await Promise.all(
-    freelancerEntities.map(async (freelancerEntity) => {
-      const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
-      const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
-
-      let actualReputationScore = 0; // 0-100 percentage
-      let averageRating = 0; // 0.0-5.0
-      let totalRatings = 0;
-      let rankingReputationScore = 70; // baseline neutral reputation for matching rank if unrated
-
-      try {
-        const repResult = await getReputation(freelancerEntity.user_id);
-        if (repResult.success && repResult.data.totalRatings > 0) {
-          totalRatings = repResult.data.totalRatings;
-          averageRating = repResult.data.averageRating || repResult.data.score || 0;
-          // Scale from 1-5 star rating to 0-100 percentage:
-          actualReputationScore = Math.min(100, Math.max(0, Math.round((averageRating / 5) * 100)));
-          rankingReputationScore = actualReputationScore;
-        }
-      } catch {
-        // default
-      }
-
-      const combinedScore = Math.round(
-        keywordResult.matchScore * SKILL_MATCH_WEIGHT +
-        rankingReputationScore * REPUTATION_WEIGHT
-      );
-
-      return {
-        freelancerEntity,
-        freelancerSkills,
-        keywordResult,
-        reputationScore: actualReputationScore,
-        averageRating,
-        totalRatings,
-        rankingReputationScore,
-        combinedScore,
-      };
-    })
+    freelancerEntities.map((freelancerEntity) => scoreFreelancerCandidate(freelancerEntity, projectRequirements))
   );
 
   candidates.sort((a, b) => b.combinedScore - a.combinedScore);

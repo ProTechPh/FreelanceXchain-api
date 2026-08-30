@@ -56,6 +56,37 @@ async function resolveReceiverUserId(receiverId: string): Promise<string | null>
   }
 }
 
+async function maybeSendMessageEmailNotification(
+  senderId: string,
+  resolvedReceiverId: string,
+  content: string,
+  lastMessageAt: string | undefined | null
+): Promise<void> {
+  const isNewConversation = !lastMessageAt;
+  const lastMessageTime = lastMessageAt ? new Date(lastMessageAt).getTime() : 0;
+  const shouldSendEmail = isNewConversation || (Date.now() - lastMessageTime > 15 * 60 * 1000);
+
+  if (!shouldSendEmail) return;
+
+  try {
+    const [sender, receiver] = await Promise.all([
+      userRepository.getUserById(senderId),
+      userRepository.getUserById(resolvedReceiverId),
+    ]);
+    const receiverRole = receiver?.role || 'freelancer';
+    await sendGatedEmail(resolvedReceiverId, 'message_received', (recipient) =>
+      sendMessageReceivedEmail(recipient.email, {
+        recipientName: recipient.name,
+        senderName: sender?.name || 'Someone',
+        messagePreview: content.substring(0, 100),
+        conversationUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/dashboard/${receiverRole}/messages?recipientId=${senderId}`,
+      })
+    );
+  } catch (error) {
+    logger.error('Failed to send message-received email', { error, senderId, receiverId: resolvedReceiverId });
+  }
+}
+
 /**
  * Send a message to another user
  */
@@ -134,32 +165,7 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
     };
     notificationEmitter.emitToUser(resolvedReceiverId, messageEvent);
 
-    // Check if we should send an email notification:
-    // Only send on the first message or if the last message was over 15 minutes ago
-    // to prevent email spamming during an active ongoing chat conversation.
-    const isNewConversation = !conversation.last_message_at;
-    const lastMessageTime = conversation.last_message_at ? new Date(conversation.last_message_at).getTime() : 0;
-    const shouldSendEmail = isNewConversation || (Date.now() - lastMessageTime > 15 * 60 * 1000);
-
-    if (shouldSendEmail) {
-      try {
-        const [sender, receiver] = await Promise.all([
-          userRepository.getUserById(senderId),
-          userRepository.getUserById(resolvedReceiverId),
-        ]);
-        const receiverRole = receiver?.role || 'freelancer';
-        await sendGatedEmail(resolvedReceiverId, 'message_received', (recipient) =>
-          sendMessageReceivedEmail(recipient.email, {
-            recipientName: recipient.name,
-            senderName: sender?.name || 'Someone',
-            messagePreview: content.substring(0, 100),
-            conversationUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/dashboard/${receiverRole}/messages?recipientId=${senderId}`,
-          })
-        );
-      } catch (error) {
-        logger.error('Failed to send message-received email', { error, senderId, receiverId: resolvedReceiverId });
-      }
-    }
+    await maybeSendMessageEmailNotification(senderId, resolvedReceiverId, content, conversation.last_message_at);
 
     logger.debug('Message sent successfully', { messageId: message.id, conversationId: conversation.id });
 

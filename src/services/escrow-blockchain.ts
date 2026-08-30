@@ -4,7 +4,7 @@
  */
 
 import type { Contract, ContractTransactionResponse, ContractTransactionReceipt, TransactionReceipt } from 'ethers';
-import { getContractWithSigner, getContractWithArbiterSigner, getContract, isWeb3Available, getWallet, getArbiterWallet } from './web3-client.js';
+import { getContractWithSigner, getContractWithArbiterSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis.js';
 import { ContractFactory } from 'ethers';
 import { logger } from '../config/logger.js';
