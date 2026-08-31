@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -123,7 +123,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const { name, role, isActive } = req.body;
@@ -160,7 +160,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const { reason } = req.body;
@@ -190,7 +190,7 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -230,8 +230,8 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
  *                 minLength: 10
  *                 maxLength: 500
  *                 description: Audit reason for the manual KYC approval
- */
-router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
+ * */
+router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
   const adminUserId = req.user?.userId;

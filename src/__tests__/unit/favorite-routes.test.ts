@@ -37,6 +37,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
   validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
@@ -464,6 +465,7 @@ describe('favorite-routes - ?? "" param fallback coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
 

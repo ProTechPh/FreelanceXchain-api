@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -37,11 +37,12 @@ const router = Router();
  *                 enum: [project, freelancer]
  *               targetId:
  *                 type: string
+ *                 description: Target ID (project ID or freelancer ID)
  *     responses:
  *       201:
- *         description: Favorite added
+ *         description: Added to favorites
  *       400:
- *         description: Invalid input
+ *         description: Bad request
  *       401:
  *         description: Unauthorized
  *       409:
@@ -57,15 +58,20 @@ router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Reques
     return;
   }
 
-  if (!targetType || !targetId || !['project', 'freelancer'].includes(targetType)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetType must be "project" or "freelancer", and targetId is required', { requestId });
+  if (!targetType || !['project', 'freelancer'].includes(targetType)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetType must be either "project" or "freelancer"', { requestId });
+    return;
+  }
+
+  if (!targetId || typeof targetId !== 'string') {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetId is required', { requestId });
     return;
   }
 
   const result = await addFavorite(userId, targetType, targetId);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'ALREADY_FAVORITED' ? 409 : 400;
+    const statusCode = result.error?.code === 'DUPLICATE_FAVORITE' ? 409 : 400;
     sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
@@ -77,7 +83,7 @@ router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Reques
  * @swagger
  * /api/favorites:
  *   get:
- *     summary: Get user's favorites
+ *     summary: Get user favorites
  *     tags: [Favorites]
  *     security:
  *       - bearerAuth: []
@@ -90,6 +96,8 @@ router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Reques
  *     responses:
  *       200:
  *         description: List of favorites
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
@@ -120,7 +128,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
  *     security:
  *       - bearerAuth: []
  */
-router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['targetId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.params;
   const requestId = getRequestId(req);
@@ -149,7 +157,7 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
  *     security:
  *       - bearerAuth: []
  */
-router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['targetId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.params;
   const requestId = getRequestId(req);
