@@ -1,6 +1,5 @@
 import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-mapper.js';
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import type { ServiceResult } from '../types/service-result.js';
@@ -95,26 +94,9 @@ export async function createEmployerProfileFromKyc(
 export async function getEmployerProfileByUserId(
   userId: string
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
-  let profileEntity = await employerProfileRepository.getProfileByUserId(userId);
+  const profileEntity = await employerProfileRepository.getProfileByUserId(userId);
   if (!profileEntity) {
-    const user = await userRepository.getUserById(userId);
-    if (!user) {
-      return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
-    }
-    const defaultName = user.name || user.full_name || 'Employer';
-    profileEntity = await employerProfileRepository.createProfile({
-      id: generateId(),
-      user_id: userId,
-      name: defaultName,
-      nationality: 'Global',
-      company_name: defaultName,
-      description: `Welcome to ${defaultName}'s employer profile on FreelanceXchain.`,
-      industry: 'Technology',
-    }).catch(() => null);
-
-    if (!profileEntity) {
-      return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
-    }
+    return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
   }
   return successResult(mapEmployerProfileFromEntity(profileEntity));
 }
@@ -123,20 +105,9 @@ export async function updateEmployerProfile(
   userId: string,
   input: UpdateEmployerProfileInput
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
-  let existingProfile = await employerProfileRepository.getProfileByUserId(userId);
+  const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    const user = await userRepository.getUserById(userId);
-    const defaultName = user?.name || user?.full_name || 'Employer';
-    const newProfile = await employerProfileRepository.createProfile({
-      id: generateId(),
-      user_id: userId,
-      name: defaultName,
-      nationality: 'Global',
-      company_name: input.companyName || defaultName,
-      description: input.description || `Welcome to ${defaultName}'s employer profile on FreelanceXchain.`,
-      industry: input.industry || 'Technology',
-    });
-    return successResult(mapEmployerProfileFromEntity(newProfile));
+    return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
   }
 
   const updates: Partial<EmployerProfileEntity> = {};

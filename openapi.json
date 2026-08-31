@@ -7937,6 +7937,25 @@
           "404": {
             "description": "Contract not found"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "escrowAddress": {
+                    "type": "string"
+                  },
+                  "transactionHash": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

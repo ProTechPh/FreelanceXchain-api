@@ -576,10 +576,9 @@ describe('Proposal Service - Unit Tests', () => {
       expect(result.data.contract).toBeDefined();
       expect(result.data.contract.proposalId).toBe(proposal.id);
       
-      // Refetch contract to get updated status after escrow deployment
+      // Refetch contract to get status after creation (pending until employer funds escrow)
       const updatedContractEntity = await mockContractRepo.getContractById(result.data.contract.id);
-      expect(updatedContractEntity?.status).toBe('active');
-      expect(updatedContractEntity?.escrow_address).toBeDefined();
+      expect(updatedContractEntity?.status).toBe('pending');
     }
 
     // BLF-12.2: contract creation is audited with the employer as actor and freelancer as target
