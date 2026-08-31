@@ -188,8 +188,8 @@ describe('Review Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
-      const response = await request(app).get('/api/reviews/project/invalid-uuid');
+    it('should validate Appwrite document ID format', async () => {
+      const response = await request(app).get('/api/reviews/project/not a valid id!!!');
       expect(response.status).toBe(400);
     });
   });
@@ -204,9 +204,9 @@ describe('Review Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .get('/api/reviews/can-review/invalid-uuid')
+        .get('/api/reviews/can-review/not a valid id!!!')
         .set('Authorization', 'Bearer mock-token');
 
       expect(response.status).toBe(400);

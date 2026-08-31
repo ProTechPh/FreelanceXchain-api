@@ -103,9 +103,9 @@ describe('Favorite Routes Integration Tests', () => {
       expect([200, 400, 401, 404]).toContain(response.status);
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .delete('/api/favorites/project/invalid-uuid')
+        .delete('/api/favorites/project/not a valid id!!!')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect([400, 401]).toContain(response.status);
@@ -140,9 +140,9 @@ describe('Favorite Routes Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .get('/api/favorites/check/project/invalid-uuid')
+        .get('/api/favorites/check/project/not a valid id!!!')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect([400, 401]).toContain(response.status);
