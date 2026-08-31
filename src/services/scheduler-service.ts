@@ -55,15 +55,6 @@ async function autoCloseExpiredProjects(): Promise<void> {
   }
 }
 
-type WeeklyDigestData = {
-  userEmail: string;
-  userFullName: string;
-  newProjectsCount: number;
-  newMessagesCount: number;
-  pendingMilestonesCount: number;
-  topProjects: Array<{ title: string; budget: string; url: string }>;
-};
-
 type StuckMilestone = { status?: string; updated_at?: string };
 
 function parseMilestones(project: ProjectEntity): StuckMilestone[] {
