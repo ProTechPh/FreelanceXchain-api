@@ -779,9 +779,12 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), ()
 
 // Mock blockchain services
 jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
-  deployEscrowContract: jest.fn(),
+  deployEscrowContract: jest.fn(async () => ({ escrowAddress: '0x' + 'a'.repeat(40), transactionHash: '0x' + 'b'.repeat(64) })),
   approveMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'b'.repeat(64) })),
+  submitMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'c'.repeat(64), blockNumber: 12345 })),
+  getMilestoneStatus: jest.fn(async () => 'pending'),
   getEscrowInfo: jest.fn(),
+  isWeb3Available: jest.fn(() => true),
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({

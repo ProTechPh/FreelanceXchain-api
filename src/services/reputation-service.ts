@@ -5,10 +5,7 @@
  * Uses Appwrite reviews table as primary storage, blockchain as best-effort sync
  */
 
-import {
-  submitRatingToBlockchain,
-  BlockchainRating,
-} from './reputation-blockchain.js';
+import type { BlockchainRating } from './reputation-blockchain.js';
 import { databases, DATABASE_ID } from '../config/appwrite.js';
 import { COLLECTIONS } from '../config/collections.js';
 import { contractRepository } from '../repositories/contract-repository.js';
@@ -214,19 +211,39 @@ async function syncRatingToBlockchain(
   rateeId: string,
 ): Promise<string> {
   let transactionHash = '';
+
+  // 1. Record rating in blockchain registry repository (Appwrite blockchain_ratings & blockchain_transactions)
   try {
-    // Look up ratee wallet address for blockchain sync
+    const { submitRatingToBlockchain: submitToRegistry } = await import('./reputation-contract.js');
+    const registryResult = await submitToRegistry({
+      contractId: input.contractId,
+      raterId: input.raterId,
+      rateeId,
+      rating: input.rating,
+      comment: input.comment || '',
+    });
+    if (registryResult?.rating?.transactionHash) {
+      transactionHash = registryResult.rating.transactionHash;
+    }
+  } catch (registryError: unknown) {
+    logger.warn('Failed to record rating to blockchain registry repository', {
+      error: registryError instanceof Error ? registryError.message : String(registryError),
+      reviewId,
+    });
+  }
+
+  // 2. Best-effort direct on-chain smart contract call
+  try {
     const rateeDoc = await userRepository.getUserById(rateeId);
     const rateeWallet = rateeDoc?.wallet_address;
 
     if (!rateeWallet) {
-      logger.warn('Ratee has no wallet address, skipping blockchain sync', { rateeId });
+      logger.warn('Ratee has no wallet address, skipping direct on-chain sync', { rateeId });
       return transactionHash;
     }
 
     const { isWeb3Available } = await import('./web3-client.js');
     if (!isWeb3Available()) {
-      logger.warn('Web3 not available, skipping blockchain sync', { reviewId });
       return transactionHash;
     }
 
@@ -239,17 +256,19 @@ async function syncRatingToBlockchain(
       web3Available: true,
     });
 
-    // isEmployerRating is derived on-chain from msg.sender — not passed here.
-    const result = await submitRatingToBlockchain({
+    const { submitRatingToBlockchain: submitToChain } = await import('./reputation-blockchain.js');
+    const result = await submitToChain({
       contractId: input.contractId,
       rateeAddress: rateeWallet,
       rating: input.rating,
       comment: input.comment || '',
     });
-    transactionHash = result.transactionHash;
-    logger.info('Rating synced to blockchain', { reviewId, transactionHash });
+    if (result?.transactionHash) {
+      transactionHash = result.transactionHash;
+      logger.info('Rating synced to blockchain', { reviewId, transactionHash });
+    }
   } catch (blockchainError: unknown) {
-    logger.error('Failed to sync rating to blockchain', {
+    logger.warn('Direct on-chain rating sync skipped or reverted (best-effort)', {
       error: blockchainError instanceof Error ? blockchainError.message : String(blockchainError),
       reviewId,
     });

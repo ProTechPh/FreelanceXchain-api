@@ -1,5 +1,6 @@
 import { logger } from '../config/logger.js';
 import { paymentRepository, type PaymentType } from '../repositories/payment-repository.js';
+import { transactionRepository } from '../repositories/transaction-repository.js';
 import { generateId } from './id.js';
 
 /**
@@ -26,8 +27,9 @@ export async function createPaymentRecord(params: {
     throw new Error(`Invalid payment amount: ${params.amount}`);
   }
   try {
+    const paymentId = generateId();
     await paymentRepository.create({
-      id: generateId(),
+      id: paymentId,
       contract_id: params.contractId,
       milestone_id: params.milestoneId,
       payer_id: params.payerId,
@@ -38,6 +40,22 @@ export async function createPaymentRecord(params: {
       status: params.status,
       payment_type: params.paymentType,
     });
+
+    try {
+      await transactionRepository.create({
+        id: paymentId,
+        contract_id: params.contractId,
+        milestone_id: params.milestoneId || undefined,
+        from_user_id: params.payerId,
+        to_user_id: params.payeeId,
+        amount: params.amount,
+        type: params.paymentType,
+        status: params.status,
+        transaction_hash: params.txHash || undefined,
+      });
+    } catch (txErr) {
+      logger.warn('Failed to mirror payment record to transaction repository', { error: txErr, paymentId });
+    }
   } catch (error) {
     logger.error('Failed to create payment record', { error });
     throw error;

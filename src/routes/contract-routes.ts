@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, validate, emptyBodySchema } from '../middleware/validation-middleware.js';
+import { validateUUID, validate, emptyBodySchema, fundContractSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { logger } from '../config/logger.js';
+import { config } from '../config/env.js';
 import {
   getContractById,
   getUserContracts,
@@ -205,11 +206,67 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
  */
 type EnsureEscrowResult = { escrowAddress: string } | { error: { statusCode: number; code: string; message: string } };
 
+async function verifyClientEscrowOnChain(
+  escrowAddress: string,
+  contract: Contract,
+  employerWallet: string,
+  freelancerWallet: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { getProvider, isWeb3Available } = await import('../services/web3-client.js');
+    const { getBlockchainMode } = await import('../services/blockchain/factory.js');
+    if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
+      return { success: true };
+    }
+
+    const { FreelanceEscrowABI } = await import('../services/contract-abis.js');
+    const { ethers } = await import('ethers');
+
+    const provider = getProvider();
+    const escrowContract = new ethers.Contract(escrowAddress, FreelanceEscrowABI, provider);
+
+    const callString = (name: string): Promise<string | null> =>
+      ((escrowContract[name] as (() => Promise<string>) | undefined)?.().catch(() => null)) ?? Promise.resolve(null);
+    const callBigInt = (name: string): Promise<bigint> =>
+      ((escrowContract[name] as (() => Promise<bigint>) | undefined)?.().catch(() => 0n)) ?? Promise.resolve(0n);
+
+    const [onChainEmployer, onChainFreelancer, onChainBalance, onChainTotalAmount, onChainContractId] = await Promise.all([
+      callString('employer'),
+      callString('freelancer'),
+      provider.getBalance(escrowAddress).catch(() => 0n),
+      callBigInt('totalAmount'),
+      callString('contractId'),
+    ]);
+
+    if (!onChainEmployer || !onChainFreelancer) {
+      return { success: false, error: 'Target address is not a valid FreelanceEscrow contract on chain' };
+    }
+
+    if (onChainEmployer.toLowerCase() !== employerWallet.toLowerCase()) {
+      return { success: false, error: `Escrow employer (${onChainEmployer}) does not match expected employer (${employerWallet})` };
+    }
+
+    if (onChainFreelancer.toLowerCase() !== freelancerWallet.toLowerCase()) {
+      return { success: false, error: `Escrow freelancer (${onChainFreelancer}) does not match expected freelancer (${freelancerWallet})` };
+    }
+
+    if (onChainContractId && onChainContractId !== contract.id) {
+      return { success: false, error: 'Escrow contract ID mismatch' };
+    }
+
+    const expectedTotal = ethers.parseEther(contract.totalAmount.toString());
+    if (onChainTotalAmount < expectedTotal || onChainBalance < expectedTotal) {
+      return { success: false, error: `Escrow on-chain balance (${ethers.formatEther(onChainBalance)} ETH) is less than required (${contract.totalAmount} ETH)` };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to verify on-chain escrow' };
+  }
+}
+
 /**
  * Deploy the escrow server-side for a contract that has none yet.
- * H1: Only use server-side escrow deployment. Do NOT accept arbitrary escrow
- * addresses from the frontend, as an attacker could submit a fake address to
- * bypass fund verification.
  */
 async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowResult> {
   const projectResult = await getProjectById(contract.projectId);
@@ -241,7 +298,53 @@ async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowRes
   return { escrowAddress: escrowResult.data.escrowAddress };
 }
 
-router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
+interface ClientEscrowFundingParams {
+  clientEscrowAddress: string;
+  clientTxHash?: string | undefined;
+  contract: Contract;
+  requestId: string;
+  res: Response;
+}
+
+async function handleClientEscrowFunding({
+  clientEscrowAddress,
+  clientTxHash,
+  contract,
+  requestId,
+  res,
+}: ClientEscrowFundingParams): Promise<string | null> {
+  const walletResult = await getContractWalletAddresses(contract.id);
+  if (!walletResult.success) {
+    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
+    return null;
+  }
+  const { employerWallet, freelancerWallet } = walletResult.data;
+  const verification = await verifyClientEscrowOnChain(clientEscrowAddress, contract, employerWallet, freelancerWallet);
+  if (!verification.success) {
+    sendErrorResponse(res, 400, 'ESCROW_VERIFICATION_FAILED', verification.error || 'Escrow verification failed', { requestId });
+    return null;
+  }
+
+  try {
+    const { createPaymentRecord } = await import('../utils/payment-records.js');
+    await createPaymentRecord({
+      contractId: contract.id,
+      milestoneId: null,
+      payerId: contract.employerId,
+      payeeId: contract.freelancerId,
+      amount: contract.totalAmount,
+      paymentType: 'escrow_deposit',
+      txHash: clientTxHash || null,
+      status: 'completed',
+    });
+  } catch (recordError) {
+    logger.error('Failed to record client escrow deposit payment', { error: recordError, contractId: contract.id });
+  }
+
+  return clientEscrowAddress;
+}
+
+router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(fundContractSchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -280,10 +383,17 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
+  const clientEscrowAddress = typeof req.body?.['escrowAddress'] === 'string' && req.body['escrowAddress'] ? req.body['escrowAddress'] : undefined;
+  const clientTxHash = typeof req.body?.['transactionHash'] === 'string' && req.body['transactionHash'] ? req.body['transactionHash'] : undefined;
+
   let escrowAddress = contract.escrowAddress;
 
-  if (!escrowAddress) {
-    // No escrow yet — deploy server-side
+  if (clientEscrowAddress) {
+    const address = await handleClientEscrowFunding({ clientEscrowAddress, clientTxHash, contract, requestId, res });
+    if (!address) return;
+    escrowAddress = address;
+  } else if (!escrowAddress) {
+    // No escrow yet — deploy server-side fallback
     const escrowResult = await ensureContractEscrow(contract);
     if ('error' in escrowResult) {
       sendErrorResponse(res, escrowResult.error.statusCode, escrowResult.error.code, escrowResult.error.message, { requestId });
@@ -358,26 +468,56 @@ router.get('/:id/fund-info', authMiddleware, validateUUID(), asyncHandler(async 
     return;
   }
 
-  const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
-  const project = mapProjectFromEntity(projectResult.data);
+  const project = projectResult.data;
 
-  // Build milestone amounts in wei (ETH string -> wei)
   const { ethers } = await import('ethers');
-  const milestoneAmounts = project.milestones.map(m => ethers.parseEther(m.amount.toString()).toString());
-  const milestoneDescriptions = project.milestones.map(m => m.title || `Milestone ${m.id}`);
-  const totalAmount = ethers.parseEther(contract.totalAmount.toString()).toString();
+  const milestones = (project as any)?.milestones ?? [];
+  const milestoneAmounts = milestones.map((m: any) => ethers.parseEther(String(m.amount ?? 0)).toString());
+  const milestoneDescriptions = milestones.map((m: any) => m.title || `Milestone ${m.id}`);
+  const totalAmount = ethers.parseEther(String(contract.totalAmount ?? 0)).toString();
 
   // Server wallet address = platform that can approve milestones on employer's behalf
-  const { getWallet } = await import('../services/web3-client.js');
-  const platformWallet = getWallet().address;
+  let platformWallet = '';
+  let platformArbiterAddress = '';
+  try {
+    const { getWallet, getArbiterWallet } = await import('../services/web3-client.js');
+    platformWallet = getWallet()?.address || '';
+    platformArbiterAddress = getArbiterWallet()?.address || platformWallet;
+  } catch {
+    platformWallet = process.env['PLATFORM_WALLET_ADDRESS'] || config.blockchain.arbiterAddress || '';
+    platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress || platformWallet;
+  }
+
+  let FreelanceEscrowABI: any = [];
+  let FreelanceEscrowBytecode = '';
+  try {
+    const abis = await import('../services/contract-abis.js');
+    FreelanceEscrowABI = abis.FreelanceEscrowABI;
+    FreelanceEscrowBytecode = abis.FreelanceEscrowBytecode;
+  } catch {
+    // fallback
+  }
+
+  let chainId = '0x539';
+  try {
+    const { getBlockchainMode } = await import('../services/blockchain/factory.js');
+    chainId = getBlockchainMode() === 'real' && (process.env['BLOCKCHAIN_RPC_URL']?.includes('amoy') || process.env['BLOCKCHAIN_RPC_URL']?.includes('polygon')) ? '0x13882' : '0x539';
+  } catch {
+    // fallback
+  }
 
   res.json({
     contractId,
+    employerWallet: (walletResult.data as any)?.employerWallet || '',
     freelancerWallet: walletResult.data.freelancerWallet,
+    arbiterWallet: platformArbiterAddress,
     platformWallet,
+    totalAmount,
     milestoneAmounts,
     milestoneDescriptions,
-    totalAmount,
+    abi: FreelanceEscrowABI,
+    bytecode: FreelanceEscrowBytecode,
+    chainId,
   });
 }));
 

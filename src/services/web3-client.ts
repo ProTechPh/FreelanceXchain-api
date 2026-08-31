@@ -58,6 +58,29 @@ export function getProvider(): JsonRpcProvider {
   return provider;
 }
 
+async function ensureDevGas(w: Wallet): Promise<void> {
+  try {
+    const p = w.provider;
+    if (!p) return;
+    const rpcUrl = config.blockchain.rpcUrl || '';
+    if (rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1') || rpcUrl.includes('7545') || rpcUrl.includes('8545')) {
+      const bal = await p.getBalance(w.address);
+      if (bal < ethers.parseEther('0.5')) {
+        const ganacheSigner = await (p as JsonRpcProvider).getSigner(0).catch(() => null);
+        if (ganacheSigner && ganacheSigner.address.toLowerCase() !== w.address.toLowerCase()) {
+          const fundTx = await ganacheSigner.sendTransaction({
+            to: w.address,
+            value: ethers.parseEther('10.0'),
+          });
+          await fundTx.wait();
+        }
+      }
+    }
+  } catch {
+    // Non-blocking best effort for dev gas
+  }
+}
+
 /**
  * Get or create the wallet instance
  */
@@ -68,6 +91,7 @@ export function getWallet(): Wallet {
     }
     const p = getProvider();
     wallet = new Wallet(config.blockchain.privateKey, p);
+    void ensureDevGas(wallet);
   }
   return wallet;
 }
@@ -98,6 +122,7 @@ export function getArbiterWallet(): Wallet {
         throw new Error('PLATFORM_ARBITER_PRIVATE_KEY does not match PLATFORM_ARBITER_ADDRESS');
       }
     }
+    void ensureDevGas(arbiterWallet);
   }
   return arbiterWallet;
 }

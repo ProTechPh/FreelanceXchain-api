@@ -67,11 +67,50 @@ async function loadEscrow(address: string): Promise<EscrowState | null> {
 
     const row = response.documents[0] as unknown as EscrowDoc;
 
-    const milestoneResponse = await databases.listDocuments(
+    let milestoneResponse = await databases.listDocuments(
       DATABASE_ID,
       MILESTONE_COLLECTION,
       [Query.equal('escrow_address', address)]
     );
+
+    // Self-heal: If no milestones exist in blockchain_escrow_milestones (e.g. deployed before collection creation),
+    // backfill from the project read model so the ledger state matches the contract
+    if (milestoneResponse.documents.length === 0 && row.contract_id) {
+      try {
+        const { contractRepository } = await import('../repositories/contract-repository.js');
+        const { projectRepository } = await import('../repositories/project-repository.js');
+        const contract = await contractRepository.getContractById(row.contract_id);
+        if (contract?.project_id) {
+          const project = await projectRepository.getProjectById(contract.project_id);
+          if (project?.milestones && project.milestones.length > 0) {
+            const { parseUnits } = await import('ethers');
+            await Promise.all(
+              project.milestones.map(async (m) => {
+                const status = m.status === 'approved' ? 'released' : m.status === 'refunded' ? 'refunded' : 'pending';
+                await databases.createDocument(
+                  DATABASE_ID,
+                  MILESTONE_COLLECTION,
+                  ID.unique(),
+                  {
+                    escrow_address: address,
+                    milestone_id: m.id,
+                    amount: parseUnits(m.amount.toString(), 18).toString(),
+                    status,
+                  }
+                );
+              })
+            );
+            milestoneResponse = await databases.listDocuments(
+              DATABASE_ID,
+              MILESTONE_COLLECTION,
+              [Query.equal('escrow_address', address)]
+            );
+          }
+        }
+      } catch {
+        // Non-critical backfill failure
+      }
+    }
 
     return {
       address: row.address,

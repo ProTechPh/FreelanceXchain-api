@@ -12,6 +12,7 @@ const ALLOWED_BUCKETS = [
   'profile-images',
   'contract-documents',
   'proposal-attachments',
+  'project-attachments',
   'dispute-evidence',
   'milestone-deliverables',
 ];

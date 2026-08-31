@@ -37,7 +37,9 @@ function formatLogEntry(level: LogLevel, message: string, meta?: unknown): strin
     entry.meta = sanitizeLogData(meta);
   }
 
-  return JSON.stringify(entry);
+  return JSON.stringify(entry, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
 }
 
 class Logger {

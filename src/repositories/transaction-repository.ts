@@ -4,15 +4,15 @@ import { logger } from '../config/logger.js';
 
 export type TransactionEntity = {
   id: string;
-  contract_id?: string;
-  milestone_id?: string;
-  from_user_id?: string;
-  to_user_id?: string;
+  contract_id?: string | undefined;
+  milestone_id?: string | undefined;
+  from_user_id?: string | undefined;
+  to_user_id?: string | undefined;
   amount: number;
   type: string;
   status: string;
-  transaction_hash?: string;
-  metadata?: string;
+  transaction_hash?: string | undefined;
+  metadata?: string | undefined;
   created_at: string;
   updated_at: string;
 };

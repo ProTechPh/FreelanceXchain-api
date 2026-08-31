@@ -13,7 +13,7 @@ import {
   updateKycVerification,
 } from '../repositories/didit-kyc-repository.js';
 import type { KycVerification } from '../models/didit-kyc.js';
-import type { DisputeEntity } from '../repositories/dispute-repository.js';
+import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { generateId } from '../utils/id.js';
@@ -52,7 +52,7 @@ export interface DisputeFilters {
 }
 
 interface DisputeManagementData {
-  disputes: DisputeEntity[];
+  disputes: Dispute[];
   total: number;
   pendingCount: number;
   resolvedCount: number;
@@ -406,10 +406,11 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
     if (filters?.status) {
       disputeOptions.status = filters.status;
     }
-    const { items: disputes } = await disputeRepository.getAllDisputes(disputeOptions);
+    const { items: disputeEntities } = await disputeRepository.getAllDisputes(disputeOptions);
+    const disputes = disputeEntities.map(mapDisputeFromEntity);
 
     // The runtime status may include values outside the modeled union (e.g. 'pending').
-    const pendingCount = disputes.filter(d => (d.status as string) === 'pending').length;
+    const pendingCount = disputes.filter(d => (d.status as string) === 'pending' || d.status === 'open' || d.status === 'under_review').length;
     const resolvedCount = disputes.filter(d => d.status === 'resolved').length;
 
     return successResult({
@@ -418,10 +419,10 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
       pendingCount,
       resolvedCount,
     });
-      } catch (error) {
-      logger.error('Failed to fetch dispute management data', { error, filters });
-      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
-    }
+  } catch (error) {
+    logger.error('Failed to fetch dispute management data', { error, filters });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
 }
 
 /**

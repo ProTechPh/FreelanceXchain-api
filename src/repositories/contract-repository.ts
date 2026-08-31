@@ -38,6 +38,7 @@ export type ContractWithRelations = ContractEntity & {
     id?: string;
     title?: string | undefined;
     description?: string | undefined;
+    milestones?: unknown[] | undefined;
   } | null;
   freelancer?: {
     id?: string;

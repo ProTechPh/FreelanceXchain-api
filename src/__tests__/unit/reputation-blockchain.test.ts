@@ -83,7 +83,7 @@ describe('Reputation Blockchain Integration - Refactored', () => {
         '0xRatee',
         5,
         'Excellent work!',
-        'contract-123'
+        '0xa2eb8bcb21f43e775ec2b125d86738051e6e5a903945cf0bbc7a57a029af3760'
       );
     });
 

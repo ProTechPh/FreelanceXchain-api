@@ -65,25 +65,18 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
 }));
 
 // Mock validation middleware
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: () => (req: any, res: any, next: any) => next(),
-  validateAppwriteDocumentId: () => (req: any, res: any, next: any) => next(),
-  validate: () => (req: any, res: any, next: any) => next(),
-  validateRequest: jest.fn((req: any, res: any, next: any) => next()),
-  isValidUUID: jest.fn((value: string) => true),
-  submitReviewSchema: {},
-  submitRatingSchema: {},
-  updateFreelancerProfileSchema: {},
-  createProjectSchema: {},
-  updateProjectSchema: {},
-  addMilestonesSchema: {},
-  submitProposalSchema: {},
-  submitProposalMultipartSchema: {},
-  createProjectWithAttachmentsSchema: {},
-  sendMessageSchema: {},
-  emptyBodySchema: {},
-  isValidAppwriteDocumentId: jest.fn((value: string) => true),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: () => (_req: any, _res: any, next: any) => next(),
+    validateAppwriteDocumentId: () => (_req: any, _res: any, next: any) => next(),
+    validate: () => (_req: any, _res: any, next: any) => next(),
+    validateRequest: jest.fn((_req: any, _res: any, next: any) => next()),
+    isValidUUID: jest.fn((_value: string) => true),
+    isValidAppwriteDocumentId: jest.fn((_value: string) => true),
+  };
+});
 
 // Mock milestone service
 jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () => ({

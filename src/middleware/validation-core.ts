@@ -2,12 +2,20 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ValidationError } from './error-handler.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const APPWRITE_ID_PATTERN = /^[0-9a-f]{20}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
+const APPWRITE_ID_PATTERN = APPWRITE_DOCUMENT_ID_PATTERN;
+
+export { APPWRITE_ID_PATTERN, APPWRITE_DOCUMENT_ID_PATTERN };
+
+const SKILL_ID_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|skill-\d+|[0-9a-f]{20})$/i;
 
 export function isValidUUID(value: string): boolean {
   return UUID_PATTERN.test(value);
+}
+
+export function isValidSkillId(value: string): boolean {
+  return SKILL_ID_PATTERN.test(value);
 }
 
 export function isValidAppwriteDocumentId(value: string): boolean {
@@ -21,7 +29,7 @@ export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
 
     for (const paramName of paramNames) {
       const value = req.params[paramName];
-      if (value && !isValidUUID(value) && !APPWRITE_ID_PATTERN.test(value)) {
+      if (value && !isValidUUID(value)) {
         errors.push({
           field: paramName,
           message: `${paramName} must be a valid UUID`,
@@ -568,6 +576,21 @@ export const updateProjectSchema: RequestSchema = {
       status: { type: 'string', enum: ['draft', 'open', 'in_progress', 'completed', 'cancelled', 'disputed'] },
       isRush: { type: 'boolean' },
       rushFeePercentage: { type: 'number', exclusiveMinimum: 0, maximum: 100 },
+      attachments: {
+        type: 'array',
+        maxItems: 10,
+        items: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', required: true },
+            filename: { type: 'string', required: true },
+            size: { type: 'number' },
+            mimeType: { type: 'string' },
+            fileId: { type: 'string' },
+          },
+        },
+      },
+      tags: { type: 'array' },
     },
   },
 };
@@ -604,6 +627,7 @@ export const submitProposalSchema: RequestSchema = {
       attachments: { type: 'array', minItems: 1, required: true },
       proposedRate: { type: 'number', minimum: 1, required: true },
       estimatedDuration: { type: 'number', minimum: 1, required: true },
+      coverLetter: { type: 'string' },
     },
   },
 };
@@ -624,6 +648,7 @@ export const submitProposalMultipartSchema: RequestSchema = {
       // Attachments arrive as files (req.files), not body fields.
       proposedRate: { type: 'number', minimum: 1, required: true },
       estimatedDuration: { type: 'number', minimum: 1, required: true },
+      coverLetter: { type: 'string' },
     },
   },
 };
@@ -646,6 +671,17 @@ export const emptyBodySchema: RequestSchema = {
     type: 'object',
     additionalProperties: false,
     properties: {},
+  },
+};
+
+export const fundContractSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      escrowAddress: { type: 'string' },
+      transactionHash: { type: 'string' },
+    },
   },
 };
 

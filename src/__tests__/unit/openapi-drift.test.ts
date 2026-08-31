@@ -114,7 +114,7 @@ describe('OpenAPI spec drift guard', () => {
   });
 
   it('should document contract action endpoints without a request body', () => {
-    for (const p of ['/api/contracts/{id}/fund', '/api/contracts/{id}/escrow/withdraw', '/api/contracts/{id}/cancel']) {
+    for (const p of ['/api/contracts/{id}/escrow/withdraw', '/api/contracts/{id}/cancel']) {
       expect(spec.paths[p].post.requestBody).toBeUndefined();
       expect(spec.paths[p].post.parameters).toBeDefined();
     }

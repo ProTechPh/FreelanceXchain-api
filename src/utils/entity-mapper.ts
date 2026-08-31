@@ -208,7 +208,7 @@ export function mapMilestoneFromEntity(entity: MilestoneEntity): Milestone {
   };
 }
 
-export function mapProjectFromEntity(entity: ProjectEntity & { proposalCount?: number }): Project {
+export function mapProjectFromEntity(entity: ProjectEntity & { proposalCount?: number; employer?: any }): Project {
   if (!entity) {
     throw new Error('Cannot map null or undefined ProjectEntity');
   }
@@ -228,6 +228,7 @@ export function mapProjectFromEntity(entity: ProjectEntity & { proposalCount?: n
     tags: entity.tags || [],
     attachments: entity.attachments || [],
     ...(entity.proposalCount !== undefined ? { proposalCount: entity.proposalCount } : {}),
+    ...(entity.employer !== undefined ? { employer: entity.employer } : {}),
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };
@@ -290,8 +291,7 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
     ...(entity.project?.deadline !== undefined ? { endDate: entity.project.deadline } : {}),
     // Project milestones are the project-flavored Milestone (no canonical
     // createdAt/updatedAt); the Contract model uses the canonical milestone
-    // shape. The repository never populates project.milestones today, so this
-    // boundary cast is only exercised with empty arrays.
+    // shape. Populated by withProjectMilestones in contract-service.ts.
     milestones: (entity.project?.milestones ?? []).map(mapMilestoneFromEntity) as unknown as NonNullable<Contract['milestones']>,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,

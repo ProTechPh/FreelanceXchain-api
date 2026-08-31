@@ -3,8 +3,11 @@
  * Handles communication with LLM API for AI-powered skill matching
  */
 
+import { createHash } from 'node:crypto';
 import { config } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { redis } from '../config/redis.js';
+import { LRUCache } from '../utils/cache.js';
 import {
   AIRequest,
   AIResponse,
@@ -24,6 +27,37 @@ import { generateId } from '../utils/id.js';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
+
+export const localSkillMatchCache = new LRUCache<SkillMatchResult>(500, 3600_000); // 1 hour
+export const localSkillExtractCache = new LRUCache<ExtractedSkill[]>(500, 3600_000); // 1 hour
+
+async function getAICached<T>(key: string, localCache: LRUCache<T>): Promise<T | null> {
+  if (process.env.NODE_ENV === 'test') {
+    return null;
+  }
+  try {
+    if (redis && redis.status === 'ready') {
+      const cached = await redis.get(key);
+      if (cached) {
+        return JSON.parse(cached) as T;
+      }
+    }
+  } catch (err) {
+    logger.warn(`Redis AI get failed for ${key}`, { error: err instanceof Error ? err.message : String(err) });
+  }
+  return localCache.get(key) ?? null;
+}
+
+async function setAICached<T>(key: string, value: T, localCache: LRUCache<T>, ttlSeconds = 3600): Promise<void> {
+  localCache.set(key, value, ttlSeconds * 1000);
+  try {
+    if (redis && redis.status === 'ready') {
+      await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    }
+  } catch (err) {
+    logger.warn(`Redis AI set failed for ${key}`, { error: err instanceof Error ? err.message : String(err) });
+  }
+}
 
 export const SKILL_MATCH_PROMPT = `
 You are a skill matching assistant. Given a freelancer's skills and a project's required skills, identify which of the freelancer's skills match the project requirements.
@@ -515,6 +549,16 @@ export async function generateContent(prompt: string): Promise<string | AIError>
 export async function analyzeSkillMatch(
   request: SkillMatchRequest
 ): Promise<SkillMatchResult | AIError> {
+  const fSkillsSorted = request.freelancerSkills.map(s => s.skillName.toLowerCase()).sort();
+  const reqSkillsSorted = request.projectRequirements.map(s => s.skillName.toLowerCase()).sort();
+  const hash = createHash('sha256').update(JSON.stringify({ f: fSkillsSorted, r: reqSkillsSorted })).digest('hex').slice(0, 16);
+  const cacheKey = `ai:skill-match:${hash}`;
+
+  const cached = await getAICached<SkillMatchResult>(cacheKey, localSkillMatchCache);
+  if (cached) {
+    return cached;
+  }
+
   const prompt = buildPrompt(SKILL_MATCH_PROMPT, {
     freelancerSkills: JSON.stringify(request.freelancerSkills.map(s => s.skillName)),
     projectRequirements: JSON.stringify(request.projectRequirements.map(s => s.skillName)),
@@ -566,12 +610,15 @@ export async function analyzeSkillMatch(
   const aiScore = Math.max(0, Math.min(100, result.matchScore ?? 0));
   const finalScore = Math.abs(aiScore - calculatedScore) > 40 ? calculatedScore : aiScore;
 
-  return {
+  const finalMatchResult: SkillMatchResult = {
     matchScore: finalScore,
     matchedSkills: validatedMatchedSkills,
     missingSkills: computedMissingSkills,
     reasoning: result.reasoning ?? '',
   };
+
+  await setAICached(cacheKey, finalMatchResult, localSkillMatchCache, 3600);
+  return finalMatchResult;
 }
 
 /**
@@ -580,6 +627,14 @@ export async function analyzeSkillMatch(
 export async function extractSkills(
   request: SkillExtractionRequest
 ): Promise<ExtractedSkill[] | AIError> {
+  const hash = createHash('sha256').update(request.text.trim().toLowerCase()).digest('hex').slice(0, 16);
+  const cacheKey = `ai:extract-skills:${hash}`;
+
+  const cached = await getAICached<ExtractedSkill[]>(cacheKey, localSkillExtractCache);
+  if (cached) {
+    return cached;
+  }
+
   const prompt = buildPrompt(SKILL_EXTRACTION_PROMPT, {
     text: request.text,
     taxonomy: JSON.stringify(request.availableSkills),
@@ -600,7 +655,7 @@ export async function extractSkills(
     };
   }
 
-  return result.reduce<ExtractedSkill[]>((acc, skill) => {
+  const extractedList = result.reduce<ExtractedSkill[]>((acc, skill) => {
     if (skill.skillId && skill.skillName) {
       acc.push({
         skillId: skill.skillId,
@@ -610,6 +665,9 @@ export async function extractSkills(
     }
     return acc;
   }, []);
+
+  await setAICached(cacheKey, extractedList, localSkillExtractCache, 3600);
+  return extractedList;
 }
 
 /**

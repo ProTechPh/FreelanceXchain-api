@@ -11,6 +11,7 @@ import {
   respondToRushUpgrade,
   acceptCounterOffer,
   declineCounterOffer,
+  payRushUpgradeFee,
   getRushUpgradeRequestsForContract,
 } from '../services/rush-upgrade-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -232,6 +233,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
     const xRequestId = getRequestId(req);
+    const transactionHash = typeof req.body?.['transactionHash'] === 'string' && req.body['transactionHash'] ? req.body['transactionHash'] : undefined;
 
     /* istanbul ignore next */
 
@@ -239,7 +241,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
       return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }
 
-    const result = await acceptCounterOffer(userId, requestIdParam);
+    const result = await acceptCounterOffer(userId, requestIdParam, transactionHash ? { transactionHash } : undefined);
 
     if (!result.success) {
       let statusCode = 400;
@@ -254,6 +256,67 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
     /* istanbul ignore next */
     logger.error('Error accepting counter-offer', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to accept counter-offer', { requestId: getRequestId(req) });
+  }
+}));
+
+/**
+ * @swagger
+ * /api/rush-upgrade-requests/{id}/pay:
+ *   post:
+ *     summary: Pay rush fee for accepted rush upgrade
+ *     description: Employer pays the rush fee on-chain via MetaMask and registers the payment
+ *     tags:
+ *       - Rush Upgrade
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Rush upgrade request ID (UUID)
+ *     responses:
+ *       200:
+ *         description: Rush fee paid and applied to contract
+ *       400:
+ *         description: Invalid request status
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Request not found
+ */
+router.post('/rush-upgrade-requests/:id/pay', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const requestIdParam = req.params['id'] ?? '';
+    const userId = req.user?.userId;
+    const xRequestId = getRequestId(req);
+    const transactionHash = typeof req.body?.['transactionHash'] === 'string' && req.body['transactionHash'] ? req.body['transactionHash'] : undefined;
+
+    /* istanbul ignore next */
+
+    if (!userId) {
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
+    }
+
+    const result = await payRushUpgradeFee(userId, { requestId: requestIdParam, transactionHash });
+
+    if (!result.success) {
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: xRequestId });
+    }
+
+    return res.status(200).json(result.data);
+  } catch (error) {
+    /* istanbul ignore next */
+    logger.error('Error paying rush fee', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to pay rush fee', { requestId: getRequestId(req) });
   }
 }));
 

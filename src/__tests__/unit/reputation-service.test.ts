@@ -466,14 +466,26 @@ describe('Reputation Service - Unit Tests', () => {
     // the serialized duplicate check can observe the winner's insert.
     const db = (globalThis as any).__mockDatabases;
     const createdReviews: any[] = [];
+    const createdTransactions: any[] = [];
     const origList = db.listDocuments.getMockImplementation();
     const origCreate = db.createDocument.getMockImplementation();
-    db.listDocuments.mockImplementation(async () => {
-      return { documents: createdReviews, total: createdReviews.length };
+    db.listDocuments.mockImplementation(async (_dbId: string, coll: string) => {
+      if (coll === 'reviews') {
+        return { documents: createdReviews, total: createdReviews.length };
+      }
+      if (coll === 'transactions') {
+        return { documents: createdTransactions, total: createdTransactions.length };
+      }
+      return { documents: [], total: 0 };
     });
-    db.createDocument.mockImplementation(async (_dbId: string, _coll: string, _id: string, data: any) => {
-      const doc = { $id: `review-${createdReviews.length + 1}`, ...data };
-      createdReviews.push(doc);
+    db.createDocument.mockImplementation(async (_dbId: string, coll: string, _id: string, data: any) => {
+      if (coll === 'reviews') {
+        const doc = { $id: `review-${createdReviews.length + 1}`, ...data };
+        createdReviews.push(doc);
+        return doc;
+      }
+      const doc = { $id: `tx-${createdTransactions.length + 1}`, ...data };
+      createdTransactions.push(doc);
       return doc;
     });
 

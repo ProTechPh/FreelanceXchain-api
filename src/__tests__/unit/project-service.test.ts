@@ -467,6 +467,54 @@ describe('Project Service - Unit Tests', () => {
     }
   });
 
+  it('should allow updating project when status remains open', async () => {
+    const employerId = generateId();
+    const project = createTestProject({ employer_id: employerId, status: 'open' });
+    projectStore.set(project.id, project);
+
+    const result = await updateProject(project.id, employerId, {
+      title: 'Updated Title',
+      status: 'open',
+      attachments: [{ url: 'https://example.com/file.png', filename: 'file.png', size: 100, mimeType: 'image/png' }],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.status).toBe('open');
+      expect(result.data.attachments).toHaveLength(1);
+    }
+  });
+
+  it('should allow unpublishing an open project back to draft', async () => {
+    const employerId = generateId();
+    const project = createTestProject({ employer_id: employerId, status: 'open' });
+    projectStore.set(project.id, project);
+
+    const result = await updateProject(project.id, employerId, {
+      status: 'draft',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.status).toBe('draft');
+    }
+  });
+
+  it('should reject invalid status transitions', async () => {
+    const employerId = generateId();
+    const project = createTestProject({ employer_id: employerId, status: 'completed' });
+    projectStore.set(project.id, project);
+
+    const result = await updateProject(project.id, employerId, {
+      status: 'open',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS_TRANSITION');
+    }
+  });
+
   it('should reject update when project has accepted proposal', async () => {
     const employerId = generateId();
     const freelancerId = generateId();

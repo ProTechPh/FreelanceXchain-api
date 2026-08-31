@@ -71,11 +71,38 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     const templatePath = path.join(process.cwd(), 'docs/email-templates', `${template}.html`);
     let html = await fs.readFile(templatePath, 'utf-8');
 
+    // Build unified normalized context mapping all common aliases
+    const recipientName =
+      data.recipientName ??
+      data.freelancerName ??
+      data.userName ??
+      data.arbiterName ??
+      data.reviewerName ??
+      'User';
+
+    const projectTitle = data.projectTitle ?? data.contractTitle ?? '';
+    const reason = data.reason ?? data.disputeReason ?? '';
+    const feedback = data.feedback ?? data.reviewFeedback ?? data.comment ?? '';
+
+    const normalizedData: Record<string, any> = {
+      ...data,
+      recipientName,
+      freelancerName: data.freelancerName ?? recipientName,
+      userName: data.userName ?? recipientName,
+      arbiterName: data.arbiterName ?? recipientName,
+      projectTitle,
+      contractTitle: data.contractTitle ?? projectTitle,
+      reason,
+      disputeReason: data.disputeReason ?? reason,
+      feedback,
+      newProjectsCount: data.newProjectsCount ?? data.newProjects ?? 0,
+    };
+
     // {{#each key}}...{{/each}} — repeat the block once per item in an array.
     // Used by the weekly digest to list top projects. Items are plain objects
     // whose fields are substituted as {{field}} inside the block, then escaped.
     html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, key, block) => {
-      const items = data[key];
+      const items = normalizedData[key];
       if (!Array.isArray(items)) {
         return '';
       }
@@ -85,9 +112,9 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     });
 
     // HTML-escape all template variables to prevent injection
-    Object.keys(data).forEach(key => {
+    Object.keys(normalizedData).forEach(key => {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      html = html.replace(regex, escapeHtml(String(data[key])));
+      html = html.replace(regex, escapeHtml(String(normalizedData[key] ?? '')));
     });
 
     return html;
@@ -123,49 +150,76 @@ export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ m
 
 export async function sendProposalAcceptedEmail(
   to: string,
-  data: { freelancerName: string; projectTitle: string; projectUrl: string }
+  data: { recipientName?: string; freelancerName?: string; projectTitle: string; projectUrl?: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.freelancerName ?? 'Freelancer';
   return sendEmail({
     to,
     subject: 'Your proposal has been accepted!',
     template: 'proposal_accepted',
-    data,
+    data: {
+      ...data,
+      recipientName,
+      freelancerName: data.freelancerName ?? recipientName,
+    },
   });
 }
 
 export async function sendMilestoneApprovedEmail(
   to: string,
-  data: { freelancerName: string; milestoneTitle: string; amount: string; contractUrl: string }
+  data: { recipientName?: string; freelancerName?: string; projectTitle?: string; milestoneTitle: string; amount: string; contractUrl?: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.freelancerName ?? 'Freelancer';
   return sendEmail({
     to,
     subject: 'Milestone approved - Payment released',
     template: 'milestone_approved',
-    data,
+    data: {
+      ...data,
+      recipientName,
+      freelancerName: data.freelancerName ?? recipientName,
+      projectTitle: data.projectTitle ?? '',
+    },
   });
 }
 
 export async function sendPaymentReleasedEmail(
   to: string,
-  data: { recipientName: string; amount: string; contractTitle: string; transactionHash: string }
+  data: { recipientName: string; amount: string; projectTitle?: string; contractTitle?: string; transactionHash: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const projectTitle = data.projectTitle ?? data.contractTitle ?? '';
   return sendEmail({
     to,
     subject: 'Payment released',
     template: 'payment_released',
-    data,
+    data: {
+      ...data,
+      projectTitle,
+      contractTitle: data.contractTitle ?? projectTitle,
+    },
   });
 }
 
 export async function sendDisputeCreatedEmail(
   to: string,
-  data: { arbiterName: string; contractTitle: string; disputeReason: string; disputeUrl: string }
+  data: { recipientName?: string; arbiterName?: string; projectTitle?: string; contractTitle?: string; disputeReason?: string; reason?: string; disputeUrl?: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.arbiterName ?? 'User';
+  const projectTitle = data.projectTitle ?? data.contractTitle ?? '';
+  const reason = data.reason ?? data.disputeReason ?? '';
   return sendEmail({
     to,
     subject: 'New dispute requires your attention',
     template: 'dispute_created',
-    data,
+    data: {
+      ...data,
+      recipientName,
+      arbiterName: data.arbiterName ?? recipientName,
+      projectTitle,
+      contractTitle: data.contractTitle ?? projectTitle,
+      reason,
+      disputeReason: data.disputeReason ?? reason,
+    },
   });
 }
 
@@ -195,56 +249,82 @@ export async function sendMessageReceivedEmail(
 
 export async function sendReviewReceivedEmail(
   to: string,
-  data: { recipientName: string; reviewerName: string; rating: number; projectTitle: string; reviewUrl: string }
+  data: { recipientName: string; reviewerName?: string; rating: number; projectTitle: string; feedback?: string; reviewUrl?: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
   return sendEmail({
     to,
     subject: 'You received a new review',
     template: 'review_received',
-    data,
+    data: {
+      ...data,
+      feedback: data.feedback ?? '',
+    },
   });
 }
 
 export async function sendKycApprovedEmail(
   to: string,
-  data: { userName: string; tier: string }
+  data: { recipientName?: string; userName?: string; tier?: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.userName ?? 'User';
   return sendEmail({
     to,
     subject: 'KYC verification approved',
     template: 'kyc_approved',
-    data,
+    data: {
+      ...data,
+      recipientName,
+      userName: data.userName ?? recipientName,
+    },
   });
 }
 
 export async function sendKycRejectedEmail(
   to: string,
-  data: { userName: string; reason: string }
+  data: { recipientName?: string; userName?: string; reason: string }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.userName ?? 'User';
   return sendEmail({
     to,
     subject: 'KYC verification requires attention',
     template: 'kyc_rejected',
-    data,
+    data: {
+      ...data,
+      recipientName,
+      userName: data.userName ?? recipientName,
+    },
   });
 }
 
 export async function sendWeeklyDigestEmail(
   to: string,
   data: {
-    userName: string;
-    newProjects: number;
-    newMessages: number;
-    pendingMilestones: number;
+    recipientName?: string;
+    userName?: string;
+    newProjects?: number;
+    newProjectsCount?: number;
+    newMessages?: number;
+    pendingMilestones?: number;
     weeklyEarnings?: string;
-    topProjects: Array<{ title: string; budget: string; url: string }>;
+    totalEscrowValue?: string;
+    topMatchRate?: string;
+    topProjects?: Array<{ title: string; budget: string; url?: string; matchRate?: string }>;
   }
 ): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.userName ?? 'User';
   return sendEmail({
     to,
     subject: 'Your weekly FreelanceXchain digest',
     template: 'weekly_digest',
-    data,
+    data: {
+      ...data,
+      recipientName,
+      userName: data.userName ?? recipientName,
+      newProjectsCount: data.newProjectsCount ?? data.newProjects ?? 0,
+      totalEscrowValue: data.totalEscrowValue ?? '$0',
+      topMatchRate: data.topMatchRate ?? '95%',
+      topProjects: data.topProjects ?? [],
+    },
   });
 }
 

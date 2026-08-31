@@ -104,10 +104,18 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), ()
 }));
 
 // Mock blockchain services
+const mockEscrowDeployEscrowContract = jest.fn<any>();
+const mockEscrowApproveMilestone = jest.fn<any>(async () => ({ transactionHash: '0x' + 'b'.repeat(64) }));
+const mockEscrowGetEscrowInfo = jest.fn<any>();
+const mockEscrowGetMilestoneStatus = jest.fn<any>();
+const mockEscrowSubmitMilestone = jest.fn<any>();
+
 jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
-  deployEscrowContract: jest.fn(),
-  approveMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'b'.repeat(64) })),
-  getEscrowInfo: jest.fn(),
+  deployEscrowContract: mockEscrowDeployEscrowContract,
+  approveMilestone: mockEscrowApproveMilestone,
+  getEscrowInfo: mockEscrowGetEscrowInfo,
+  getMilestoneStatus: mockEscrowGetMilestoneStatus,
+  submitMilestone: mockEscrowSubmitMilestone,
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
@@ -700,6 +708,109 @@ describe('Payment Service - Unit Tests', () => {
 
     const updatedProject = projectStore.get(project.id) as any;
     expect(updatedProject?.milestones[0]?.status).toBe('submitted');
+  });
+
+  describe('real blockchain mode — on-chain submit sync', () => {
+    let factoryMock: { getBlockchainMode: any };
+    let isWeb3Mock: any;
+
+    beforeEach(async () => {
+      factoryMock = (await import('../../services/blockchain/factory.js')) as any;
+      isWeb3Mock = (await import('../../services/web3-client.js')) as any;
+      factoryMock.getBlockchainMode.mockReturnValue('real');
+      isWeb3Mock.isWeb3Available.mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      factoryMock?.getBlockchainMode?.mockReturnValue('simulated');
+      isWeb3Mock?.isWeb3Available?.mockReturnValue(false);
+    });
+
+    const seedRealContract = async (): Promise<{ contractId: string; milestoneId: string; employerId: string }> => {
+      const freelancerId = generateId();
+      const employerId = generateId();
+      userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
+      userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
+      const milestone = createTestMilestone({ status: 'submitted', amount: 1000 });
+      const project = createTestProject({ employer_id: employerId, milestones: [milestone] });
+      const contract = createTestContract({
+        project_id: project.id,
+        freelancer_id: freelancerId,
+        employer_id: employerId,
+        status: 'active',
+        escrow_address: '0x' + 'c'.repeat(40),
+      });
+      contractStore.set(contract.id, contract);
+      projectStore.set(project.id, project);
+      return { contractId: contract.id, milestoneId: milestone.id, employerId };
+    };
+
+    it('submits the still-Pending on-chain milestone before releasing (approve self-heal)', async () => {
+      mockEscrowGetMilestoneStatus.mockResolvedValue('pending');
+      mockEscrowSubmitMilestone.mockResolvedValue({ transactionHash: '0x' + 'd'.repeat(64), receipt: {} });
+      mockEscrowApproveMilestone.mockClear();
+
+      const { contractId, milestoneId, employerId } = await seedRealContract();
+      const result = await approveMilestone(contractId, milestoneId, employerId);
+
+      expect(result.success).toBe(true);
+      expect(mockEscrowGetMilestoneStatus).toHaveBeenCalledWith('0x' + 'c'.repeat(40), 0);
+      expect(mockEscrowSubmitMilestone).toHaveBeenCalledWith('0x' + 'c'.repeat(40), 0);
+      expect(mockEscrowApproveMilestone).toHaveBeenCalledWith('0x' + 'c'.repeat(40), 0);
+    });
+
+    it('does not submit again when the on-chain milestone is already Submitted', async () => {
+      mockEscrowGetMilestoneStatus.mockResolvedValue('submitted');
+      mockEscrowSubmitMilestone.mockClear();
+      mockEscrowApproveMilestone.mockClear();
+
+      const { contractId, milestoneId, employerId } = await seedRealContract();
+      const result = await approveMilestone(contractId, milestoneId, employerId);
+
+      expect(result.success).toBe(true);
+      expect(mockEscrowSubmitMilestone).not.toHaveBeenCalled();
+      expect(mockEscrowApproveMilestone).toHaveBeenCalledWith('0x' + 'c'.repeat(40), 0);
+    });
+
+    it('blocks approval when the on-chain milestone is in an incompatible state', async () => {
+      mockEscrowGetMilestoneStatus.mockResolvedValue('disputed');
+      mockEscrowApproveMilestone.mockClear();
+
+      const { contractId, milestoneId, employerId } = await seedRealContract();
+      const result = await approveMilestone(contractId, milestoneId, employerId);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('ESCROW_STATE_MISMATCH');
+      }
+      expect(mockEscrowApproveMilestone).not.toHaveBeenCalled();
+    });
+
+    it('advances the on-chain milestone when a submitted milestone is created', async () => {
+      mockEscrowGetMilestoneStatus.mockResolvedValue('pending');
+      mockEscrowSubmitMilestone.mockResolvedValue({ transactionHash: '0x' + 'd'.repeat(64), receipt: {} });
+
+      const freelancerId = generateId();
+      const employerId = generateId();
+      userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
+      userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
+      const milestone = createTestMilestone({ status: 'pending', amount: 1000 });
+      const project = createTestProject({ employer_id: employerId, milestones: [milestone] });
+      const contract = createTestContract({
+        project_id: project.id,
+        freelancer_id: freelancerId,
+        employer_id: employerId,
+        status: 'active',
+        escrow_address: '0x' + 'c'.repeat(40),
+      });
+      contractStore.set(contract.id, contract);
+      projectStore.set(project.id, project);
+
+      const result = await requestMilestoneCompletion(contract.id, milestone.id, freelancerId);
+
+      expect(result.success).toBe(true);
+      expect(mockEscrowSubmitMilestone).toHaveBeenCalledWith('0x' + 'c'.repeat(40), 0);
+    });
   });
 
   it('should use contract totalAmount and exclude refunded milestones from pending amount', async () => {

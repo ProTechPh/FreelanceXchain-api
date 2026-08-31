@@ -33,7 +33,7 @@ export class BlockchainDisputeRecordRepository extends BaseRepository<Blockchain
     return this.getById(id);
   }
 
-  async createDisputeRecord(data: Omit<BlockchainDisputeRecordEntity, 'created_at' | 'updated_at'>): Promise<BlockchainDisputeRecordEntity> {
+  async createDisputeRecord(data: Omit<BlockchainDisputeRecordEntity, 'created_at' | 'updated_at' | 'id'> & { id?: string }): Promise<BlockchainDisputeRecordEntity> {
     return this.create(data);
   }
 

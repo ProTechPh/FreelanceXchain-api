@@ -5345,6 +5345,33 @@
                     "type": "number",
                     "maximum": 100,
                     "exclusiveMinimum": 0
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "filename": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "number"
+                        },
+                        "mimeType": {
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "tags": {
+                    "type": "array"
                   }
                 }
               }
@@ -5642,6 +5669,9 @@
                   "estimatedDuration": {
                     "type": "number",
                     "minimum": 1
+                  },
+                  "coverLetter": {
+                    "type": "string"
                   }
                 }
               }
@@ -5667,6 +5697,9 @@
                   "estimatedDuration": {
                     "type": "number",
                     "minimum": 1
+                  },
+                  "coverLetter": {
+                    "type": "string"
                   },
                   "files": {
                     "type": "array",
@@ -7903,6 +7936,25 @@
           },
           "404": {
             "description": "Contract not found"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "escrowAddress": {
+                    "type": "string"
+                  },
+                  "transactionHash": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
