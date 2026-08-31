@@ -118,6 +118,22 @@ contract FreelanceEscrow {
         _;
     }
 
+    function _validateConstructorParams(
+        address _freelancer,
+        address _arbiter,
+        address _platform,
+        uint256 amountsLen,
+        uint256 descriptionsLen
+    ) private view {
+        if (_freelancer == address(0)) revert InvalidFreelancerAddress();
+        if (_arbiter == address(0)) revert InvalidArbiterAddress();
+        if (_platform == address(0)) revert InvalidPlatformAddress();
+        if (_arbiter == msg.sender) revert ArbiterCannotBeEmployer();
+        if (_arbiter == _freelancer) revert ArbiterCannotBeFreelancer();
+        if (amountsLen == 0) revert MustHaveAtLeastOneMilestone();
+        if (amountsLen != descriptionsLen) revert AmountsDescriptionsMismatch();
+    }
+
     constructor(
         address _freelancer,
         address _arbiter,
@@ -126,13 +142,13 @@ contract FreelanceEscrow {
         uint256[] memory _milestoneAmounts,
         string[] memory _milestoneDescriptions
     ) payable {
-        if (_freelancer == address(0)) revert InvalidFreelancerAddress();
-        if (_arbiter == address(0)) revert InvalidArbiterAddress();
-        if (_platform == address(0)) revert InvalidPlatformAddress();
-        if (_arbiter == msg.sender) revert ArbiterCannotBeEmployer();
-        if (_arbiter == _freelancer) revert ArbiterCannotBeFreelancer();
-        if (_milestoneAmounts.length == 0) revert MustHaveAtLeastOneMilestone();
-        if (_milestoneAmounts.length != _milestoneDescriptions.length) revert AmountsDescriptionsMismatch();
+        _validateConstructorParams(
+            _freelancer,
+            _arbiter,
+            _platform,
+            _milestoneAmounts.length,
+            _milestoneDescriptions.length
+        );
 
         employer = msg.sender;
         freelancer = _freelancer;
@@ -258,20 +274,14 @@ contract FreelanceEscrow {
             isActive = false;
         }
 
-        // Direct transfer to parties so they receive ETH immediately
+        // Credit funds to pendingWithdrawals using the pull-payment pattern
         if (freelancerAmt > 0) {
-            (bool success, ) = freelancer.call{value: freelancerAmt}("");
-            if (!success) {
-                pendingWithdrawals[freelancer] += freelancerAmt;
-            }
+            pendingWithdrawals[freelancer] += freelancerAmt;
             emit MilestoneApproved(milestoneIndex, freelancerAmt);
         }
 
         if (employerAmt > 0) {
-            (bool success, ) = employer.call{value: employerAmt}("");
-            if (!success) {
-                pendingWithdrawals[employer] += employerAmt;
-            }
+            pendingWithdrawals[employer] += employerAmt;
             emit MilestoneRefunded(milestoneIndex, employerAmt);
         }
 

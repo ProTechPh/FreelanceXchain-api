@@ -116,6 +116,7 @@ contract FreelanceReputation {
         if (score < 1 || score > 5) revert InvalidScore();
 
         // Verify the contract exists, is completed, and caller was a party
+        // slither-disable-next-line unused-return
         (
             ,
             address employer,

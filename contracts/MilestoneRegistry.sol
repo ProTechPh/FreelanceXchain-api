@@ -225,8 +225,8 @@ contract MilestoneRegistry {
     }
 
     function verifyWorkHash(bytes32 milestoneIdHash, bytes32 workHash) external view returns (bool) {
-        // slither-disable-next-line incorrect-equality
         // Note: Strict equality is intentional and safe for cryptographic hash comparison
+        // slither-disable-next-line incorrect-equality
         return milestones[milestoneIdHash].workHash == workHash;
     }
 }
