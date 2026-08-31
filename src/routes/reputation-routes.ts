@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validate, validateUUID, submitRatingSchema } from '../middleware/validation-middleware.js';
+import { validate, validateAppwriteDocumentId, submitRatingSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -324,7 +324,7 @@ router.get('/leaderboard', apiRateLimiter, asyncHandler(async (req: Request, res
  *       404:
  *         description: User not found
  */
-router.get('/:userId', apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -369,11 +369,25 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), asyncHandler(as
  *               items:
  *                 $ref: '#/components/schemas/WorkHistoryEntry'
  *       400:
- *         description: Invalid UUID format
+ *         description: Invalid document ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       404:
  *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -409,8 +423,24 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), asyncHa
  *     responses:
  *       200:
  *         description: Aggregated reputation score
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReputationAggregation'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -443,8 +473,24 @@ router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, asyncHand
  *     responses:
  *       200:
  *         description: Reputation breakdown by stars
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReputationBreakdown'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -482,8 +528,24 @@ router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async
  *     responses:
  *       200:
  *         description: Reputation history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReputationHistory'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
     const months = parseInt(req.query['months'] as string) || 12;

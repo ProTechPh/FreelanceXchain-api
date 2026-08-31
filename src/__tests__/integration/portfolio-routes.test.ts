@@ -163,8 +163,8 @@ describe('Portfolio Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
-      const response = await request(app).get('/api/portfolio/invalid-uuid');
+    it('should validate Appwrite document ID format', async () => {
+      const response = await request(app).get('/api/portfolio/!@#$%^&*()');
       expect(response.status).toBe(400);
     });
 
@@ -185,9 +185,9 @@ describe('Portfolio Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .patch('/api/portfolio/invalid-uuid')
+        .patch('/api/portfolio/!@#$%^&*()')
         .set('Authorization', 'Bearer mock-token')
         .send({ title: 'Updated' });
 
@@ -224,9 +224,9 @@ describe('Portfolio Routes Integration Tests', () => {
       expect(response.body).toHaveProperty('message');
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .delete('/api/portfolio/invalid-uuid')
+        .delete('/api/portfolio/!@#$%^&*()')
         .set('Authorization', 'Bearer mock-token');
 
       expect(response.status).toBe(400);
