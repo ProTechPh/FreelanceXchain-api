@@ -7,6 +7,8 @@ import { userRepository } from '../repositories/user-repository.js';
 import { shouldSendEmail } from './email-preference-service.js';
 import type { EmailType } from '../models/email-preference.js';
 
+import { fileURLToPath } from 'url';
+
 type EmailTemplate =
   | 'proposal_accepted'
   | 'milestone_approved'
@@ -66,10 +68,93 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+async function loadTemplateContent(template: EmailTemplate): Promise<string> {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidatePaths = [
+    path.join(process.cwd(), 'docs/email-templates', `${template}.html`),
+    path.join(process.cwd(), 'FreelanceXchain-api/docs/email-templates', `${template}.html`),
+    path.join(currentDir, '../../docs/email-templates', `${template}.html`),
+    path.join(currentDir, '../docs/email-templates', `${template}.html`),
+    path.join(currentDir, '../../../docs/email-templates', `${template}.html`),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      const content = await fs.readFile(candidatePath, 'utf-8');
+      if (content && content.trim().length > 0) {
+        return content;
+      }
+    } catch {
+      // Continue to next candidate path
+    }
+  }
+
+  // Final attempt with standard relative path from cwd
+  return await fs.readFile(path.join(process.cwd(), 'docs/email-templates', `${template}.html`), 'utf-8');
+}
+
+function renderFallbackBrandedHtml(template: EmailTemplate, data: Record<string, any>): string {
+  const recipientName = escapeHtml(data.recipientName ?? data.userName ?? 'User');
+  const title = escapeHtml(template.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+  const appUrl = escapeHtml(process.env['FRONTEND_URL'] || 'https://freelancexchain.works');
+
+  const detailsRows = Object.entries(data)
+    .filter(([k, v]) => (typeof v === 'string' || typeof v === 'number') && k !== 'template')
+    .map(([k, v]) => {
+      const label = escapeHtml(k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' '));
+      const val = escapeHtml(String(v));
+      return `<tr><td style="padding: 6px 12px 6px 0; color: #64748b; font-size: 13px; font-weight: 600; text-transform: capitalize;">${label}:</td><td style="padding: 6px 0; color: #0f172a; font-size: 13px; font-weight: 700;">${val}</td></tr>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title} - FreelanceXchain</title></head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; color: #0f172a;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8fafc; padding: 40px 16px;">
+    <tr>
+      <td align="center" style="padding: 32px 12px;">
+        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden;">
+          <tr>
+            <td style="padding: 24px 32px; background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); color: #ffffff;">
+              <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td><span style="font-size: 20px; font-weight: 800; color: #ffffff;">Freelance<span style="color: #10b981;">X</span>chain</span></td>
+                  <td align="right"><span style="background-color: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; border-radius: 9999px; padding: 4px 12px; font-size: 11px; font-weight: 700; color: #a7f3d0;">Live Notification</span></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <h2 style="margin: 0 0 12px; font-size: 22px; font-weight: 800; color: #0f172a;">${title}</h2>
+              <p style="margin: 0 0 20px; font-size: 15px; color: #475569; line-height: 1.6;">Hello <strong>${recipientName}</strong>,</p>
+              <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px;">
+                ${detailsRows}
+              </table>
+              <div style="text-align: center; margin: 28px 0 16px;">
+                <a href="${appUrl}" target="_blank" style="display: inline-block; padding: 12px 32px; background-color: #064e3b; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 9999px; box-shadow: 0 4px 12px rgba(6, 78, 59, 0.25);">
+                  Open FreelanceXchain &rarr;
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 32px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #64748b;">
+              &copy; 2026 FreelanceXchain &bull; Smart Escrow &bull; AI Matching
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 async function renderTemplate(template: EmailTemplate, data: Record<string, any>): Promise<string> {
   try {
-    const templatePath = path.join(process.cwd(), 'docs/email-templates', `${template}.html`);
-    let html = await fs.readFile(templatePath, 'utf-8');
+    let html = await loadTemplateContent(template);
 
     // Build unified normalized context mapping all common aliases
     const recipientName =
@@ -83,6 +168,17 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     const projectTitle = data.projectTitle ?? data.contractTitle ?? '';
     const reason = data.reason ?? data.disputeReason ?? '';
     const feedback = data.feedback ?? data.reviewFeedback ?? data.comment ?? '';
+    const newProjectsCount = data.newProjectsCount ?? data.newProjects ?? 0;
+    const totalEscrowValue = data.totalEscrowValue ?? '$25,000+';
+    const topMatchRate = data.topMatchRate ?? '98%';
+
+    const rawTopProjects = Array.isArray(data.topProjects) ? data.topProjects : [];
+    const topProjects = rawTopProjects.map((item: any, idx: number) => ({
+      title: item.title ?? `Featured Project #${idx + 1}`,
+      budget: item.budget ?? '$5,000',
+      url: item.url ?? 'https://freelancexchain.works/projects',
+      matchRate: item.matchRate ?? '95%',
+    }));
 
     const normalizedData: Record<string, any> = {
       ...data,
@@ -95,15 +191,17 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
       reason,
       disputeReason: data.disputeReason ?? reason,
       feedback,
-      newProjectsCount: data.newProjectsCount ?? data.newProjects ?? 0,
+      newProjectsCount,
+      totalEscrowValue,
+      topMatchRate,
+      topProjects,
     };
 
     // {{#each key}}...{{/each}} — repeat the block once per item in an array.
-    // Used by the weekly digest to list top projects. Items are plain objects
-    // whose fields are substituted as {{field}} inside the block, then escaped.
-    html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, key, block) => {
+    // Tolerates flexible whitespace such as {{ #each topProjects }} or {{#each topProjects}}
+    html = html.replace(/\{\{\s*#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\s*\/each\s*\}\}/g, (_match, key, block) => {
       const items = normalizedData[key];
-      if (!Array.isArray(items)) {
+      if (!Array.isArray(items) || items.length === 0) {
         return '';
       }
       return items.map((item: Record<string, any>) =>
@@ -111,8 +209,9 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
       ).join('');
     });
 
-    // HTML-escape all template variables to prevent injection
+    // HTML-escape all scalar template variables to prevent injection
     Object.keys(normalizedData).forEach(key => {
+      if (key === 'topProjects' || Array.isArray(normalizedData[key])) return;
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
       html = html.replace(regex, escapeHtml(String(normalizedData[key] ?? '')));
     });
@@ -120,8 +219,7 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     return html;
   } catch (error) {
     logger.error('Failed to render email template:', error);
-    const escaped = escapeHtml(JSON.stringify(data, null, 2));
-    return `<html><body><pre>${escaped}</pre></body></html>`;
+    return renderFallbackBrandedHtml(template, data);
   }
 }
 

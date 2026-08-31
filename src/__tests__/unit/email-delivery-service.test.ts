@@ -190,16 +190,9 @@ describe('Email Delivery Service', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        // HTML escaping converts special chars to entities
-        const escapedJson = JSON.stringify(data, null, 2)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
         expect(mockSend).toHaveBeenCalledWith(
           expect.objectContaining({
-            html: `<html><body><pre>${escapedJson}</pre></body></html>`,
+            html: expect.stringMatching(/FreelanceXchain[\s\S]*Bob[\s\S]*TestProject/),
           })
         );
       }
