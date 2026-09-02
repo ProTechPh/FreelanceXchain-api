@@ -628,7 +628,8 @@ describe('AI Client - Extended Tests', () => {
 
       const result = await resultPromise;
 
-      expect(mockFetchExtended).toHaveBeenCalledTimes(4);
+      // MAX_RETRIES=0 means 1 attempt only (no retries)
+      expect(mockFetchExtended).toHaveBeenCalledTimes(1);
       expect(typeof result).toBe('object');
       if (typeof result === 'object' && result !== null) {
         expect((result as any).code).toBe('AI_HTTP_429');
@@ -640,14 +641,13 @@ describe('AI Client - Extended Tests', () => {
       const { generateContent } = await importModule();
       jest.useFakeTimers();
 
-      mockFetchExtended
-        .mockRejectedValueOnce(new TypeError('Network error'))
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            choices: [{ message: { content: 'Success after retry', role: 'assistant' }, finish_reason: 'stop' }],
-          }),
-        } as any);
+      // With MAX_RETRIES=0, no retries occur; first call must succeed
+      mockFetchExtended.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Success after retry', role: 'assistant' }, finish_reason: 'stop' }],
+        }),
+      } as any);
 
       const resultPromise = generateContent('Test prompt');
 
@@ -655,7 +655,8 @@ describe('AI Client - Extended Tests', () => {
 
       const result = await resultPromise;
 
-      expect(mockFetchExtended).toHaveBeenCalledTimes(2);
+      // MAX_RETRIES=0: only 1 call, first resolves successfully
+      expect(mockFetchExtended).toHaveBeenCalledTimes(1);
       expect(result).toBe('Success after retry');
       jest.useRealTimers();
     });
@@ -674,7 +675,8 @@ describe('AI Client - Extended Tests', () => {
 
       const result = await resultPromise;
 
-      expect(mockFetchExtended).toHaveBeenCalledTimes(4);
+      // MAX_RETRIES=0: 1 attempt only, AbortError returns AI_NETWORK_ERROR immediately
+      expect(mockFetchExtended).toHaveBeenCalledTimes(1);
       expect(typeof result).toBe('object');
       if (typeof result === 'object' && result !== null) {
         expect((result as any).code).toBe('AI_NETWORK_ERROR');
@@ -702,20 +704,14 @@ describe('AI Client - Extended Tests', () => {
 
       const resultPromise = generateContent('Test prompt');
 
-      // Each makeAIRequest sets setTimeout(abort, 300000).
-      // After abort → retry → new setTimeout(abort, 300000) + sleep(N).
-      // Need to advance through 4 calls: 300s+1s + 300s+2s + 300s+4s + 300s = ~1207s
-      // Advance in steps to keep processing manageable.
-      for (let i = 0; i < 5; i++) {
-        await jest.advanceTimersByTimeAsync(300000);
-        await Promise.resolve(); // flush microtasks between steps
-      }
+      // With MAX_RETRIES=0, only 1 attempt. Advance past the 3000ms timeout.
+      await jest.advanceTimersByTimeAsync(5000);
+      await Promise.resolve();
 
       const result = await resultPromise;
 
-      // The timeout fires controller.abort(), fetch throws AbortError, which is retryable
-      // After MAX_RETRIES (3) retries all aborting, returns AI_NETWORK_ERROR
-      expect(mockFetchExtended).toHaveBeenCalledTimes(4);
+      // MAX_RETRIES=0: 1 attempt only, AbortError returns AI_NETWORK_ERROR immediately
+      expect(mockFetchExtended).toHaveBeenCalledTimes(1);
       expect(typeof result).toBe('object');
       if (typeof result === 'object' && result !== null) {
         expect((result as any).code).toBe('AI_NETWORK_ERROR');
@@ -841,6 +837,7 @@ describe('AI Client - Extended Tests', () => {
     it('should validate matchedSkills against actual data', async () => {
       const { analyzeSkillMatch } = await importModule();
 
+      // AI claims 'FakeSkill' matched, but it's not in either skill list
       mockFetchExtended.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -854,9 +851,10 @@ describe('AI Client - Extended Tests', () => {
         }),
       } as any);
 
+      // Use a partial match (1 of 2 skills) so quick-check doesn't short-circuit
       const result = await analyzeSkillMatch({
-        freelancerSkills: [{ skillId: '1', skillName: 'JavaScript' }],
-        projectRequirements: [{ skillId: '1', skillName: 'JavaScript' }],
+        freelancerSkills: [{ skillId: '1', skillName: 'JavaScript' }, { skillId: '2', skillName: 'Python' }],
+        projectRequirements: [{ skillId: '2', skillName: 'Python' }, { skillId: '3', skillName: 'TypeScript' }],
       });
 
       expect(typeof result).toBe('object');
@@ -1330,9 +1328,10 @@ describe('AI Client - Extended Tests', () => {
         }),
       } as any);
 
+      // Use a partial match (1 of 2 skills) so quick-check doesn't short-circuit
       const result = await analyzeSkillMatch({
-        freelancerSkills: [{ skillId: '1', skillName: 'JavaScript' }],
-        projectRequirements: [{ skillId: '1', skillName: 'JavaScript' }],
+        freelancerSkills: [{ skillId: '1', skillName: 'JavaScript' }, { skillId: '2', skillName: 'Python' }],
+        projectRequirements: [{ skillId: '2', skillName: 'Python' }, { skillId: '3', skillName: 'TypeScript' }],
       });
 
       expect(typeof result).toBe('object');

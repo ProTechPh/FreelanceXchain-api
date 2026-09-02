@@ -24,9 +24,9 @@ import {
 } from './ai-types.js';
 import { generateId } from '../utils/id.js';
 
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
+const MAX_RETRIES = 0;
+const INITIAL_RETRY_DELAY_MS = 300;
+const getRequestTimeoutMs = (): number => (typeof config?.llm?.timeoutMs === 'number' ? config.llm.timeoutMs : 3000);
 
 export const localSkillMatchCache = new LRUCache<SkillMatchResult>(500, 3600_000); // 1 hour
 export const localSkillExtractCache = new LRUCache<ExtractedSkill[]>(500, 3600_000); // 1 hour
@@ -307,7 +307,7 @@ async function makeAIRequest(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), getRequestTimeoutMs());
 
   try {
     const isGemini = isGeminiApi();
@@ -557,6 +557,13 @@ export async function analyzeSkillMatch(
   const cached = await getAICached<SkillMatchResult>(cacheKey, localSkillMatchCache);
   if (cached) {
     return cached;
+  }
+
+  // Instant deterministic check for 100% or 0% matches to avoid unnecessary LLM latency
+  const quickResult = keywordMatchSkills(request.freelancerSkills, request.projectRequirements);
+  if (quickResult.matchScore === 100 || quickResult.matchScore === 0 || request.projectRequirements.length === 0) {
+    await setAICached(cacheKey, quickResult, localSkillMatchCache, 3600);
+    return quickResult;
   }
 
   const prompt = buildPrompt(SKILL_MATCH_PROMPT, {

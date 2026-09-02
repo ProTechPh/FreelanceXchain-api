@@ -77,6 +77,7 @@ export const config = {
     apiKey: getEnvVarOptional('LLM_API_KEY'),
     apiUrl: getEnvVar('LLM_API_URL'),
     model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
+    timeoutMs: getEnvVarNumber('LLM_TIMEOUT_MS', 6000),
   },
   cryptoNews: {
     // Upstream provider for the crypto news proxy (cryptocurrency.cv free API).
