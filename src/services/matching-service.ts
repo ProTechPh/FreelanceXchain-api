@@ -142,12 +142,12 @@ export async function getProjectRecommendations(
   // 2. Take top items up to limit
   const topCandidates = preMatched.slice(0, limit);
 
-  // 3. AI enhancement (if available) only for top candidates
+  // 3. AI enhancement (if available) only for top candidates (capped at top 3 for optimal performance)
   const recommendations: ProjectRecommendation[] = await Promise.all(
-    topCandidates.map(async ({ projectEntity, projectRequirements, keywordResult }) => {
+    topCandidates.map(async ({ projectEntity, projectRequirements, keywordResult }, index) => {
       let matchResult: SkillMatchResult = keywordResult;
 
-      if (isAIAvailable()) {
+      if (index < 3 && isAIAvailable()) {
         try {
           const aiResult = await analyzeSkillMatch({
             freelancerSkills,
@@ -251,12 +251,12 @@ export async function getFreelancerRecommendations(
   candidates.sort((a, b) => b.combinedScore - a.combinedScore);
   const topCandidates = candidates.slice(0, limit);
 
-  // 2. Enhance top candidates only
+  // 2. Enhance top candidates only (capped at top 3 for optimal performance)
   const recommendations: FreelancerRecommendation[] = await Promise.all(
-    topCandidates.map(async ({ freelancerEntity, freelancerSkills, keywordResult, reputationScore, averageRating, totalRatings, rankingReputationScore }) => {
+    topCandidates.map(async ({ freelancerEntity, freelancerSkills, keywordResult, reputationScore, averageRating, totalRatings, rankingReputationScore }, index) => {
       let matchResult = keywordResult;
 
-      if (isAIAvailable()) {
+      if (index < 3 && isAIAvailable()) {
         try {
           const aiResult = await analyzeSkillMatch({
             freelancerSkills,
