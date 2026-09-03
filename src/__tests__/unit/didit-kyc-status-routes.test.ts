@@ -13,6 +13,7 @@ jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () 
   getKycStatus: mockGetKycStatus,
   getKycById: jest.fn(),
   refreshVerificationStatus: jest.fn(),
+  getAdminVerificationDecision: jest.fn(),
   processWebhook: jest.fn(),
   adminReviewVerification: jest.fn(),
   getPendingAdminReviews: jest.fn(),
