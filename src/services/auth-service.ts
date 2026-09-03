@@ -320,6 +320,38 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
   };
 }
 
+async function dispatchRegistrationVerification(sessionSecret: string, userId: string, email: string): Promise<void> {
+  try {
+    const userClient = createUserClient(sessionSecret);
+    const account = new Account(userClient);
+    const frontendBaseUrl = config.server.frontendUrl;
+    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+    await account.createVerification(redirectUrl);
+    logger.info('Email verification link dispatched upon registration', { userId, email });
+  } catch (verificationError) {
+    logger.warn('Failed to send verification email upon registration', {
+      error: getErrorMessage(verificationError),
+      email,
+    });
+  }
+}
+
+async function compensateOrphanedAppwriteUser(appwriteUserId: string, email: string): Promise<void> {
+  try {
+    await users.delete(appwriteUserId);
+    logger.warn('Compensated: deleted orphaned Appwrite user after registration failure', {
+      appwriteUserId,
+      email,
+    });
+  } catch (deleteError) {
+    logger.error('CRITICAL: Failed to delete orphaned Appwrite user', {
+      appwriteUserId,
+      email,
+      deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
+    });
+  }
+}
+
 export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
@@ -354,24 +386,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     });
 
     const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
-
-    // Send email verification link
-    try {
-      const userClient = createUserClient(sessionSecret);
-      const account = new Account(userClient);
-      const frontendBaseUrl = config.server.frontendUrl;
-      const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
-      await account.createVerification(redirectUrl);
-      logger.info('Email verification link dispatched upon registration', {
-        userId: publicUser.id,
-        email: normalizedEmail,
-      });
-    } catch (verificationError) {
-      logger.warn('Failed to send verification email upon registration', {
-        error: getErrorMessage(verificationError),
-        email: normalizedEmail,
-      });
-    }
+    await dispatchRegistrationVerification(sessionSecret, publicUser.id, normalizedEmail);
 
     return {
       user: {
@@ -382,30 +397,12 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
         createdAt: publicUser.created_at,
         emailVerification: false,
       },
-      // BLF-4.1: KNOWN LIMITATION — accessToken and refreshToken are the same Appwrite session secret.
-      // This means: (1) every access-token leak also leaks the refresh token, (2) no token rotation
-      // on refresh. A proper fix requires issuing short-lived JWTs as access tokens and keeping
-      // the Appwrite session secret solely as the refresh token. This is a known trade-off for
-      // using Appwrite-managed sessions without a custom JWT layer.
       accessToken: sessionSecret,
       refreshToken: sessionSecret,
     };
   } catch (error: unknown) {
-    // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
     if (appwriteUser?.$id) {
-      try {
-        await users.delete(appwriteUser.$id);
-        logger.warn('Compensated: deleted orphaned Appwrite user after registration failure', {
-          appwriteUserId: appwriteUser.$id,
-          email: normalizedEmail,
-        });
-      } catch (deleteError) {
-        logger.error('CRITICAL: Failed to delete orphaned Appwrite user', {
-          appwriteUserId: appwriteUser.$id,
-          email: normalizedEmail,
-          deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
-        });
-      }
+      await compensateOrphanedAppwriteUser(appwriteUser.$id, normalizedEmail);
     }
 
     logger.error('Registration failed', { error: getErrorMessage(error), email: normalizedEmail });
@@ -417,8 +414,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       };
     }
     
-    // CWE-209: never forward raw upstream error details to the client — log them
-    // server-side and return a generic message.
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to create user',
