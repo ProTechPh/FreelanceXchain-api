@@ -36,6 +36,7 @@ export type AuthResult = {
     kycStatus?: string;
     createdAt: string;
     authProvider?: 'email' | 'oauth';
+    emailVerification?: boolean;
   };
   accessToken: string;
   refreshToken: string;
@@ -66,6 +67,7 @@ export type AuthError = {
   | 'UPDATE_FAILED'
   | 'ACTIVE_CONTRACTS_EXIST'
   | 'DELETE_FAILED'
+  | 'EMAIL_NOT_VERIFIED'
   | 'WALLET_LOCKED';
   message: string;
 };

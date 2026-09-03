@@ -22,6 +22,7 @@ import {
 import {
   createVerificationSession,
   getVerificationSession,
+  getVerificationDecision,
   verifyIdDocument,
   checkPassiveLiveness,
   matchFaces,
@@ -31,6 +32,7 @@ import {
   KycVerification,
   CreateKycVerificationInput,
   DiditWebhookPayload,
+  DiditVerificationDecisionResponse,
   KycStatus,
 } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
@@ -159,16 +161,259 @@ export async function refreshVerificationStatus(
 
   const updates: Partial<KycVerification> = { status };
   
-  if (session.status === 'Completed') {
+  if (['Completed', 'Approved', 'Declined', 'In Review'].includes(session.status)) {
     updates.completed_at = new Date().toISOString();
+
+    if (session.status === 'Approved') {
+      updates.decision = 'approved';
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      updates.expires_at = expiryDate.toISOString();
+    } else if (session.status === 'Declined') {
+      updates.decision = 'declined';
+    } else if (session.status === 'In Review') {
+      updates.decision = 'review';
+    }
   }
+
+  // Extract feature reports if returned by the decision endpoint
+  const sessionData = session as unknown as DiditVerificationDecisionResponse;
+  const idVerification = sessionData.id_verifications?.[0];
+  let firstName: string | null = null;
+  let lastName: string | null = null;
+  let nationality: string | null = null;
+
+  if (idVerification) {
+    let barcodeSubject: Record<string, unknown> | null = null;
+    const rawBarcodes = (idVerification as Record<string, unknown>)['barcodes'] as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(rawBarcodes) && rawBarcodes.length > 0) {
+      try {
+        const rawData = rawBarcodes[0]?.['data'];
+        if (typeof rawData === 'string' && rawData.startsWith('{')) {
+          const parsed = JSON.parse(rawData);
+          if (parsed && typeof parsed.subject === 'object') {
+            barcodeSubject = parsed.subject;
+          }
+        }
+      } catch {
+        // ignore barcode parsing error
+      }
+    }
+
+    firstName = idVerification.first_name ?? null;
+    lastName = idVerification.last_name ?? null;
+    nationality = idVerification.nationality ?? idVerification.issuing_state_name ?? idVerification.issuing_state ?? 'Philippines';
+
+    updates.first_name = firstName;
+    updates.last_name = lastName;
+    updates.date_of_birth = idVerification.date_of_birth ?? (barcodeSubject?.['DOB'] as string) ?? null;
+    updates.nationality = nationality;
+    updates.document_type = idVerification.document_type ?? (barcodeSubject ? 'PhilID (National ID)' : 'Identity Card');
+    updates.document_number = idVerification.document_number ?? (barcodeSubject?.['PCN'] as string) ?? null;
+    updates.issuing_country = idVerification.issuing_state_name || idVerification.issuing_state || idVerification.nationality || 'Philippines';
+    updates.document_verified = idVerification.status === 'Approved';
+  }
+
+  const livenessCheck = sessionData.liveness_checks?.[0];
+  if (livenessCheck) {
+    updates.liveness_passed = livenessCheck.status === 'Approved';
+    updates.liveness_confidence_score = livenessCheck.score?.toString() ?? null;
+  }
+
+  const faceMatch = sessionData.face_matches?.[0];
+  if (faceMatch) {
+    updates.face_matched = faceMatch.status === 'Approved';
+    updates.face_similarity_score = faceMatch.score?.toString() ?? null;
+  }
+
+  const ipAnalysis = sessionData.ip_analyses?.[0];
+  if (ipAnalysis) {
+    updates.ip_address = ipAnalysis.ip_address ?? null;
+    updates.ip_country_code = ipAnalysis.ip_country ?? ipAnalysis.ip_country_code ?? null;
+    updates.is_vpn = ipAnalysis.is_vpn_or_tor ?? false;
+    updates.is_proxy = ipAnalysis.is_data_center ?? false;
+  }
+
+  const images = {
+    front_image: idVerification?.front_image || idVerification?.full_front_image || null,
+    back_image: idVerification?.back_image || idVerification?.full_back_image || null,
+    portrait_image: idVerification?.portrait_image || null,
+    reference_image: livenessCheck?.reference_image || faceMatch?.target_image || null,
+    full_front_image: idVerification?.full_front_image || null,
+    full_back_image: idVerification?.full_back_image || null,
+  };
+  const warnings = [
+    ...(idVerification?.warnings || []),
+    ...(livenessCheck?.warnings || []),
+    ...(faceMatch?.warnings || []),
+  ];
+  updates.metadata = {
+    ...(typeof verification.metadata === 'object' && verification.metadata !== null ? verification.metadata : {}),
+    images,
+    warnings,
+  };
 
   const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
     return errorResult('UPDATE_FAILED', 'Failed to update verification status');
   }
 
+  if (session.status === 'Approved') {
+    await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
+  }
+
   return successResult(updated);
+}
+
+export async function getAdminVerificationDecision(verificationId: string): Promise<ServiceResult<{
+  verification: KycVerification;
+  decision: DiditVerificationDecisionResponse | null;
+  images: {
+    front_image?: string | null;
+    back_image?: string | null;
+    portrait_image?: string | null;
+    reference_image?: string | null;
+    full_front_image?: string | null;
+    full_back_image?: string | null;
+  };
+  warnings: Array<{ feature?: string; risk?: string; short_description?: string; long_description?: string }>;
+}>> {
+  let verification = await getKycVerificationById(verificationId);
+  if (!verification) {
+    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
+  }
+
+  let decision: DiditVerificationDecisionResponse | null = null;
+  const images: {
+    front_image?: string | null;
+    back_image?: string | null;
+    portrait_image?: string | null;
+    reference_image?: string | null;
+    full_front_image?: string | null;
+    full_back_image?: string | null;
+  } = {};
+  const warnings: Array<{ feature?: string; risk?: string; short_description?: string; long_description?: string }> = [];
+
+  const metadata = verification.metadata as Record<string, unknown> | null;
+  if (metadata?.images && typeof metadata.images === 'object') {
+    Object.assign(images, metadata.images);
+  }
+  if (Array.isArray(metadata?.warnings)) {
+    warnings.push(...metadata.warnings);
+  }
+
+  if (verification.didit_session_id) {
+    const decisionResult = await getVerificationDecision(verification.didit_session_id);
+    if (decisionResult.success && decisionResult.data) {
+      decision = decisionResult.data;
+
+      const idVerification = decision.id_verifications?.[0];
+      const livenessCheck = decision.liveness_checks?.[0];
+      const faceMatch = decision.face_matches?.[0];
+      const ipAnalysis = decision.ip_analyses?.[0];
+
+      const updates: Partial<KycVerification> = {};
+
+      if (idVerification) {
+        images.front_image = idVerification.front_image || idVerification.full_front_image || images.front_image || null;
+        images.back_image = idVerification.back_image || idVerification.full_back_image || images.back_image || null;
+        images.portrait_image = idVerification.portrait_image || images.portrait_image || null;
+        images.full_front_image = idVerification.full_front_image || images.full_front_image || null;
+        images.full_back_image = idVerification.full_back_image || images.full_back_image || null;
+
+        if (Array.isArray(idVerification.warnings)) {
+          warnings.length = 0;
+          warnings.push(...idVerification.warnings);
+        }
+
+        let barcodeSubject: Record<string, unknown> | null = null;
+        const rawBarcodes = (idVerification as Record<string, unknown>)['barcodes'] as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(rawBarcodes) && rawBarcodes.length > 0) {
+          try {
+            const rawData = rawBarcodes[0]?.['data'];
+            if (typeof rawData === 'string' && rawData.startsWith('{')) {
+              const parsed = JSON.parse(rawData);
+              if (parsed && typeof parsed.subject === 'object') {
+                barcodeSubject = parsed.subject;
+              }
+            }
+          } catch {
+            // ignore barcode parsing error
+          }
+        }
+
+        if (idVerification.first_name) updates.first_name = idVerification.first_name;
+        if (idVerification.last_name) updates.last_name = idVerification.last_name;
+        const birthDate = idVerification.date_of_birth || (barcodeSubject?.['DOB'] as string) || ((idVerification as Record<string, unknown>).mrz ? ((idVerification as Record<string, unknown>).mrz as Record<string, unknown>)?.['birth_date'] as string ?? null : null);
+        if (birthDate) updates.date_of_birth = birthDate;
+        const nat = idVerification.nationality || idVerification.issuing_state_name || idVerification.issuing_state || 'Philippines';
+        if (nat) updates.nationality = nat;
+        updates.document_type = idVerification.document_type || (barcodeSubject ? 'PhilID (National ID)' : 'Identity Card');
+        const docNum = idVerification.document_number || (barcodeSubject?.['PCN'] as string);
+        if (docNum) updates.document_number = docNum;
+        const issuingCtry = idVerification.issuing_state_name || idVerification.issuing_state || idVerification.nationality || 'Philippines';
+        if (issuingCtry) updates.issuing_country = issuingCtry;
+        updates.document_verified = idVerification.status === 'Approved';
+      }
+
+      if (livenessCheck) {
+        images.reference_image = livenessCheck.reference_image || images.reference_image || null;
+        if (Array.isArray(livenessCheck.warnings)) {
+          warnings.push(...livenessCheck.warnings);
+        }
+        updates.liveness_passed = livenessCheck.status === 'Approved';
+        if (livenessCheck.score !== undefined && livenessCheck.score !== null) {
+          updates.liveness_confidence_score = livenessCheck.score.toString();
+        }
+      }
+
+      if (faceMatch) {
+        if (!images.reference_image && faceMatch.target_image) {
+          images.reference_image = faceMatch.target_image;
+        }
+        if (Array.isArray(faceMatch.warnings)) {
+          warnings.push(...faceMatch.warnings);
+        }
+        updates.face_matched = faceMatch.status === 'Approved';
+        if (faceMatch.score !== undefined && faceMatch.score !== null) {
+          updates.face_similarity_score = faceMatch.score.toString();
+        }
+      }
+
+      if (ipAnalysis) {
+        if (ipAnalysis.ip_address) updates.ip_address = ipAnalysis.ip_address;
+        const ipCtry = ipAnalysis.ip_country || ipAnalysis.ip_country_code;
+        if (ipCtry) updates.ip_country_code = ipCtry;
+        updates.is_vpn = ipAnalysis.is_vpn_or_tor ?? false;
+        updates.is_proxy = ipAnalysis.is_data_center ?? false;
+      }
+
+      updates.metadata = {
+        ...(typeof verification.metadata === 'object' && verification.metadata !== null ? verification.metadata : {}),
+        images,
+        warnings,
+      };
+
+      try {
+        const updatedRecord = await updateKycVerification(verification.id, updates);
+        if (updatedRecord) {
+          verification = updatedRecord;
+        } else {
+          Object.assign(verification, updates);
+        }
+      } catch (err) {
+        logger.warn('Failed to update KYC verification with decision details', { error: err });
+        Object.assign(verification, updates);
+      }
+    }
+  }
+
+  return successResult({
+    verification,
+    decision,
+    images,
+    warnings,
+  });
 }
 
 // L4: Track processed webhook event IDs to prevent duplicate processing

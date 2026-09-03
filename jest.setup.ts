@@ -102,7 +102,7 @@ global.mockAppwriteClient = {
 
 // Mock node-appwrite
 const mockAppwriteAccount = {
-  get: jest.fn().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com' }),
+  get: jest.fn().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com', emailVerification: true }),
   create: jest.fn().mockResolvedValue({ $id: 'test-user-id' }),
   createEmailPasswordSession: jest.fn().mockImplementation((email: string, password: string) => {
     const key = String(email).toLowerCase();

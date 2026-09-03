@@ -37,30 +37,132 @@ function mapKyc(doc: Record<string, unknown>): KycVerification {
   for (const field of ['decline_reasons', 'review_reasons', 'metadata']) {
     const value = result[field];
     if (typeof value === 'string') {
-      result[field] = JSON.parse(value);
+      try {
+        result[field] = JSON.parse(value);
+      } catch {
+        // ignore JSON parse error
+      }
     }
   }
+
+  const meta = result['metadata'] as Record<string, unknown> | null;
+  if (meta && typeof meta === 'object') {
+    if (!result['date_of_birth'] && meta['date_of_birth']) result['date_of_birth'] = meta['date_of_birth'];
+    if (!result['issuing_country'] && meta['issuing_country']) result['issuing_country'] = meta['issuing_country'];
+    if (!result['liveness_confidence_score'] && meta['liveness_confidence_score']) result['liveness_confidence_score'] = meta['liveness_confidence_score'];
+    if (!result['face_similarity_score'] && meta['face_similarity_score']) result['face_similarity_score'] = meta['face_similarity_score'];
+    if (!result['ip_country_code'] && meta['ip_country_code']) result['ip_country_code'] = meta['ip_country_code'];
+    if (result['is_vpn'] === undefined && meta['is_vpn'] !== undefined) result['is_vpn'] = meta['is_vpn'];
+    if (result['is_proxy'] === undefined && meta['is_proxy'] !== undefined) result['is_proxy'] = meta['is_proxy'];
+  }
+
   return result as KycVerification;
+}
+
+let cachedAllowedKeys: Set<string> | null = null;
+
+async function getAllowedKeys(): Promise<Set<string> | null> {
+  if (cachedAllowedKeys) return cachedAllowedKeys;
+  try {
+    const dbClient = databases as unknown as { listAttributes?: (dbId: string, colId: string) => Promise<{ attributes?: { key: string }[] }> };
+    if (typeof dbClient.listAttributes === 'function') {
+      const res = await dbClient.listAttributes(DATABASE_ID, TABLE_NAME);
+      if (res?.attributes && Array.isArray(res.attributes)) {
+        cachedAllowedKeys = new Set(res.attributes.map((a) => a.key));
+        return cachedAllowedKeys;
+      }
+    }
+  } catch {
+    // If listing attributes fails, fallback to default allowed keys
+  }
+  return null;
+}
+
+const DEFAULT_ALLOWED_KYC_ATTRIBUTES = new Set([
+  'user_id',
+  'status',
+  'didit_session_id',
+  'didit_session_token',
+  'didit_session_url',
+  'didit_workflow_id',
+  'decision',
+  'document_type',
+  'document_number',
+  'first_name',
+  'last_name',
+  'nationality',
+  'document_verified',
+  'liveness_passed',
+  'face_matched',
+  'ip_address',
+  'metadata',
+  'reviewed_by',
+  'admin_notes',
+]);
+
+async function filterKycAttributes(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const allowedKeys = (await getAllowedKeys()) ?? DEFAULT_ALLOWED_KYC_ATTRIBUTES;
+  const attrs: Record<string, unknown> = {};
+
+  let meta: Record<string, unknown> = {};
+  if (typeof data['metadata'] === 'object' && data['metadata'] !== null) {
+    meta = { ...(data['metadata'] as Record<string, unknown>) };
+  } else if (typeof data['metadata'] === 'string') {
+    try {
+      meta = JSON.parse(data['metadata']);
+    } catch {
+      meta = {};
+    }
+  }
+
+  for (const [key, value] of Object.entries(data)) {
+    if (
+      key === 'id' ||
+      key === '$id' ||
+      key === '$createdAt' ||
+      key === '$updatedAt' ||
+      key === '$collectionId' ||
+      key === '$databaseId' ||
+      key === '$permissions' ||
+      value === undefined
+    ) {
+      continue;
+    }
+
+    if (allowedKeys.has(key)) {
+      attrs[key] = typeof value === 'object' && value !== null ? JSON.stringify(value) : value;
+    } else {
+      if (['date_of_birth', 'issuing_country', 'liveness_confidence_score', 'face_similarity_score', 'ip_country_code', 'is_vpn', 'is_proxy', 'completed_at', 'expires_at'].includes(key)) {
+        meta[key] = value;
+      }
+    }
+  }
+
+  if (allowedKeys.has('metadata')) {
+    attrs['metadata'] = JSON.stringify(meta);
+  }
+
+  if (allowedKeys.has('created_at') && !attrs['created_at']) {
+    attrs['created_at'] = new Date().toISOString();
+  }
+  if (allowedKeys.has('updated_at')) {
+    attrs['updated_at'] = new Date().toISOString();
+  }
+
+  return attrs;
 }
 
 export async function createKycVerification(
   verification: Omit<KycVerification, 'created_at' | 'updated_at'>
 ): Promise<KycVerification | null> {
-  const now = new Date().toISOString();
-  const attrs: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(verification)) {
-    if (value !== undefined) {
-      attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
-    }
-  }
-  attrs.created_at = now;
-  attrs.updated_at = now;
+  const docId = verification.id || ID.unique();
+  const attrs = await filterKycAttributes(verification as Record<string, unknown>);
 
   try {
     const doc = await databases.createDocument(
       DATABASE_ID,
       TABLE_NAME,
-      verification.id || ID.unique(),
+      docId,
       attrs
     );
     return mapKyc(doc);
@@ -135,14 +237,8 @@ export async function updateKycVerification(
 ): Promise<KycVerification | null> {
   if (Object.keys(updates).length === 0) return getKycVerificationById(id);
 
-  const now = new Date().toISOString();
-  const attrs: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(updates)) {
-    if (key !== 'id' && key !== 'user_id' && key !== 'created_at' && value !== undefined) {
-      attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
-    }
-  }
-  attrs.updated_at = now;
+  const attrs = await filterKycAttributes(updates as Record<string, unknown>);
+  if (Object.keys(attrs).length === 0) return getKycVerificationById(id);
 
   try {
     const doc = await databases.updateDocument(

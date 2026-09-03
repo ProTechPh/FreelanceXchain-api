@@ -68,12 +68,25 @@ export function validateLoginInput(body: unknown): { valid: boolean; errors: Val
   return { valid: true, errors: [], input: { email: email as string, password: password as string } };
 }
 
-export function validatePasswordResetInput(body: unknown): { valid: boolean; errors: ValidationError[]; accessToken?: string; password?: string } {
-  const { accessToken, password } = body as Record<string, unknown>;
+export function validatePasswordResetInput(body: unknown): {
+  valid: boolean;
+  errors: ValidationError[];
+  accessToken?: string;
+  userId?: string;
+  secret?: string;
+  password?: string;
+} {
+  const { accessToken, userId, secret, password } = (body || {}) as Record<string, unknown>;
   const errors: ValidationError[] = [];
 
-  if (!accessToken || typeof accessToken !== 'string') {
-    errors.push({ field: 'accessToken', message: 'Access token is required' });
+  const effectiveSecret = (typeof secret === 'string' && secret)
+    ? secret
+    : (typeof accessToken === 'string' && accessToken)
+    ? accessToken
+    : undefined;
+
+  if (!effectiveSecret) {
+    errors.push({ field: 'secret', message: 'Reset token or secret is required' });
   }
 
   if (typeof password === 'string') {
@@ -86,5 +99,59 @@ export function validatePasswordResetInput(body: unknown): { valid: boolean; err
   }
 
   if (errors.length > 0) return { valid: false, errors };
-  return { valid: true, errors: [], accessToken: accessToken as string, password: password as string };
+  const result: {
+    valid: boolean;
+    errors: ValidationError[];
+    accessToken?: string;
+    userId?: string;
+    secret?: string;
+    password?: string;
+  } = {
+    valid: true,
+    errors: [],
+    password: password as string,
+  };
+  if (effectiveSecret) {
+    result.accessToken = effectiveSecret;
+    result.secret = effectiveSecret;
+  }
+  if (typeof userId === 'string' && userId) {
+    result.userId = userId;
+  }
+  return result;
+}
+
+export function validateChangePasswordInput(body: unknown): {
+  valid: boolean;
+  errors: ValidationError[];
+  currentPassword?: string;
+  newPassword?: string;
+} {
+  const { currentPassword, newPassword } = (body || {}) as Record<string, unknown>;
+  const errors: ValidationError[] = [];
+
+  if (!currentPassword || typeof currentPassword !== 'string') {
+    errors.push({ field: 'currentPassword', message: 'Current password is required' });
+  }
+
+  if (typeof newPassword === 'string') {
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
+      passwordValidation.errors.forEach(err => errors.push({ field: 'newPassword', message: err }));
+    }
+  } else {
+    errors.push({ field: 'newPassword', message: 'New password is required' });
+  }
+
+  if (typeof currentPassword === 'string' && typeof newPassword === 'string' && currentPassword === newPassword) {
+    errors.push({ field: 'newPassword', message: 'New password must be different from current password' });
+  }
+
+  if (errors.length > 0) return { valid: false, errors };
+  return {
+    valid: true,
+    errors: [],
+    currentPassword: currentPassword as string,
+    newPassword: newPassword as string,
+  };
 }

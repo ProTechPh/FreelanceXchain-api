@@ -20,6 +20,7 @@ import {
   isUserVerified,
   getProfileDataFromKyc,
   manualKycVerification,
+  getAdminVerificationDecision,
 } from '../services/didit-kyc-service.js';
 import { DiditWebhookPayload, DiditWebhookStatus, DiditWebhookType, KycStatus } from '../models/didit-kyc.js';
 import type { ServiceError } from '../types/service-result.js';
@@ -589,46 +590,7 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRat
     return;
   }
 
-  // Transform snake_case to camelCase for frontend
-  const transformedData = result.data.map(kyc => ({
-    id: kyc.id,
-    userId: kyc.user_id,
-    status: kyc.status,
-    firstName: kyc.first_name || '',
-    lastName: kyc.last_name || '',
-    dateOfBirth: kyc.date_of_birth,
-    nationality: kyc.nationality,
-    documentType: kyc.document_type,
-    documentNumber: kyc.document_number,
-    issuingCountry: kyc.issuing_country,
-    documentVerified: kyc.document_verified,
-    livenessCheck: kyc.liveness_passed ? {
-      id: kyc.id,
-      sessionId: kyc.didit_session_id,
-      status: kyc.liveness_passed ? 'passed' : 'failed',
-      confidenceScore: parseFloat(kyc.liveness_confidence_score || '0'),
-      challenges: [],
-      expiresAt: kyc.expires_at || '',
-    } : undefined,
-    faceMatchScore: kyc.face_similarity_score ? parseFloat(kyc.face_similarity_score) : undefined,
-    faceMatchStatus: kyc.face_matched ? 'matched' : kyc.face_matched === false ? 'not_matched' : 'pending',
-    rejectionReason: kyc.admin_notes,
-    didit_session_url: kyc.didit_session_url,
-    completed_at: kyc.completed_at,
-    admin_notes: kyc.admin_notes,
-    createdAt: kyc.created_at,
-    updatedAt: kyc.updated_at,
-    tier: 1,
-    address: {
-      addressLine1: '',
-      city: '',
-      country: kyc.nationality || '',
-      countryCode: kyc.ip_country_code || '',
-    },
-    documents: [],
-  }));
-
-  res.status(200).json(transformedData);
+  res.status(200).json(result.data);
 }));
 
 /**
@@ -729,6 +691,44 @@ router.get('/admin/verification/:verificationId', authMiddleware, requireRole('a
 
   if (!result.data) {
     sendErrorResponse(res, 404, 'NOT_FOUND', 'Verification not found', { requestId: getRequestId(req) });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+/**
+ * @swagger
+ * /api/kyc/admin/verification/{verificationId}/decision:
+ *   get:
+ *     summary: Get verification decision details and document images (Admin)
+ *     tags:
+ *       - KYC Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: verificationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Verification decision details including presigned images
+ */
+router.get('/admin/verification/:verificationId/decision', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+  const verificationId = req.params['verificationId'];
+
+  if (!verificationId) {
+    sendErrorResponse(res, 400, 'INVALID_ID', 'Verification ID required', { requestId: getRequestId(req) });
+    return;
+  }
+
+  const result = await getAdminVerificationDecision(verificationId);
+
+  if (!result.success) {
+    sendKycServiceError(res, 400, result.error, getRequestId(req));
     return;
   }
 
