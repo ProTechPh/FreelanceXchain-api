@@ -38,10 +38,23 @@ export type DiditCreateSessionResponse = {
 
 export type DiditVerificationDecisionResponse = {
   session_id: string;
-  decision: DiditVerificationDecision;
-  status: DiditSessionStatus;
+  session_kind?: 'user' | 'business';
+  session_number?: number;
+  session_url?: string;
+  status: DiditSessionStatus | DiditWebhookStatus | string;
+  decision?: DiditVerificationDecision;
   vendor_data?: string;
-  metadata?: Record<string, string | number | boolean>;
+  workflow_id?: string;
+  features?: string[];
+  id_verifications?: DiditIdVerification[];
+  liveness_checks?: DiditLivenessCheck[];
+  face_matches?: DiditFaceMatch[];
+  ip_analyses?: DiditIpAnalysis[];
+  aml_screenings?: unknown[];
+  reviews?: unknown[];
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  expires_at?: string;
 };
 
 export type DiditWebhookType = 'status.updated' | 'data.updated';
@@ -91,7 +104,7 @@ type DiditDecisionData = {
   created_at: string;
 };
 
-type DiditIdVerification = {
+export type DiditIdVerification = {
   node_id: string;
   status: string;
   document_type: string;
@@ -107,10 +120,15 @@ type DiditIdVerification = {
   address?: string;
   formatted_address?: string;
   age?: number;
+  front_image?: string;
+  back_image?: string;
+  portrait_image?: string;
+  full_front_image?: string;
+  full_back_image?: string;
   warnings?: DiditWarning[];
 };
 
-type DiditLivenessCheck = {
+export type DiditLivenessCheck = {
   node_id: string;
   status: string;
   method: string;
@@ -120,7 +138,7 @@ type DiditLivenessCheck = {
   warnings?: DiditWarning[];
 };
 
-type DiditFaceMatch = {
+export type DiditFaceMatch = {
   node_id: string;
   status: string;
   score: number;
@@ -129,7 +147,7 @@ type DiditFaceMatch = {
   warnings?: DiditWarning[];
 };
 
-type DiditIpAnalysis = {
+export type DiditIpAnalysis = {
   node_id: string;
   status: string;
   ip_address: string;
@@ -143,7 +161,7 @@ type DiditIpAnalysis = {
   warnings?: DiditWarning[];
 };
 
-type DiditWarning = {
+export type DiditWarning = {
   feature: string;
   risk: string;
   short_description: string;

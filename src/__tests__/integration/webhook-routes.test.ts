@@ -30,6 +30,7 @@ describe('Webhook Routes Integration Tests', () => {
       getKycStatus: jest.fn(),
       getKycById: jest.fn(),
       refreshVerificationStatus: jest.fn(),
+      getAdminVerificationDecision: jest.fn(),
       getProfileDataFromKyc: jest.fn(),
       adminReviewVerification: jest.fn(),
       getPendingAdminReviews: jest.fn(),

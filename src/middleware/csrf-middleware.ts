@@ -57,7 +57,9 @@ const CSRF_EXEMPT_PATHS = [
   '/api/auth/refresh',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
+  '/api/auth/change-password',
   '/api/auth/resend-confirmation',
+  '/api/auth/verify-email',
   '/api/auth/csrf-token',
   '/api/kyc/webhook',
   '/api/inbox/webhook', // Email inbox webhook (HMAC-verified, server-to-server)

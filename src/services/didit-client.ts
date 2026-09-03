@@ -162,12 +162,22 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
     // Sanitize session ID to prevent SSRF attacks
     const sanitizedSessionId = sanitizeSessionId(sessionId);
     
-    const response = await fetch(`${DIDIT_API_URL}/v3/session/${sanitizedSessionId}/`, {
+    // In Didit v3, the canonical endpoint to retrieve session status/details is /v3/session/{id}/decision/
+    let response = await fetch(`${DIDIT_API_URL}/v3/session/${sanitizedSessionId}/decision/`, {
       method: 'GET',
       headers: {
         'x-api-key': DIDIT_API_KEY ?? '',
       },
     });
+
+    if (response.status === 404) {
+      response = await fetch(`${DIDIT_API_URL}/v3/session/${sanitizedSessionId}/`, {
+        method: 'GET',
+        headers: {
+          'x-api-key': DIDIT_API_KEY ?? '',
+        },
+      });
+    }
 
     if (!response.ok) {
       let errorData: DiditApiError;

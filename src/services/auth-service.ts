@@ -290,6 +290,20 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(user.id);
 
+  let emailVerification = false;
+  let authProvider: 'email' | 'oauth' = 'email';
+  try {
+    if (typeof users?.get === 'function') {
+      const appwriteUser = await users.get(user.id);
+      emailVerification = appwriteUser.emailVerification ?? false;
+      if (appwriteUser.passwordUpdate === '') {
+        authProvider = 'oauth';
+      }
+    }
+  } catch {
+    // Best-effort check
+  }
+
   return {
     user: {
       id: user.id,
@@ -298,10 +312,44 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
       walletAddress: user.wallet_address,
       ...(kycVerification?.status ? { kycStatus: kycVerification.status } : {}),
       createdAt: user.created_at,
+      emailVerification,
+      authProvider,
     },
     accessToken,
     refreshToken,
   };
+}
+
+async function dispatchRegistrationVerification(sessionSecret: string, userId: string, email: string): Promise<void> {
+  try {
+    const userClient = createUserClient(sessionSecret);
+    const account = new Account(userClient);
+    const frontendBaseUrl = config.server.frontendUrl;
+    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+    await account.createVerification(redirectUrl);
+    logger.info('Email verification link dispatched upon registration', { userId, email });
+  } catch (verificationError) {
+    logger.warn('Failed to send verification email upon registration', {
+      error: getErrorMessage(verificationError),
+      email,
+    });
+  }
+}
+
+async function compensateOrphanedAppwriteUser(appwriteUserId: string, email: string): Promise<void> {
+  try {
+    await users.delete(appwriteUserId);
+    logger.warn('Compensated: deleted orphaned Appwrite user after registration failure', {
+      appwriteUserId,
+      email,
+    });
+  } catch (deleteError) {
+    logger.error('CRITICAL: Failed to delete orphaned Appwrite user', {
+      appwriteUserId,
+      email,
+      deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
+    });
+  }
 }
 
 export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
@@ -338,6 +386,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     });
 
     const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
+    await dispatchRegistrationVerification(sessionSecret, publicUser.id, normalizedEmail);
 
     return {
       user: {
@@ -346,31 +395,14 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
         role: publicUser.role,
         walletAddress: publicUser.wallet_address,
         createdAt: publicUser.created_at,
+        emailVerification: false,
       },
-      // BLF-4.1: KNOWN LIMITATION — accessToken and refreshToken are the same Appwrite session secret.
-      // This means: (1) every access-token leak also leaks the refresh token, (2) no token rotation
-      // on refresh. A proper fix requires issuing short-lived JWTs as access tokens and keeping
-      // the Appwrite session secret solely as the refresh token. This is a known trade-off for
-      // using Appwrite-managed sessions without a custom JWT layer.
       accessToken: sessionSecret,
       refreshToken: sessionSecret,
     };
   } catch (error: unknown) {
-    // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
     if (appwriteUser?.$id) {
-      try {
-        await users.delete(appwriteUser.$id);
-        logger.warn('Compensated: deleted orphaned Appwrite user after registration failure', {
-          appwriteUserId: appwriteUser.$id,
-          email: normalizedEmail,
-        });
-      } catch (deleteError) {
-        logger.error('CRITICAL: Failed to delete orphaned Appwrite user', {
-          appwriteUserId: appwriteUser.$id,
-          email: normalizedEmail,
-          deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
-        });
-      }
+      await compensateOrphanedAppwriteUser(appwriteUser.$id, normalizedEmail);
     }
 
     logger.error('Registration failed', { error: getErrorMessage(error), email: normalizedEmail });
@@ -382,8 +414,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       };
     }
     
-    // CWE-209: never forward raw upstream error details to the client — log them
-    // server-side and return a generic message.
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to create user',
@@ -398,10 +428,9 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
     const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
     const authenticatedAccount = new Account(createUserClient(sessionSecret));
 
-    // Check if MFA is required by calling account.get()
-    // Appwrite throws user_more_factors_required if MFA is enabled
+    let accountUser: any;
     try {
-      await authenticatedAccount.get();
+      accountUser = await authenticatedAccount.get();
     } catch (mfaError: unknown) {
       if (getErrorType(mfaError) === 'user_more_factors_required') {
         // SECURITY NOTE: The session.secret returned here is a partially-authenticated
@@ -427,6 +456,20 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       return {
         code: 'INVALID_CREDENTIALS',
         message: 'User profile not found',
+      };
+    }
+
+    // Block login if email is not verified (admins are exempt)
+    const isEmailVerified = accountUser?.emailVerification ?? false;
+    if (!isEmailVerified && publicUser.role !== 'admin') {
+      try {
+        await authenticatedAccount.deleteSession({ sessionId: 'current' });
+      } catch {
+        // Best-effort cleanup
+      }
+      return {
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Please verify your email address before logging in. Check your inbox for the verification link.',
       };
     }
 
@@ -539,14 +582,15 @@ export async function validateTokenAndGetUser(accessToken: string): Promise<Auth
   return createAuthResult(userEntity, accessToken, accessToken);
 }
 
-export async function requestPasswordReset(email: string): Promise<{ success: boolean } | AuthError> {
+export async function requestPasswordReset(email: string, customFrontendUrl?: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient('');
     const account = new Account(userClient);
 
-    const frontendBaseUrl = process.env.PUBLIC_URL
-      ?? process.env.FRONTEND_URL
-      ?? 'http://localhost:5173';
+    const frontendBaseUrl = customFrontendUrl
+      || process.env.PUBLIC_URL
+      || process.env.FRONTEND_URL
+      || 'http://localhost:5173';
     const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
     const redirectUrl = `${normalizedFrontendBaseUrl}/reset-password`;
 
@@ -555,6 +599,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
       url: redirectUrl
     });
 
+    logger.info('Password reset recovery email dispatched', { email, redirectUrl });
     return { success: true };
   } catch (error: unknown) {
     logger.error('Password reset request failed', { error: getErrorMessage(error), email });
@@ -562,6 +607,74 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to send password reset email',
+    };
+  }
+}
+
+export async function resetPasswordWithRecovery(
+  userId: string,
+  secret: string,
+  newPassword: string
+): Promise<{ success: boolean } | AuthError> {
+  const validation = validatePasswordStrength(newPassword);
+  if (!validation.valid) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: validation.errors.join(', '),
+    };
+  }
+
+  try {
+    const userClient = createUserClient('');
+    const account = new Account(userClient);
+
+    await account.updateRecovery({
+      userId,
+      secret,
+      password: newPassword,
+    });
+
+    logger.info('Password reset completed via Appwrite updateRecovery', { userId });
+    return { success: true };
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error) || '';
+    const errorType = (error && typeof error === 'object' && 'type' in error) ? String((error as any).type).toLowerCase() : '';
+    const lowerMsg = errorMessage.toLowerCase();
+
+    logger.error('Password reset with recovery failed', { error: errorMessage, type: errorType, userId });
+
+    // Detect password history or reuse (Appwrite password-history policy or same password)
+    if (
+      lowerMsg.includes('recent') ||
+      lowerMsg.includes('history') ||
+      lowerMsg.includes('previous') ||
+      lowerMsg.includes('same') ||
+      lowerMsg.includes('current') ||
+      errorType.includes('history') ||
+      errorType.includes('recent')
+    ) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: 'New password cannot be the same as your current or recently used password. Please choose a different password.',
+      };
+    }
+
+    if (
+      lowerMsg.includes('token') ||
+      lowerMsg.includes('expired') ||
+      lowerMsg.includes('invalid') ||
+      lowerMsg.includes('secret') ||
+      errorType.includes('token')
+    ) {
+      return {
+        code: 'INVALID_TOKEN',
+        message: 'This password reset link is invalid or has expired.',
+      };
+    }
+
+    return {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reset password. Please request a new link.',
     };
   }
 }
@@ -593,6 +706,70 @@ export async function updatePassword(accessToken: string, newPassword: string): 
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to update password',
+    };
+  }
+}
+
+export async function changePassword(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean } | AuthError> {
+  const validation = validatePasswordStrength(newPassword);
+  if (!validation.valid) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: validation.errors.join(', '),
+    };
+  }
+
+  if (currentPassword === newPassword) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'New password must be different from current password',
+    };
+  }
+
+  try {
+    const userClient = createUserClient(accessToken);
+    const account = new Account(userClient);
+
+    await account.updatePassword({
+      password: newPassword,
+      oldPassword: currentPassword,
+    });
+
+    // Invalidate sessions so user is logged out and must sign in again
+    try {
+      await account.deleteSessions();
+    } catch {
+      try {
+        await account.deleteSession({ sessionId: 'current' });
+      } catch {
+        // Non-critical cleanup
+      }
+    }
+
+    return { success: true };
+  } catch (error: unknown) {
+    const errorType = getErrorType(error);
+    const errorMessage = getErrorMessage(error) || '';
+
+    if (
+      errorType === 'user_invalid_credentials' ||
+      errorMessage.toLowerCase().includes('credential') ||
+      errorMessage.toLowerCase().includes('password')
+    ) {
+      return {
+        code: 'INVALID_CREDENTIALS',
+        message: 'Current password is incorrect',
+      };
+    }
+
+    logger.error('Password change failed', { error: errorMessage });
+    return {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to change password',
     };
   }
 }
@@ -631,10 +808,20 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     };
   }
 
-  // Default to 'email' since Appwrite manages passwords externally.
-  // password_hash is always empty for Appwrite-managed users.
-  // OAuth-only users would need a separate flag to distinguish.
-  const authProvider: 'email' | 'oauth' = 'email';
+  let authProvider: 'email' | 'oauth' = 'email';
+
+  let emailVerification = false;
+  try {
+    if (typeof users?.get === 'function') {
+      const appwriteUser = await users.get(userId);
+      emailVerification = appwriteUser.emailVerification ?? false;
+      if (appwriteUser.passwordUpdate === '') {
+        authProvider = 'oauth';
+      }
+    }
+  } catch {
+    // Best-effort check
+  }
 
   // Admins are automatically considered KYC approved
   if (user.role === 'admin') {
@@ -647,6 +834,7 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
       kycStatus: 'approved',
       createdAt: user.created_at,
       authProvider,
+      emailVerification,
     };
   }
 
@@ -666,6 +854,7 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     ...(kycVerification?.status ? { kycStatus: kycVerification.status } : {}),
     createdAt: user.created_at,
     authProvider,
+    emailVerification,
   };
 }
 
@@ -1020,6 +1209,26 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
     logger.error('Failed to resend confirmation email', { error: getErrorMessage(error), email });
     // Don't reveal internal errors to prevent enumeration
     return { success: true };
+  }
+}
+
+/**
+ * Verify user email using the userId and secret token from Appwrite verification link.
+ */
+export async function verifyEmail(userId: string, secret: string): Promise<{ success: boolean } | AuthError> {
+  try {
+    const userClient = createUserClient('');
+    const account = new Account(userClient);
+
+    await account.updateVerification(userId, secret);
+    logger.info('Email verified successfully via token', { userId });
+    return { success: true };
+  } catch (error: unknown) {
+    logger.error('Failed to verify email token', { error: getErrorMessage(error), userId });
+    return {
+      code: 'AUTH_INVALID_TOKEN',
+      message: 'Invalid or expired verification link',
+    };
   }
 }
 

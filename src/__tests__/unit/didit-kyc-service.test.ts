@@ -15,6 +15,7 @@ const mockGetPendingReviews = jest.fn() as jest.Mock<any>;
 const mockGetKycHistory = jest.fn() as jest.Mock<any>;
 const mockCreateSession = jest.fn() as jest.Mock<any>;
 const mockGetSession = jest.fn() as jest.Mock<any>;
+const mockGetDecision = jest.fn() as jest.Mock<any>;
 const mockVerifyId = jest.fn() as jest.Mock<any>;
 const mockCheckLiveness = jest.fn() as jest.Mock<any>;
 const mockMatchFaces = jest.fn() as jest.Mock<any>;
@@ -44,6 +45,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts
 jest.unstable_mockModule(resolveModule('src/services/didit-client.ts'), () => ({
   createVerificationSession: mockCreateSession,
   getVerificationSession: mockGetSession,
+  getVerificationDecision: mockGetDecision,
   verifyIdDocument: mockVerifyId,
   checkPassiveLiveness: mockCheckLiveness,
   matchFaces: mockMatchFaces,
@@ -86,6 +88,7 @@ const {
   getKycStatus,
   getKycById,
   refreshVerificationStatus,
+  getAdminVerificationDecision,
   processWebhook,
   getProfileDataFromKyc,
   adminReviewVerification,
@@ -1612,6 +1615,115 @@ describe('didit-kyc-service - Additional Branch Coverage', () => {
       } as any);
 
       // Should still succeed even if user not found during name sync
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('getAdminVerificationDecision', () => {
+    it('should return error if verification is not found', async () => {
+      mockGetKycById.mockResolvedValue(null);
+      const result = await getAdminVerificationDecision('missing-id');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('VERIFICATION_NOT_FOUND');
+      }
+    });
+
+    it('should return verification without decision if no session id exists', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ didit_session_id: '' }));
+      const result = await getAdminVerificationDecision('kyc-1');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.decision).toBeNull();
+      }
+    });
+
+    it('should extract decision data, barcodes, liveness, face, and update KYC', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({
+        didit_session_id: 'session-xyz',
+        metadata: { images: { front_image: 'old-front.jpg' }, warnings: [] },
+      }));
+      mockGetDecision.mockResolvedValue({
+        success: true,
+        data: {
+          id_verifications: [{
+            first_name: 'John',
+            last_name: 'Doe',
+            date_of_birth: '2000-01-01',
+            nationality: 'PHL',
+            document_type: 'National ID',
+            document_number: '1234-5678',
+            issuing_state_name: 'Philippines',
+            status: 'Approved',
+            front_image: 'front.jpg',
+            back_image: 'back.jpg',
+            portrait_image: 'portrait.jpg',
+            full_front_image: 'full_front.jpg',
+            full_back_image: 'full_back.jpg',
+            warnings: [{ feature: 'document', risk: 'low' }],
+            barcodes: [{ data: JSON.stringify({ subject: { DOB: '2000-01-01', PCN: '1234-5678' } }) }],
+          }],
+          liveness_checks: [{
+            status: 'Approved',
+            score: 99,
+            reference_image: 'ref.jpg',
+            warnings: [{ feature: 'liveness', risk: 'low' }],
+          }],
+          face_matches: [{
+            status: 'Approved',
+            score: 95,
+            target_image: 'target.jpg',
+            warnings: [{ feature: 'face', risk: 'low' }],
+          }],
+          ip_analyses: [{
+            ip_address: '1.2.3.4',
+            ip_country: 'PH',
+            is_vpn_or_tor: false,
+            is_data_center: false,
+          }],
+        },
+      });
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'completed' }));
+
+      const result = await getAdminVerificationDecision('kyc-1');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.decision).toBeDefined();
+        expect(result.data.images.front_image).toBe('front.jpg');
+        expect(result.data.warnings).toHaveLength(3);
+      }
+    });
+
+    it('should catch error when updating KYC verification fails during decision fetch', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ didit_session_id: 'session-xyz' }));
+      mockGetDecision.mockResolvedValue({
+        success: true,
+        data: {
+          id_verifications: [{ first_name: 'Jane' }],
+        },
+      });
+      mockUpdateKyc.mockRejectedValue(new Error('DB update failed'));
+
+      const result = await getAdminVerificationDecision('kyc-1');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.verification.first_name).toBe('Jane');
+      }
+    });
+
+    it('should handle barcode parsing error gracefully', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ didit_session_id: 'session-xyz' }));
+      mockGetDecision.mockResolvedValue({
+        success: true,
+        data: {
+          id_verifications: [{
+            barcodes: [{ data: '{invalid json' }],
+          }],
+        },
+      });
+      mockUpdateKyc.mockResolvedValue(makeKyc());
+
+      const result = await getAdminVerificationDecision('kyc-1');
       expect(result.success).toBe(true);
     });
   });

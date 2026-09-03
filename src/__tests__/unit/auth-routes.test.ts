@@ -16,6 +16,7 @@ const mockExchangeCodeForSession = jest.fn<any>();
 const mockResendConfirmationEmail = jest.fn<any>();
 const mockRequestPasswordReset = jest.fn<any>();
 const mockUpdatePassword = jest.fn<any>();
+const mockChangePassword = jest.fn<any>();
 const mockGetCurrentUserWithKyc = jest.fn<any>();
 const mockLogout = jest.fn<any>();
 const mockEnrollMFA = jest.fn<any>();
@@ -29,6 +30,7 @@ const mockValidateTokenAndGetUser = jest.fn<any>();
 const mockValidatePasswordStrength = jest.fn<any>();
 const mockUpdateUserWallet = jest.fn<any>();
 const mockVerifyAuthToken = jest.fn<any>();
+const mockVerifyEmail = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
@@ -41,8 +43,11 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   getOAuthUrl: mockGetOAuthUrl,
   exchangeCodeForSession: mockExchangeCodeForSession,
   resendConfirmationEmail: mockResendConfirmationEmail,
+  verifyEmail: mockVerifyEmail,
   requestPasswordReset: mockRequestPasswordReset,
+  resetPasswordWithRecovery: mockUpdatePassword,
   updatePassword: mockUpdatePassword,
+  changePassword: mockChangePassword,
   getCurrentUserWithKyc: mockGetCurrentUserWithKyc,
   logout: mockLogout,
   enrollMFA: mockEnrollMFA,
@@ -179,6 +184,13 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.mfaRequired).toBe(true);
       expect(res.body.mfaSessionToken).toBe('mfa-access-token');
+    });
+
+    it('should return 403 when email is not verified', async () => {
+      mockLogin.mockResolvedValue({ code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email address before logging in.' });
+      const res = await request(app).post('/api/auth/login').send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('EMAIL_NOT_VERIFIED');
     });
   });
 
@@ -371,6 +383,31 @@ describe('Auth Routes', () => {
     });
   });
 
+  describe('POST /verify-email', () => {
+    it('should verify email successfully', async () => {
+      mockVerifyEmail.mockResolvedValue({ success: true });
+      const res = await request(app).post('/api/auth/verify-email').send({ userId: 'u-123', secret: 'sec-456' });
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Email verified successfully');
+    });
+
+    it('should return 400 when userId is missing', async () => {
+      const res = await request(app).post('/api/auth/verify-email').send({ secret: 'sec-456' });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 400 when secret is missing', async () => {
+      const res = await request(app).post('/api/auth/verify-email').send({ userId: 'u-123' });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 400 on service error', async () => {
+      mockVerifyEmail.mockResolvedValue({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid token' });
+      const res = await request(app).post('/api/auth/verify-email').send({ userId: 'u-123', secret: 'bad' });
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe('POST /forgot-password', () => {
     it('should always return success message', async () => {
       mockRequestPasswordReset.mockResolvedValue({ success: true });
@@ -414,6 +451,54 @@ describe('Auth Routes', () => {
       mockUpdatePassword.mockResolvedValue({ code: 'INVALID_TOKEN', message: 'Invalid token' });
       const res = await request(app).post('/api/auth/reset-password').send({ accessToken: 'bad-token', password: 'NewStrong1!' });
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /change-password', () => {
+    it('should change password successfully', async () => {
+      mockChangePassword.mockResolvedValue({ success: true });
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ currentPassword: 'OldPass1!', newPassword: 'NewStrong1!' });
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('Password changed successfully');
+    });
+
+    it('should return 400 for missing currentPassword', async () => {
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ newPassword: 'NewStrong1!' });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 400 when new password is same as current', async () => {
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ currentPassword: 'SamePass1!', newPassword: 'SamePass1!' });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 400 when current password is wrong', async () => {
+      mockChangePassword.mockResolvedValue({ code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' });
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ currentPassword: 'WrongPass1!', newPassword: 'NewStrong1!' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('should return 500 when changePassword fails internally', async () => {
+      mockChangePassword.mockResolvedValue({ code: 'INTERNAL_ERROR', message: 'Failed to change password' });
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ currentPassword: 'OldPass1!', newPassword: 'NewStrong1!' });
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
     });
   });
 
@@ -627,8 +712,11 @@ describe('auth-routes.ts - Branch Coverage', () => {
       getOAuthUrl: jest.fn(),
       exchangeCodeForSession: jest.fn(),
       resendConfirmationEmail: jest.fn(),
+      verifyEmail: jest.fn(),
       requestPasswordReset: jest.fn(),
+      resetPasswordWithRecovery: jest.fn(),
       updatePassword: jest.fn(),
+      changePassword: jest.fn(),
       getCurrentUserWithKyc: jest.fn(),
       logout: jest.fn(),
       enrollMFA: jest.fn(),
@@ -943,8 +1031,11 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       getOAuthUrl: jest.fn(),
       exchangeCodeForSession: jest.fn(),
       resendConfirmationEmail: jest.fn(),
+      verifyEmail: jest.fn(),
       requestPasswordReset: jest.fn(),
+      resetPasswordWithRecovery: jest.fn(),
       updatePassword: jest.fn(),
+      changePassword: jest.fn(),
       getCurrentUserWithKyc: jest.fn(),
       logout: jest.fn(),
       enrollMFA: jest.fn(),

@@ -64,6 +64,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   account: mockAdminAccount,
   createUserClient: jest.fn(() => ({})),
+  Account: jest.fn(function() { return global.mockAppwriteAccount; }),
   DATABASE_ID: 'test-database-id',
   databases: {
     listDocuments: jest.fn().mockResolvedValue({ documents: [], total: 0 }),
@@ -107,7 +108,9 @@ const {
   validateToken,
   validateTokenAndGetUser,
   requestPasswordReset,
+  resetPasswordWithRecovery,
   updatePassword,
+  changePassword,
   updateUserWallet,
   isAuthError,
   logout,
@@ -121,6 +124,7 @@ const {
   getMFAFactors,
   disableMFA,
   resendConfirmationEmail,
+  verifyEmail,
   loginWithAppwrite,
   registerWithAppwrite,
   requestEmailOtp,
@@ -134,12 +138,15 @@ const { logger } = await import('../../config/logger.js');
 const { account: adminAccount, createUserClient, users } = await import('../../config/appwrite.js');
 
 // Add missing methods to the global mockAppwriteAccount from jest.setup.ts
+global.mockAppwriteAccount.get = jest.fn().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com', emailVerification: true });
 global.mockAppwriteAccount.createMfaRecoveryCodes = jest.fn().mockResolvedValue({ recoveryCodes: ['code1', 'code2'] });
 global.mockAppwriteAccount.updateMFA = jest.fn().mockResolvedValue({});
 global.mockAppwriteAccount.createVerification = jest.fn().mockResolvedValue({});
+global.mockAppwriteAccount.updateVerification = jest.fn().mockResolvedValue({});
 global.mockAppwriteAccount.createEmailToken = jest.fn().mockResolvedValue({ userId: 'test-user-id' });
 global.mockAppwriteAccount.createMagicURLToken = jest.fn().mockResolvedValue({ userId: 'test-user-id' });
 global.mockAppwriteAccount.createSession = jest.fn().mockResolvedValue({ secret: 'new-session-secret' });
+global.mockAppwriteAccount.updateRecovery = jest.fn().mockResolvedValue({});
 
 // Helper: default user entity for tests
 const defaultUser = {
@@ -469,7 +476,7 @@ describe('auth-service comprehensive coverage', () => {
 
     // Reset mockAppwriteAccount methods to clean state with defaults
     const maa = global.mockAppwriteAccount;
-    maa.get.mockReset().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com' });
+    maa.get.mockReset().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com', emailVerification: true });
     maa.create.mockReset().mockResolvedValue({ $id: 'test-user-id' });
     maa.createEmailPasswordSession.mockReset().mockResolvedValue({ secret: 'test-session-secret' });
     maa.deleteSession.mockReset().mockResolvedValue({});
@@ -719,7 +726,6 @@ describe('auth-service comprehensive coverage', () => {
       userRepository.getUserByEmail.mockResolvedValueOnce(defaultUser);
 
       const result = await login(validLogin);
-
       expect(isAuthError(result)).toBe(false);
       expect(adminAccount.createEmailPasswordSession).toHaveBeenCalledWith({
         email: validLogin.email,
@@ -987,6 +993,109 @@ describe('auth-service comprehensive coverage', () => {
         'Failed to invalidate sessions after password change',
         expect.objectContaining({ error: 'session failure' }),
       );
+    });
+  });
+
+  // ----------------------------------------------------------
+  // 9a. resetPasswordWithRecovery
+  // ----------------------------------------------------------
+  describe('resetPasswordWithRecovery', () => {
+    it('should reset password with recovery successfully', async () => {
+      global.mockAppwriteAccount.updateRecovery.mockResolvedValueOnce({});
+
+      const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'NewPass123!');
+      expect(result).toEqual({ success: true });
+      expect(global.mockAppwriteAccount.updateRecovery).toHaveBeenCalledWith({
+        userId: 'user-123',
+        secret: 'secret-abc',
+        password: 'NewPass123!',
+      });
+    });
+
+    it('should reject weak password', async () => {
+      const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'weak');
+      expect(result).toHaveProperty('code', 'VALIDATION_ERROR');
+    });
+
+    it('should return VALIDATION_ERROR when password was recently used or same as previous', async () => {
+      global.mockAppwriteAccount.updateRecovery.mockRejectedValueOnce(new Error('Password was recently used'));
+
+      const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'NewPass123!');
+      expect(result).toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'New password cannot be the same as your current or recently used password. Please choose a different password.',
+      });
+    });
+
+    it('should return INVALID_TOKEN when secret/token is invalid or expired', async () => {
+      global.mockAppwriteAccount.updateRecovery.mockRejectedValueOnce(new Error('Invalid token'));
+
+      const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'NewPass123!');
+      expect(result).toEqual({
+        code: 'INVALID_TOKEN',
+        message: 'This password reset link is invalid or has expired.',
+      });
+    });
+
+    it('should return INTERNAL_ERROR on unexpected failure', async () => {
+      global.mockAppwriteAccount.updateRecovery.mockRejectedValueOnce(new Error('Connection lost'));
+
+      const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'NewPass123!');
+      expect(result).toEqual({
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to reset password. Please request a new link.',
+      });
+    });
+  });
+
+  // ----------------------------------------------------------
+  // 9b. changePassword
+  // ----------------------------------------------------------
+  describe('changePassword', () => {
+    it('should change password and invalidate sessions on success', async () => {
+      global.mockAppwriteAccount.updatePassword.mockResolvedValueOnce({});
+      global.mockAppwriteAccount.deleteSessions = jest.fn().mockResolvedValueOnce({});
+
+      const result = await changePassword('access-token', 'OldPass1!', 'NewPass2@');
+      expect(result).toEqual({ success: true });
+      expect(global.mockAppwriteAccount.updatePassword).toHaveBeenCalledWith({
+        password: 'NewPass2@',
+        oldPassword: 'OldPass1!',
+      });
+      expect(global.mockAppwriteAccount.deleteSessions).toHaveBeenCalled();
+    });
+
+    it('should reject weak new password', async () => {
+      const result = await changePassword('access-token', 'OldPass1!', 'weak');
+      expect(result).toHaveProperty('code', 'VALIDATION_ERROR');
+    });
+
+    it('should reject same password as current', async () => {
+      const result = await changePassword('access-token', 'SamePass1!', 'SamePass1!');
+      expect(result).toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'New password must be different from current password',
+      });
+    });
+
+    it('should return INVALID_CREDENTIALS when current password is wrong', async () => {
+      global.mockAppwriteAccount.updatePassword.mockRejectedValueOnce(new Error('Invalid credentials.'));
+
+      const result = await changePassword('access-token', 'WrongPass1!', 'NewPass2@');
+      expect(result).toEqual({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Current password is incorrect',
+      });
+    });
+
+    it('should return INTERNAL_ERROR on unexpected failure', async () => {
+      global.mockAppwriteAccount.updatePassword.mockRejectedValueOnce(new Error('Database unavailable'));
+
+      const result = await changePassword('access-token', 'OldPass1!', 'NewPass2@');
+      expect(result).toEqual({
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to change password',
+      });
     });
   });
 
@@ -1389,6 +1498,49 @@ describe('auth-service comprehensive coverage', () => {
         'Failed to resend confirmation email',
         expect.objectContaining({ email: 'test@example.com' })
       );
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('should verify email successfully when valid token provided', async () => {
+      global.mockAppwriteAccount.updateVerification.mockResolvedValueOnce({});
+
+      const result = await verifyEmail('test-user-id', 'test-secret');
+      expect(result).toEqual({ success: true });
+      expect(global.mockAppwriteAccount.updateVerification).toHaveBeenCalledWith('test-user-id', 'test-secret');
+    });
+
+    it('should return AUTH_INVALID_TOKEN when Appwrite verification fails', async () => {
+      global.mockAppwriteAccount.updateVerification.mockRejectedValueOnce(new Error('Invalid token'));
+
+      const result = await verifyEmail('test-user-id', 'invalid-secret');
+      expect(result).toEqual({
+        code: 'AUTH_INVALID_TOKEN',
+        message: 'Invalid or expired verification link',
+      });
+    });
+  });
+
+  describe('login - email verification', () => {
+    it('should return EMAIL_NOT_VERIFIED when email is unverified for non-admin user', async () => {
+      userRepository.getUserByEmail.mockResolvedValueOnce({
+        id: 'u-1',
+        email: 'test@example.com',
+        role: 'freelancer',
+        wallet_address: '',
+        created_at: new Date().toISOString(),
+      });
+      global.mockAppwriteAccount.get.mockResolvedValueOnce({
+        $id: 'u-1',
+        email: 'test@example.com',
+        emailVerification: false,
+      });
+
+      const result = await login({ email: 'test@example.com', password: 'Password1!' });
+      expect(result).toEqual({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Please verify your email address before logging in. Check your inbox for the verification link.',
+      });
     });
   });
 

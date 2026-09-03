@@ -22,6 +22,7 @@ import {
 import {
   createVerificationSession,
   getVerificationSession,
+  getVerificationDecision,
   verifyIdDocument,
   checkPassiveLiveness,
   matchFaces,
@@ -31,6 +32,7 @@ import {
   KycVerification,
   CreateKycVerificationInput,
   DiditWebhookPayload,
+  DiditVerificationDecisionResponse,
   KycStatus,
 } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
@@ -140,6 +142,120 @@ export async function getKycById(id: string): Promise<ServiceResult<KycVerificat
   return successResult(verification);
 }
 
+function parseBarcodeSubject(idVerification: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!idVerification) return null;
+  const rawBarcodes = idVerification['barcodes'] as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(rawBarcodes) && rawBarcodes.length > 0) {
+    try {
+      const rawData = rawBarcodes[0]?.['data'];
+      if (typeof rawData === 'string' && rawData.startsWith('{')) {
+        const parsed = JSON.parse(rawData);
+        if (parsed && typeof parsed.subject === 'object') {
+          return parsed.subject as Record<string, unknown>;
+        }
+      }
+    } catch {
+      // ignore barcode parsing error
+    }
+  }
+  return null;
+}
+
+type ExtractedDecisionData = {
+  updates: Partial<KycVerification>;
+  images: {
+    front_image?: string | null;
+    back_image?: string | null;
+    portrait_image?: string | null;
+    reference_image?: string | null;
+    full_front_image?: string | null;
+    full_back_image?: string | null;
+  };
+  warnings: Array<{ feature?: string; risk?: string; short_description?: string; long_description?: string }>;
+  extractedIdentity: { firstName: string | null; lastName: string | null; nationality: string | null };
+};
+
+function extractDecisionData(
+  decision: DiditVerificationDecisionResponse,
+  baseImages: Record<string, string | null | undefined> = {},
+  existingMetadata: Record<string, unknown> | null = null
+): ExtractedDecisionData {
+  const idVerification = decision.id_verifications?.[0];
+  const livenessCheck = decision.liveness_checks?.[0];
+  const faceMatch = decision.face_matches?.[0];
+  const ipAnalysis = decision.ip_analyses?.[0];
+
+  const barcodeSubject = parseBarcodeSubject(idVerification as Record<string, unknown> | undefined);
+  const images = {
+    front_image: idVerification?.front_image || idVerification?.full_front_image || baseImages['front_image'] || null,
+    back_image: idVerification?.back_image || idVerification?.full_back_image || baseImages['back_image'] || null,
+    portrait_image: idVerification?.portrait_image || baseImages['portrait_image'] || null,
+    reference_image: livenessCheck?.reference_image || faceMatch?.target_image || baseImages['reference_image'] || null,
+    full_front_image: idVerification?.full_front_image || baseImages['full_front_image'] || null,
+    full_back_image: idVerification?.full_back_image || baseImages['full_back_image'] || null,
+  };
+
+  const warnings: Array<{ feature?: string; risk?: string; short_description?: string; long_description?: string }> = [
+    ...(idVerification?.warnings || []),
+    ...(livenessCheck?.warnings || []),
+    ...(faceMatch?.warnings || []),
+  ];
+
+  const updates: Partial<KycVerification> = {};
+
+  if (idVerification) {
+    updates.first_name = idVerification.first_name ?? null;
+    updates.last_name = idVerification.last_name ?? null;
+    const birthDate = idVerification.date_of_birth || (barcodeSubject?.['DOB'] as string) || null;
+    if (birthDate) updates.date_of_birth = birthDate;
+    updates.nationality = idVerification.nationality || idVerification.issuing_state_name || idVerification.issuing_state || 'Philippines';
+    updates.document_type = idVerification.document_type || (barcodeSubject ? 'PhilID (National ID)' : 'Identity Card');
+    const docNum = idVerification.document_number || (barcodeSubject?.['PCN'] as string);
+    if (docNum) updates.document_number = docNum;
+    updates.issuing_country = idVerification.issuing_state_name || idVerification.issuing_state || idVerification.nationality || 'Philippines';
+    updates.document_verified = idVerification.status === 'Approved';
+  }
+
+  if (livenessCheck) {
+    updates.liveness_passed = livenessCheck.status === 'Approved';
+    if (livenessCheck.score !== undefined && livenessCheck.score !== null) {
+      updates.liveness_confidence_score = livenessCheck.score.toString();
+    }
+  }
+
+  if (faceMatch) {
+    updates.face_matched = faceMatch.status === 'Approved';
+    if (faceMatch.score !== undefined && faceMatch.score !== null) {
+      updates.face_similarity_score = faceMatch.score.toString();
+    }
+  }
+
+  if (ipAnalysis) {
+    if (ipAnalysis.ip_address) updates.ip_address = ipAnalysis.ip_address;
+    const ipCtry = ipAnalysis.ip_country || ipAnalysis.ip_country_code;
+    if (ipCtry) updates.ip_country_code = ipCtry;
+    updates.is_vpn = ipAnalysis.is_vpn_or_tor ?? false;
+    updates.is_proxy = ipAnalysis.is_data_center ?? false;
+  }
+
+  updates.metadata = {
+    ...(typeof existingMetadata === 'object' && existingMetadata !== null ? existingMetadata : {}),
+    images,
+    warnings,
+  };
+
+  return {
+    updates,
+    images,
+    warnings,
+    extractedIdentity: {
+      firstName: updates.first_name ?? null,
+      lastName: updates.last_name ?? null,
+      nationality: updates.nationality ?? null,
+    },
+  };
+}
+
 export async function refreshVerificationStatus(
   verificationId: string
 ): Promise<ServiceResult<KycVerification>> {
@@ -155,20 +271,94 @@ export async function refreshVerificationStatus(
   }
 
   const session = sessionResult.data;
-  const status = mapDiditStatusToKycStatus(session.status);
-
-  const updates: Partial<KycVerification> = { status };
+  const updates: Partial<KycVerification> = { status: mapDiditStatusToKycStatus(session.status) };
   
-  if (session.status === 'Completed') {
+  if (['Completed', 'Approved', 'Declined', 'In Review'].includes(session.status)) {
     updates.completed_at = new Date().toISOString();
+    if (session.status === 'Approved') {
+      updates.decision = 'approved';
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      updates.expires_at = expiryDate.toISOString();
+    } else if (session.status === 'Declined') {
+      updates.decision = 'declined';
+    } else if (session.status === 'In Review') {
+      updates.decision = 'review';
+    }
   }
+
+  const sessionData = session as unknown as DiditVerificationDecisionResponse;
+  const extracted = extractDecisionData(
+    sessionData,
+    {},
+    verification.metadata as Record<string, unknown> | null
+  );
+  Object.assign(updates, extracted.updates);
 
   const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
     return errorResult('UPDATE_FAILED', 'Failed to update verification status');
   }
 
+  if (session.status === 'Approved') {
+    const { firstName, lastName, nationality } = extracted.extractedIdentity;
+    await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
+  }
+
   return successResult(updated);
+}
+
+export async function getAdminVerificationDecision(verificationId: string): Promise<ServiceResult<{
+  verification: KycVerification;
+  decision: DiditVerificationDecisionResponse | null;
+  images: {
+    front_image?: string | null;
+    back_image?: string | null;
+    portrait_image?: string | null;
+    reference_image?: string | null;
+    full_front_image?: string | null;
+    full_back_image?: string | null;
+  };
+  warnings: Array<{ feature?: string; risk?: string; short_description?: string; long_description?: string }>;
+}>> {
+  let verification = await getKycVerificationById(verificationId);
+  if (!verification) {
+    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
+  }
+
+  let decision: DiditVerificationDecisionResponse | null = null;
+  const metadata = verification.metadata as Record<string, unknown> | null;
+  let images = (metadata?.images as Record<string, string | null | undefined>) || {};
+  let warnings = (metadata?.warnings as Array<{ feature?: string; risk?: string; short_description?: string; long_description?: string }>) || [];
+
+  if (verification.didit_session_id) {
+    const decisionResult = await getVerificationDecision(verification.didit_session_id);
+    if (decisionResult.success && decisionResult.data) {
+      decision = decisionResult.data;
+      const extracted = extractDecisionData(decision, images, metadata);
+      images = extracted.images;
+      warnings = extracted.warnings;
+
+      try {
+        const updatedRecord = await updateKycVerification(verification.id, extracted.updates);
+        if (updatedRecord) {
+          verification = updatedRecord;
+        } else {
+          Object.assign(verification, extracted.updates);
+        }
+      } catch (err) {
+        logger.warn('Failed to update KYC verification with decision details', { error: err });
+        Object.assign(verification, extracted.updates);
+      }
+    }
+  }
+
+  return successResult({
+    verification,
+    decision,
+    images,
+    warnings,
+  });
 }
 
 // L4: Track processed webhook event IDs to prevent duplicate processing

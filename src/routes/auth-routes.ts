@@ -8,8 +8,11 @@ import {
   getOAuthUrl,
   exchangeCodeForSession,
   resendConfirmationEmail,
+  verifyEmail,
   requestPasswordReset,
+  resetPasswordWithRecovery,
   updatePassword,
+  changePassword,
   getCurrentUserWithKyc,
   logout,
   enrollMFA,
@@ -40,6 +43,7 @@ import {
   validateRegisterInput,
   validateLoginInput,
   validatePasswordResetInput,
+  validateChangePasswordInput,
   WALLET_REGEX,
 } from '../validators/auth.schema.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -203,9 +207,8 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
   const result = await register(validation.input!);
 
   if (isAuthError(result)) {
-    // M5: Use generic error message to prevent email enumeration.
     const message = result.code === 'DUPLICATE_EMAIL'
-      ? 'Registration failed. Please try again or use a different email.'
+      ? 'An account with this email already exists. Please sign in or use a different email.'
       : result.message;
     sendErrorResponse(res, 400, 'REGISTRATION_FAILED', message, { requestId });
     return;
@@ -297,6 +300,11 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
       status: 'failure',
       error_message: result.message || 'Invalid email or password',
     });
+
+    if (result.code === 'EMAIL_NOT_VERIFIED') {
+      sendErrorResponse(res, 403, 'EMAIL_NOT_VERIFIED', result.message, { requestId });
+      return;
+    }
 
     sendErrorResponse(res, 401, 'AUTH_INVALID_CREDENTIALS', result.message, { requestId });
     return;
@@ -927,6 +935,53 @@ router.post('/resend-confirmation', passwordResetRateLimiter, asyncHandler(async
 
 /**
  * @swagger
+ * /api/auth/verify-email:
+ *   post:
+ *     summary: Verify email address
+ *     description: Completes the email verification process using the token from the email link
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - secret
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               secret:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired verification token
+ */
+router.post('/verify-email', passwordResetRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { userId, secret } = req.body;
+  const requestId = getRequestId(req);
+
+  if (!userId || typeof userId !== 'string' || !secret || typeof secret !== 'string') {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'userId and secret are required', { requestId });
+    return;
+  }
+
+  const result = await verifyEmail(userId.trim(), secret.trim());
+
+  if (isAuthError(result)) {
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
+    return;
+  }
+
+  sendSuccessResponse(res, 200, { message: 'Email verified successfully' }, requestId);
+}));
+
+/**
+ * @swagger
  * /api/auth/forgot-password:
  *   post:
  *     summary: Request password reset
@@ -960,9 +1015,19 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
     return;
   }
 
+  const rawOrigin = req.headers.origin || (typeof req.headers.referer === 'string' ? req.headers.referer : undefined);
+  let customFrontendUrl: string | undefined;
+  if (rawOrigin) {
+    try {
+      customFrontendUrl = new URL(rawOrigin).origin;
+    } catch {
+      // Ignore invalid URL format
+    }
+  }
+
   // Prevent account enumeration: always return success regardless of whether email exists
   try {
-    await requestPasswordReset(email);
+    await requestPasswordReset(email, customFrontendUrl);
   } catch {
     logger.info('Password reset request processed (email may not exist)', { requestId });
   }
@@ -1044,15 +1109,72 @@ router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req
     return;
   }
 
-  const result = await updatePassword(validation.accessToken!, validation.password!);
+  const result = validation.userId && (validation.secret || validation.accessToken)
+    ? await resetPasswordWithRecovery(validation.userId, (validation.secret || validation.accessToken)!, validation.password!)
+    : await updatePassword((validation.accessToken || validation.secret)!, validation.password!);
 
   if (isAuthError(result)) {
-    const statusCode = result.code === 'INVALID_TOKEN' ? 401 : 500;
+    const statusCode = result.code === 'INVALID_TOKEN' ? 401 : result.code === 'VALIDATION_ERROR' ? 400 : 500;
     sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
     return;
   }
 
   sendSuccessResponse(res, 200, { message: 'Password updated successfully' }, requestId);
+}));
+
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   post:
+ *     summary: Change user password
+ *     description: Changes password for the currently logged-in user after verifying current password. Invalidates all active sessions.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Validation error or incorrect current password
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/change-password', authMiddleware, passwordResetRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const validation = validateChangePasswordInput(req.body);
+
+  if (!validation.valid) {
+    sendValidationError(res, validation.errors, requestId);
+    return;
+  }
+
+  const authHeader = req.headers.authorization;
+  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+  const result = await changePassword(accessToken, validation.currentPassword!, validation.newPassword!);
+
+  if (isAuthError(result)) {
+    const statusCode = result.code === 'INVALID_CREDENTIALS' || result.code === 'VALIDATION_ERROR' ? 400 : 500;
+    sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
+    return;
+  }
+
+  sendSuccessResponse(res, 200, { message: 'Password changed successfully. Please log in with your new password.' }, requestId);
 }));
 
 /**
