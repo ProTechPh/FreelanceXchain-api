@@ -6,6 +6,7 @@ import type { ValidatedUser } from '../types/express.js';
 import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
+import { extractTokenFromRequest } from '../utils/auth-cookie-helpers.js';
 
 function isTokenError(result: ValidatedUser | AuthError): result is AuthError {
   return 'code' in result;
@@ -15,7 +16,27 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   const authHeader = req.headers.authorization;
   const requestId = getRequestId(req);
 
-  if (!authHeader) {
+  let token: string | undefined;
+
+  if (authHeader) {
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      logger.auth('Invalid authorization header format', undefined, {
+        requestId,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+      });
+
+      sendErrorResponse(res, 401, 'AUTH_INVALID_FORMAT', 'Authorization header must be in format: Bearer <token>', { requestId });
+      return;
+    }
+    token = parts[1];
+  } else {
+    token = extractTokenFromRequest(req);
+  }
+
+  if (!token) {
     logger.auth('Missing authorization header', undefined, {
       requestId,
       path: req.path,
@@ -26,21 +47,6 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization header is required', { requestId });
     return;
   }
-
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
-    logger.auth('Invalid authorization header format', undefined, {
-      requestId,
-      path: req.path,
-      method: req.method,
-      ip: req.ip,
-    });
-
-    sendErrorResponse(res, 401, 'AUTH_INVALID_FORMAT', 'Authorization header must be in format: Bearer <token>', { requestId });
-    return;
-  }
-
-  const token = parts[1] as string;
 
   // MFA-pending sessions fail here: Appwrite's account.get() throws
   // 'user_more_factors_required', which validateToken already handles internally.

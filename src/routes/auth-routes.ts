@@ -50,6 +50,7 @@ import { asyncHandler } from '../utils/async-handler.js';
 import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { getErrorMessage } from '../utils/index.js';
 import { auditLogRepository } from '../repositories/audit-log-repository.js';
+import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookie-helpers.js';
 
 const router = Router();
 
@@ -228,6 +229,10 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
     error_message: null,
   });
 
+  if (result.accessToken) {
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+  }
+
   res.status(201).json(result);
 }));
 
@@ -323,6 +328,10 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
     error_message: null,
   });
 
+  if (result.accessToken) {
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+  }
+
   res.status(200).json(result);
 }));
 
@@ -395,6 +404,10 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
+  if (authResult.accessToken) {
+    setAuthCookies(res, authResult.accessToken, authResult.refreshToken);
+  }
+
   res.status(200).json(authResult);
 }));
 
@@ -434,7 +447,10 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
  *               $ref: '#/components/schemas/AuthError'
  */
 router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
+  const cookieRefreshToken = req.cookies
+    ? req.cookies['refresh_token'] || req.cookies['__Host-psifi.refresh-token'] || req.cookies['psifi.refresh-token']
+    : undefined;
+  const refreshToken = req.body?.refreshToken || cookieRefreshToken;
   const requestId = getRequestId(req);
 
   if (!refreshToken || typeof refreshToken !== 'string') {
@@ -449,6 +465,10 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
     const code = result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN';
     sendErrorResponse(res, statusCode, code, result.message, { requestId });
     return;
+  }
+
+  if (result.accessToken) {
+    setAuthCookies(res, result.accessToken, result.refreshToken);
   }
 
   res.status(200).json(result);
@@ -1236,6 +1256,7 @@ router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req:
     });
   }
 
+  clearAuthCookies(res);
   logger.info('User logout successful', { userId, requestId });
   sendSuccessResponse(res, 200, { message: 'Logout successful' }, requestId);
 }));

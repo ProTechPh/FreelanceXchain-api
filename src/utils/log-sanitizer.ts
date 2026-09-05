@@ -68,6 +68,17 @@ const SENSITIVE_FIELDS = new Set([
   'social_security',
   'sessionId',
   'session_id',
+  'credentials',
+  'secretKey',
+  'secret_key',
+  'clientSecret',
+  'client_secret',
+  'webhookSecret',
+  'webhook_secret',
+  'mfaSecret',
+  'mfa_secret',
+  'encryptionKey',
+  'encryption_key',
 ]);
 
 /**
@@ -142,10 +153,20 @@ function sanitizeObjectInternal<T>(obj: T, seen: WeakSet<object>): T {
     return items as T;
   }
 
+  const rawObj = obj as Record<string, unknown>;
+  const isAuthCommand =
+    typeof rawObj.name === 'string' &&
+    ['auth', 'authenticate'].includes(rawObj.name.toLowerCase());
+
   for (const [key, value] of Object.entries(obj)) {
     const lowerKey = key.toLowerCase();
     
     if (SENSITIVE_FIELDS.has(key) || SENSITIVE_FIELDS.has(lowerKey)) {
+      sanitized[key] = REDACTED;
+      continue;
+    }
+
+    if (isAuthCommand && (key === 'args' || lowerKey === 'args')) {
       sanitized[key] = REDACTED;
       continue;
     }
