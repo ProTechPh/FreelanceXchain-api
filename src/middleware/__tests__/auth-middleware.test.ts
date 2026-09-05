@@ -18,6 +18,11 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       anonKey: 'test-anon-key',
     },
   },
+  getNodeEnv: jest.fn(() => 'test'),
+  getCsrfSecret: jest.fn(),
+  getCorsOrigin: jest.fn(),
+  getBlockchainWebhookSecret: jest.fn(),
+  getEmailWebhookSecret: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
