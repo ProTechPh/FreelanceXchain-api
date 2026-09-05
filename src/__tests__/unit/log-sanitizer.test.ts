@@ -209,6 +209,30 @@ describe('log-sanitizer', () => {
       expect(result[0]).toBe(1);
       expect(result[2]).toBe('[Circular]');
     });
+
+    it('should redact args of an auth command such as Redis AUTH', () => {
+      const redisErrorPayload = {
+        command: {
+          name: 'auth',
+          args: ['my-super-secret-redis-password'],
+        },
+      };
+      const result = sanitizeObject(redisErrorPayload) as any;
+      expect(result.command.name).toBe('auth');
+      expect(result.command.args).toBe('[REDACTED]');
+    });
+
+    it('should redact credentials and secret keys', () => {
+      const payload = {
+        credentials: { user: 'admin', key: '12345' },
+        webhookSecret: 'whsec_abcdef123456',
+        mfaSecret: 'JBSWY3DPEHPK3PXP',
+      };
+      const result = sanitizeObject(payload) as any;
+      expect(result.credentials).toBe('[REDACTED]');
+      expect(result.webhookSecret).toBe('[REDACTED]');
+      expect(result.mfaSecret).toBe('[REDACTED]');
+    });
   });
 
   describe('containsSensitiveData', () => {

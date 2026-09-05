@@ -6,4 +6,9 @@ onlyBuiltDependencies:
   - bcrypt
 
 minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - qs
+  - browserslist
+  - electron-to-chromium
+  - caniuse-lite
 trustPolicy: no-downgrade

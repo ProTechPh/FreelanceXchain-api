@@ -42,6 +42,7 @@ contract FreelanceEscrow {
     error CannotCancelSubmittedOrDisputed();
     error InvalidResolutionBps();
     error NothingToWithdraw();
+    error DisputeTimeoutNotElapsed();
 
     address public immutable employer;
     address public immutable freelancer;
@@ -54,6 +55,10 @@ contract FreelanceEscrow {
 
     // Pull-payment: amounts owed to each address after dispute resolution
     mapping(address => uint256) public pendingWithdrawals;
+
+    // Timelock escape hatch: timeout duration and timestamps for disputed milestones
+    uint256 public constant DISPUTE_TIMEOUT = 30 days;
+    mapping(uint256 => uint256) public disputeTimestamps;
 
     // Reentrancy guard (packed with isActive in same slot)
     uint8 private constant NOT_ENTERED = 1;
@@ -79,6 +84,7 @@ contract FreelanceEscrow {
     event MilestoneDisputed(uint256 indexed milestoneIndex);
     event MilestoneRefunded(uint256 indexed milestoneIndex, uint256 amount);
     event DisputeResolved(uint256 indexed milestoneIndex, uint256 freelancerBps);
+    event DisputeDeadlockResolved(uint256 indexed milestoneIndex, address indexed resolvedBy);
     event ContractCompleted();
     event ContractCancelled();
     event ExcessRefunded(address indexed to, uint256 amount);
@@ -240,6 +246,7 @@ contract FreelanceEscrow {
         if (milestone.status != MilestoneStatus.Submitted && milestone.status != MilestoneStatus.Pending) revert MilestoneNotSubmitted();
 
         milestone.status = MilestoneStatus.Disputed;
+        disputeTimestamps[milestoneIndex] = block.timestamp;
         emit MilestoneDisputed(milestoneIndex);
     }
 
@@ -305,6 +312,54 @@ contract FreelanceEscrow {
     }
 
     /**
+     * @dev Emergency escape hatch: if a dispute remains unresolved for longer than DISPUTE_TIMEOUT (30 days),
+     * either party or the platform can resolve the deadlock by splitting funds 50/50.
+     * Funds are credited via pull-payment (pendingWithdrawals) for safe independent withdrawal.
+     */
+    function resolveDeadlockedDispute(uint256 milestoneIndex) external onlyParties contractActive nonReentrant {
+        if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
+        Milestone storage milestone = milestones[milestoneIndex];
+        if (milestone.status != MilestoneStatus.Disputed) revert MilestoneNotDisputed();
+
+        uint256 disputedAt = disputeTimestamps[milestoneIndex];
+        if (disputedAt == 0 || block.timestamp < disputedAt + DISPUTE_TIMEOUT) {
+            revert DisputeTimeoutNotElapsed();
+        }
+
+        uint256 amt = milestone.amount;
+        uint256 freelancerAmt = amt / 2;
+        uint256 employerAmt = amt - freelancerAmt;
+
+        // All state changes before any external interaction (CEI pattern)
+        milestone.status = MilestoneStatus.Approved;
+        releasedAmount += freelancerAmt;
+        refundedAmount += employerAmt;
+
+        // Check completion and update state BEFORE transferring
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+        }
+
+        // Credit funds to pendingWithdrawals using the pull-payment pattern
+        if (freelancerAmt > 0) {
+            pendingWithdrawals[freelancer] += freelancerAmt;
+            emit MilestoneApproved(milestoneIndex, freelancerAmt);
+        }
+
+        if (employerAmt > 0) {
+            pendingWithdrawals[employer] += employerAmt;
+            emit MilestoneRefunded(milestoneIndex, employerAmt);
+        }
+
+        emit DisputeResolved(milestoneIndex, 5000);
+        emit DisputeDeadlockResolved(milestoneIndex, msg.sender);
+
+        if (!isActive) {
+            emit ContractCompleted();
+        }
+    }
+
+    /**
      * @dev Employer can refund a pending milestone.
      *
      * @notice This function only refunds milestones in Pending status.
@@ -314,12 +369,9 @@ contract FreelanceEscrow {
      * Expected resolution paths for non-Pending milestones:
      * - Submitted: the employer must either approve (approveMilestone) or dispute (disputeMilestone).
      * - Disputed: the arbiter must resolve the dispute via resolveDispute, which uses pull-payment
-     *   so each party can withdraw their allocation independently via withdraw().
-     *
-     * There is currently no timeout-based or admin escape mechanism. If both parties refuse to
-     * progress a Submitted or Disputed milestone and the arbiter is unresponsive, funds will be
-     * locked indefinitely. A future upgrade should add an arbiter-replacement mechanism or
-     * a time-locked emergency escape callable by an immutable platform governance address.
+     *   so each party can withdraw their allocation independently via withdraw(). If the arbiter
+     *   remains unresponsive for DISPUTE_TIMEOUT (30 days), either party or the platform can call
+     *   `resolveDeadlockedDispute` to execute a 50/50 emergency resolution.
      */
     function refundMilestone(uint256 milestoneIndex) external onlyEmployer contractActive nonReentrant {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
