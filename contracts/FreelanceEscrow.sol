@@ -226,9 +226,11 @@ contract FreelanceEscrow {
             isActive = false;
         }
 
-        // Transfer funds to freelancer
+        // Transfer funds to freelancer; fallback to pull-payment if recipient reverts or rejects push
         (bool success, ) = freelancer.call{value: amt}("");
-        if (!success) revert TransferFailed();
+        if (!success) {
+            pendingWithdrawals[freelancer] += amt;
+        }
 
         emit MilestoneApproved(milestoneIndex, amt);
 

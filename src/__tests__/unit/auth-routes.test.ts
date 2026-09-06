@@ -426,6 +426,26 @@ describe('Auth Routes', () => {
       const res = await request(app).post('/api/auth/forgot-password').send({ email: 'unknown@test.com' });
       expect(res.status).toBe(200);
     });
+
+    it('should ignore untrusted Origin or Referer and not pass customFrontendUrl', async () => {
+      mockRequestPasswordReset.mockResolvedValue({ success: true });
+      const res = await request(app)
+        .post('/api/auth/forgot-password')
+        .set('Origin', 'https://malicious-phishing-site.com')
+        .send({ email: 'victim@example.com' });
+      expect(res.status).toBe(200);
+      expect(mockRequestPasswordReset).toHaveBeenCalledWith('victim@example.com', undefined);
+    });
+
+    it('should allow trusted Origin to pass as customFrontendUrl', async () => {
+      mockRequestPasswordReset.mockResolvedValue({ success: true });
+      const res = await request(app)
+        .post('/api/auth/forgot-password')
+        .set('Origin', 'http://localhost:3000')
+        .send({ email: 'user@example.com' });
+      expect(res.status).toBe(200);
+      expect(mockRequestPasswordReset).toHaveBeenCalledWith('user@example.com', 'http://localhost:3000');
+    });
   });
 
   describe('POST /reset-password', () => {
@@ -500,14 +520,34 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('INTERNAL_ERROR');
     });
+
+    it('should change password using cookie authentication when authorization header is absent', async () => {
+      mockChangePassword.mockResolvedValue({ success: true });
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Cookie', ['psifi.access-token=cookie-token'])
+        .send({ currentPassword: 'OldPass1!', newPassword: 'NewStrong1!' });
+      expect(res.status).toBe(200);
+      expect(mockChangePassword).toHaveBeenCalledWith('cookie-token', 'OldPass1!', 'NewStrong1!');
+    });
   });
 
-  describe('POST /csrf-token', () => {
-    it('should call generateCsrfToken', async () => {
+  describe('CSRF Token endpoints', () => {
+    it('should call generateCsrfToken on POST /csrf-token', async () => {
       mockGenerateCsrfToken.mockImplementation((_req: any, res: any) => {
         res.status(200).json({ csrfToken: 'csrf-123' });
       });
       const res = await request(app).post('/api/auth/csrf-token');
+      expect(res.status).toBe(200);
+      expect(res.body.csrfToken).toBe('csrf-123');
+      expect(mockGenerateCsrfToken).toHaveBeenCalled();
+    });
+
+    it('should call generateCsrfToken on GET /csrf-token', async () => {
+      mockGenerateCsrfToken.mockImplementation((_req: any, res: any) => {
+        res.status(200).json({ csrfToken: 'csrf-123' });
+      });
+      const res = await request(app).get('/api/auth/csrf-token');
       expect(res.status).toBe(200);
       expect(res.body.csrfToken).toBe('csrf-123');
       expect(mockGenerateCsrfToken).toHaveBeenCalled();
