@@ -44,7 +44,7 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
 }));
 
 // Cache
-const mockSkillCache = { get: jest.fn(), set: jest.fn() };
+const mockSkillCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
 const mockPlatformMetricsCache = { get: jest.fn(), set: jest.fn() };
 const mockSkillTrendsCache = { get: jest.fn(), set: jest.fn() };
 const mockFreelancerAnalyticsCache = { get: jest.fn(), set: jest.fn() };

@@ -17,6 +17,12 @@ import { skillCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
+function clearSkillCache(): void {
+  if (typeof skillCache?.clear === 'function') {
+    skillCache.clear();
+  }
+}
+
 export async function createCategory(input: CreateSkillCategoryInput): Promise<ServiceResult<SkillCategory>> {
   const existingCategory = await skillCategoryRepository.getCategoryByName(input.name);
   if (existingCategory) {
@@ -31,6 +37,7 @@ export async function createCategory(input: CreateSkillCategoryInput): Promise<S
   };
 
   const createdEntity = await skillCategoryRepository.createCategory(categoryEntity);
+  clearSkillCache();
   return successResult(mapSkillCategoryFromEntity(createdEntity));
 }
 
@@ -63,6 +70,7 @@ export async function updateCategory(
   if (!updatedEntity) {
     return errorResult('UPDATE_FAILED', 'Failed to update category');
   }
+  clearSkillCache();
   return successResult(mapSkillCategoryFromEntity(updatedEntity));
 }
 
@@ -102,6 +110,7 @@ export async function createSkill(input: CreateSkillInput): Promise<ServiceResul
   };
 
   const createdEntity = await skillRepository.createSkill(skillEntity);
+  clearSkillCache();
   return successResult(mapSkillFromEntity(createdEntity));
 }
 
@@ -147,6 +156,7 @@ export async function updateSkill(
   if (!updatedEntity) {
     return errorResult('UPDATE_FAILED', 'Failed to update skill');
   }
+  clearSkillCache();
   return successResult(mapSkillFromEntity(updatedEntity));
 }
 
@@ -160,6 +170,7 @@ export async function deprecateSkill(id: string): Promise<ServiceResult<Skill>> 
   if (!updatedEntity) {
     return errorResult('UPDATE_FAILED', 'Failed to deprecate skill');
   }
+  clearSkillCache();
   return successResult(mapSkillFromEntity(updatedEntity));
 }
 
@@ -202,6 +213,9 @@ export async function searchSkills(keyword: string): Promise<SkillWithCategory[]
 // Taxonomy Operations
 
 export async function getFullTaxonomy(): Promise<SkillTaxonomy> {
+  const cached = typeof skillCache?.get === 'function' ? skillCache.get('full_taxonomy') : undefined;
+  if (cached) return cached as SkillTaxonomy;
+
   const [categoryEntities, allSkillEntities] = await Promise.all([
     skillCategoryRepository.getActiveCategories(),
     skillRepository.getActiveSkills(),
@@ -215,7 +229,7 @@ export async function getFullTaxonomy(): Promise<SkillTaxonomy> {
     skillsByCategory.set(skill.categoryId, existing);
   }
 
-  return {
+  const taxonomy: SkillTaxonomy = {
     categories: categoryEntities.map(entity => {
       const category = mapSkillCategoryFromEntity(entity);
       return {
@@ -224,6 +238,11 @@ export async function getFullTaxonomy(): Promise<SkillTaxonomy> {
       };
     }),
   };
+
+  if (typeof skillCache?.set === 'function') {
+    skillCache.set('full_taxonomy', taxonomy);
+  }
+  return taxonomy;
 }
 
 export async function validateSkillIds(skillIds: string[]): Promise<{ valid: string[]; invalid: string[] }> {
