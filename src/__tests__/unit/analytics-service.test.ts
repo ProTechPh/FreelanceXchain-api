@@ -1484,4 +1484,64 @@ describe('Analytics Service - Additional Branch Coverage', () => {
       expect(result.data.projectsPosted).toBe(3);
     }
   });
+
+  describe('getMarketplaceLiquidityReport', () => {
+    it('should compute liquidity report with shortage, balanced, and surplus skills', async () => {
+      const { getMarketplaceLiquidityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+      const { marketplaceLiquidityCache } = await import('../../utils/cache.js');
+      marketplaceLiquidityCache.delete('marketplace_liquidity');
+
+      // Projects call (demand)
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p1', status: 'open', required_skills: JSON.stringify([{ name: 'Solidity' }, { name: 'React' }]) },
+            { $id: 'p2', status: 'open', required_skills: [{ skill_name: 'Solidity' }, { skill_name: 'Python' }] },
+          ],
+          total: 2,
+        })
+        // Profiles call (supply)
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'prof1', skills: [{ name: 'React' }, { name: 'Python' }, { name: 'Python' }, { name: 'Python' }, { name: 'Python' }] },
+          ],
+          total: 1,
+        });
+
+      const result = await getMarketplaceLiquidityReport();
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.skillsAnalyzed).toBeGreaterThanOrEqual(2);
+        expect(Array.isArray(result.data.shortageSkills)).toBe(true);
+        expect(Array.isArray(result.data.balancedSkills)).toBe(true);
+        expect(Array.isArray(result.data.surplusSkills)).toBe(true);
+      }
+    });
+
+    it('should return cached liquidity report on cache hit', async () => {
+      const { getMarketplaceLiquidityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+      const { marketplaceLiquidityCache } = await import('../../utils/cache.js');
+      const cachedData: any = { overallLiquidityScore: 90, skillsAnalyzed: 5, shortageSkills: [], balancedSkills: [], surplusSkills: [] };
+      marketplaceLiquidityCache.set('marketplace_liquidity', cachedData);
+
+      const result = await getMarketplaceLiquidityReport();
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.overallLiquidityScore).toBe(90);
+      }
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { getMarketplaceLiquidityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+      const { marketplaceLiquidityCache } = await import('../../utils/cache.js');
+      marketplaceLiquidityCache.delete('marketplace_liquidity');
+
+      mockDatabases.listDocuments.mockImplementationOnce(() => {
+        throw new Error('Database connection failed');
+      });
+
+      const result = await getMarketplaceLiquidityReport();
+      expect(result.success).toBe(false);
+    });
+  });
 });

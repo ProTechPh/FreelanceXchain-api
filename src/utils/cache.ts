@@ -96,3 +96,4 @@ export const paymentSummaryCache = new LRUCache<{
 export const freelancerAnalyticsCache = new LRUCache<any>(500, 60_000);
 export const employerAnalyticsCache = new LRUCache<any>(500, 60_000);
 export const adminAnalyticsCache = new LRUCache<any>(10, 60_000);
+export const marketplaceLiquidityCache = new LRUCache<any>(10, 60_000);
