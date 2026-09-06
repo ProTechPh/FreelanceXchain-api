@@ -82,14 +82,6 @@ function buildCurrencies(coin?: string): string | undefined {
 // ---------------------------------------------------------------------------
 // Currency list — used to build dynamic category pills
 // ---------------------------------------------------------------------------
-type CryptoPanicCurrencyEntry = {
-  code?: string;
-  title?: string;
-};
-type CryptoPanicCurrenciesResponse = {
-  results?: CryptoPanicCurrencyEntry[];
-};
-
 export type NewsCategoryItem = {
   /** Display label, e.g. "Bitcoin (BTC)" */
   label: string;
@@ -99,56 +91,30 @@ export type NewsCategoryItem = {
   filter?: string;
 };
 
-const CURRENCIES_CACHE_KEY = '/currencies/';
+const TOP_MARKET_CURRENCIES: NewsCategoryItem[] = [
+  { label: 'Bitcoin (BTC)', coin: 'BTC' },
+  { label: 'Ethereum (ETH)', coin: 'ETH' },
+  { label: 'Solana (SOL)', coin: 'SOL' },
+  { label: 'Polygon (POL)', coin: 'POL' },
+  { label: 'Tether (USDT)', coin: 'USDT' },
+];
 
 /**
- * Fetch the top traded currencies from CryptoPanic and map them to
- * NewsCategoryItem objects ready for the frontend category pills.
+ * Return top platform currencies mapped to NewsCategoryItem objects
+ * ready for the frontend category pills.
+ *
+ * CryptoPanic permanently deprecated the `/currencies/` endpoint (HTTP 410 Gone),
+ * so top platform currencies (BTC, ETH, SOL, POL, USDT) are returned directly.
  */
 export async function getCryptoPanicCurrencies(limit = 10): Promise<ServiceResult<NewsCategoryItem[]>> {
-  if (cache) {
-    const cached = cache.get(CURRENCIES_CACHE_KEY) as unknown as NewsCategoryItem[] | undefined;
-    if (cached) return successResult(cached);
-  }
-
-  const params = new URLSearchParams({ public: 'true' });
-  if (config.cryptoPanic?.authToken) params.set('auth_token', config.cryptoPanic.authToken);
-
-  const url = `${BASE_URL}/currencies/?${params.toString()}`;
-
-  try {
-    const response = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(config.cryptoPanic?.timeoutMs ?? 8000),
-    });
-
-    if (!response.ok) {
-      logger.warn('CryptoPanic currencies upstream error', { status: response.status });
-      return errorResult('UPSTREAM_ERROR', `CryptoPanic responded with status ${response.status}`);
-    }
-
-    const data = (await response.json()) as CryptoPanicCurrenciesResponse;
-    const results = data.results ?? [];
-
-    const categories: NewsCategoryItem[] = results.slice(0, limit).map((c) => {
-      const code = (c.code ?? '').toUpperCase();
-      const title = c.title ?? code;
-      return { label: `${title} (${code})`, coin: code };
-    });
-
-    if (cache) cache.set(CURRENCIES_CACHE_KEY, categories as unknown as CryptoNewsFeed);
-    return successResult(categories);
-  } catch (error) {
-    logger.error('CryptoPanic currencies request failed', error as Error);
-    return errorResult(
-      'UPSTREAM_UNAVAILABLE',
-      error instanceof Error ? error.message : 'Failed to reach CryptoPanic',
-    );
-  }
+  return successResult(TOP_MARKET_CURRENCIES.slice(0, limit));
 }
 
 /**
  * Fetch the latest posts from CryptoPanic and return them as a CryptoNewsFeed.
+ *
+ * Note: CryptoPanic requires an auth token. If CRYPTOPANIC_AUTH_TOKEN is unset,
+ * this safely returns an empty feed rather than making an unauthorized request.
  *
  * @param limit   Maximum articles to return (default 20).
  * @param coin    Optional uppercase coin symbol, e.g. 'BTC'.
@@ -161,11 +127,15 @@ export async function getCryptoPanicNews(options: {
 } = {}): Promise<ServiceResult<CryptoNewsFeed>> {
   const { limit = 20, coin, filter } = options;
 
-  const params = new URLSearchParams();
-  params.set('public', 'true');
-  if (config.cryptoPanic?.authToken) {
-    params.set('auth_token', config.cryptoPanic.authToken);
+  if (!config.cryptoPanic?.authToken) {
+    return successResult({
+      articles: [],
+      count: 0,
+      source: 'cryptopanic',
+    });
   }
+
+  const params = new URLSearchParams({ auth_token: config.cryptoPanic.authToken });
   const currencies = buildCurrencies(coin);
   if (currencies) params.set('currencies', currencies);
   if (filter) params.set('filter', filter);

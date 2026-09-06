@@ -341,4 +341,28 @@ describe('Crypto News Service', () => {
       expect(options.headers['X-API-Key']).toBeUndefined();
     });
   });
+
+  describe('getDynamicCategories', () => {
+    it('returns top currency pills and extracts tags from live articles', async () => {
+      mockFetch.mockResolvedValueOnce(okResponse({
+        articles: [
+          { title: 'DeFi protocol launches', category: 'defi, ethereum' },
+          { title: 'NFT collection drops', category: 'nft' },
+        ],
+      }));
+
+      const { getDynamicCategories } = await importModule();
+      const result = await getDynamicCategories(10);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data[0]).toEqual({ label: 'All News' });
+        expect(result.data.some((c) => c.coin === 'BTC')).toBe(true);
+        expect(result.data.some((c) => c.coin === 'ETH')).toBe(true);
+        expect(result.data.some((c) => c.coin === 'SOL')).toBe(true);
+        expect(result.data.some((c) => c.filter === 'defi')).toBe(true);
+        expect(result.data.some((c) => c.filter === 'nft')).toBe(true);
+      }
+    });
+  });
 });
