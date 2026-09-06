@@ -5,6 +5,7 @@ import fc from 'fast-check';
 import { Skill, SkillCategory } from '../../models/skill.js';
 import { SkillCategoryEntity } from '../../repositories/skill-category-repository.js';
 import { SkillEntity } from '../../repositories/skill-repository.js';
+import { skillCache } from '../../utils/cache.js';
 
 // In-memory stores for testing - using entity types
 let categoryStore: Map<string, SkillCategoryEntity> = new Map();
@@ -865,6 +866,10 @@ describe('Skill Service - Extended Coverage', () => {
   });
 
   describe('getFullTaxonomy', () => {
+    beforeEach(() => {
+      skillCache.clear();
+    });
+
     it('should return full taxonomy', async () => {
       const { getFullTaxonomy } = await importModule();
 

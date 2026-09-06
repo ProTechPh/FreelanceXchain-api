@@ -73,7 +73,7 @@ export class LRUCache<T> {
   }
 }
 
-export const skillCache = new LRUCache<any[]>(200, 5 * 60_000);
+export const skillCache = new LRUCache<any>(200, 5 * 60_000);
 
 // Analytics caches: 5-minute TTL for expensive queries
 export const platformMetricsCache = new LRUCache<any>(10, 5 * 60_000);
