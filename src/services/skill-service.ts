@@ -75,17 +75,25 @@ export async function updateCategory(
 }
 
 export async function getAllCategories(): Promise<SkillCategory[]> {
-  const cached = skillCache.get('all_categories');
+  const cached = typeof skillCache?.get === 'function' ? skillCache.get('all_categories') : undefined;
   if (cached) return cached as SkillCategory[];
   const entities = await skillCategoryRepository.getAllCategories();
   const result = entities.map(mapSkillCategoryFromEntity);
-  skillCache.set('all_categories', result);
+  if (typeof skillCache?.set === 'function') {
+    skillCache.set('all_categories', result);
+  }
   return result;
 }
 
 export async function getActiveCategories(): Promise<SkillCategory[]> {
+  const cached = typeof skillCache?.get === 'function' ? skillCache.get('active_categories') : undefined;
+  if (cached) return cached as SkillCategory[];
   const entities = await skillCategoryRepository.getActiveCategories();
-  return entities.map(mapSkillCategoryFromEntity);
+  const result = entities.map(mapSkillCategoryFromEntity);
+  if (typeof skillCache?.set === 'function') {
+    skillCache.set('active_categories', result);
+  }
+  return result;
 }
 
 // Skill Operations
@@ -175,13 +183,25 @@ export async function deprecateSkill(id: string): Promise<ServiceResult<Skill>> 
 }
 
 export async function getAllSkills(): Promise<Skill[]> {
+  const cached = typeof skillCache?.get === 'function' ? skillCache.get('all_skills') : undefined;
+  if (cached) return cached as Skill[];
   const entities = await skillRepository.getAllSkills();
-  return entities.map(mapSkillFromEntity);
+  const result = entities.map(mapSkillFromEntity);
+  if (typeof skillCache?.set === 'function') {
+    skillCache.set('all_skills', result);
+  }
+  return result;
 }
 
 export async function getActiveSkills(): Promise<Skill[]> {
+  const cached = typeof skillCache?.get === 'function' ? skillCache.get('active_skills') : undefined;
+  if (cached) return cached as Skill[];
   const entities = await skillRepository.getActiveSkills();
-  return entities.map(mapSkillFromEntity);
+  const result = entities.map(mapSkillFromEntity);
+  if (typeof skillCache?.set === 'function') {
+    skillCache.set('active_skills', result);
+  }
+  return result;
 }
 
 export async function getSkillsByCategory(categoryId: string): Promise<Skill[]> {
