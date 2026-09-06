@@ -111,6 +111,7 @@ export default [
             'scripts/**/*.cjs',
             'contracts/**',
             'lint-output.txt',
+            'src/__mocks__/**',
         ],
     },
 ];

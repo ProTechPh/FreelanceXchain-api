@@ -160,3 +160,44 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
 
   next();
 }
+
+/**
+ * Tiered KYC verification middleware:
+ * Allows operations under a defined monetary threshold (e.g. micro-projects < thresholdEth)
+ * to proceed with verified email/wallet alone, while requiring full Didit KYC for amounts
+ * at or above the threshold.
+ *
+ * @param getAmount Optional extractor function to retrieve the transaction amount in ETH from the request.
+ * @param thresholdEth Threshold above which full KYC verification is strictly enforced (default: 0.1 ETH / ~$300).
+ */
+export function requireTieredKyc(
+  getAmount?: (req: Request) => number | undefined,
+  thresholdEth = 0.1
+) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const requestId = getRequestId(req);
+
+    if (!req.user) {
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
+      return;
+    }
+
+    if (req.user.role === 'admin') {
+      next();
+      return;
+    }
+
+    // Check if the requested amount falls within the micro-transaction threshold
+    if (getAmount) {
+      const amount = getAmount(req);
+      if (amount !== undefined && amount < thresholdEth) {
+        // Micro-contract exemption: allow without blocking on full Didit KYC
+        next();
+        return;
+      }
+    }
+
+    // Otherwise enforce full KYC verification
+    await requireVerifiedKyc(req, res, next);
+  };
+}

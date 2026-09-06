@@ -7,7 +7,8 @@ import {
   getFreelancerAnalytics, 
   getEmployerAnalytics, 
   getPlatformMetrics,
-  getSkillTrends 
+  getSkillTrends,
+  getMarketplaceLiquidityReport,
 } from '../services/analytics-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -76,6 +77,18 @@ router.get('/skill-trends', authMiddleware, apiRateLimiter, asyncHandler(async (
 router.get('/platform', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const result = await getPlatformMetrics();
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/liquidity', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const result = await getMarketplaceLiquidityReport();
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });

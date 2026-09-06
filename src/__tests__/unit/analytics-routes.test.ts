@@ -11,6 +11,7 @@ const mockGetEmployerAnalytics = jest.fn<any>();
 const mockGetPlatformMetrics = jest.fn<any>();
 const mockGetAdminAnalytics = jest.fn<any>();
 const mockGetSkillTrends = jest.fn<any>();
+const mockGetMarketplaceLiquidityReport = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
   getFreelancerAnalytics: mockGetFreelancerAnalytics,
@@ -18,6 +19,7 @@ jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () 
   getPlatformMetrics: mockGetPlatformMetrics,
   getAdminAnalytics: mockGetAdminAnalytics,
   getSkillTrends: mockGetSkillTrends,
+  getMarketplaceLiquidityReport: mockGetMarketplaceLiquidityReport,
 }));
 
 const mockAuthMiddleware = jest.fn((req: any, _res: any, next: any) => {
@@ -136,6 +138,35 @@ describe('Analytics Routes', () => {
     it('should return 400 on service failure', async () => {
       mockGetPlatformMetrics.mockResolvedValue({ success: false, error: { code: 'ERROR', message: 'Failed' } });
       const res = await request(app).get('/api/analytics/platform');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /liquidity', () => {
+    it('should return marketplace liquidity report', async () => {
+      mockGetMarketplaceLiquidityReport.mockResolvedValue({
+        success: true,
+        data: {
+          overallLiquidityScore: 85,
+          skillsAnalyzed: 10,
+          shortageSkills: [],
+          balancedSkills: [],
+          surplusSkills: [],
+          generatedAt: new Date().toISOString(),
+        },
+      });
+      const res = await request(app).get('/api/analytics/liquidity');
+      expect(res.status).toBe(200);
+      expect(res.body.overallLiquidityScore).toBe(85);
+      expect(res.body.skillsAnalyzed).toBe(10);
+    });
+
+    it('should return 400 on service failure', async () => {
+      mockGetMarketplaceLiquidityReport.mockResolvedValue({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+      });
+      const res = await request(app).get('/api/analytics/liquidity');
       expect(res.status).toBe(400);
     });
   });

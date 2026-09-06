@@ -8,6 +8,7 @@ import {
   freelancerAnalyticsCache,
   employerAnalyticsCache,
   adminAnalyticsCache,
+  marketplaceLiquidityCache,
 } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -81,10 +82,12 @@ interface PlatformMetrics {
   completionRate: number;
 }
 
-interface AdminAnalytics {
+export interface AdminAnalytics {
   totalUsers: number;
   totalProjects: number;
   totalRevenue: number;
+  grossMarketplaceVolume?: number;
+  platformFeeRate?: number;
   activeContracts: number;
   userGrowth: number;
   projectGrowth: number;
@@ -341,7 +344,11 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     const completedContracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
       Query.equal('status', 'completed'),
     ]);
-    // Calculate total revenue (5% fee on completed contracts)
+    // Calculate gross marketplace volume (total settled contract volume)
+    const grossMarketplaceVolume = completedContracts.reduce(
+      (sum, c) => sum + Number(c.total_amount || 0), 0
+    );
+    // Calculate total revenue (5% fee benchmark on completed contracts)
     const totalRevenue = completedContracts.reduce(
       (sum, c) => sum + Number(c.total_amount || 0) * 0.05, 0
     );
@@ -374,6 +381,8 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       totalUsers,
       totalProjects,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
+      grossMarketplaceVolume: Math.round(grossMarketplaceVolume * 100) / 100,
+      platformFeeRate: 0.05,
       activeContracts,
       userGrowth,
       projectGrowth,
@@ -567,3 +576,129 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
 }
 
 export const getSkillDemandTrends = getSkillTrends;
+
+export interface SkillLiquidityMetric {
+  skillName: string;
+  projectDemandCount: number;
+  talentSupplyCount: number;
+  talentToDemandRatio: number;
+  liquidityStatus: 'shortage' | 'balanced' | 'surplus';
+  actionRecommendation: string;
+}
+
+export interface MarketplaceLiquidityReport {
+  overallLiquidityScore: number;
+  skillsAnalyzed: number;
+  shortageSkills: SkillLiquidityMetric[];
+  balancedSkills: SkillLiquidityMetric[];
+  surplusSkills: SkillLiquidityMetric[];
+  generatedAt: string;
+}
+
+function extractSkillCounts(documents: Models.DefaultDocument[], fieldName: 'required_skills' | 'skills'): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const doc of documents) {
+    const rawSkills = doc[fieldName];
+    const skills: Array<string | { skill_name?: string; name?: string }> = typeof rawSkills === 'string'
+      ? (() => { try { return JSON.parse(rawSkills); } catch { return []; } })()
+      : rawSkills || [];
+
+    for (const skill of skills) {
+      const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
+      if (!skillName) continue;
+      const normalized = skillName.trim();
+      map.set(normalized, (map.get(normalized) || 0) + 1);
+    }
+  }
+  return map;
+}
+
+function calculateLiquidityMetric(skillName: string, demand: number, supply: number): SkillLiquidityMetric {
+  const tdlr = demand === 0
+    ? (supply > 0 ? 10.0 : 1.0)
+    : Math.round((supply / demand) * 100) / 100;
+
+  let status: 'shortage' | 'balanced' | 'surplus';
+  let action: string;
+
+  if (demand > 0 && tdlr < 1.0) {
+    status = 'shortage';
+    action = `Recruit ${skillName} freelancers or boost AI matching radius; supply deficit.`;
+  } else if (tdlr <= 3.5) {
+    status = 'balanced';
+    action = `Healthy marketplace liquidity zone for ${skillName}.`;
+  } else {
+    status = 'surplus';
+    action = `Acquire employers needing ${skillName}; talent oversupplied.`;
+  }
+
+  return {
+    skillName,
+    projectDemandCount: demand,
+    talentSupplyCount: supply,
+    talentToDemandRatio: tdlr,
+    liquidityStatus: status,
+    actionRecommendation: action,
+  };
+}
+
+/**
+ * Compute the Talent-to-Demand Liquidity Ratio (TDLR) across skills by comparing
+ * open project demand against registered freelancer profiles.
+ *
+ * TDLR < 1.0 -> 'shortage' (more jobs than freelancers)
+ * 1.0 <= TDLR <= 3.5 -> 'balanced' (healthy competition and fill rate)
+ * TDLR > 3.5 -> 'surplus' (excess freelancers; need employer acquisition)
+ */
+export async function getMarketplaceLiquidityReport(): Promise<ServiceResult<MarketplaceLiquidityReport>> {
+  const cached = marketplaceLiquidityCache.get('marketplace_liquidity');
+  if (cached) {
+    return successResult(cached);
+  }
+
+  try {
+    const [projects, profiles] = await Promise.all([
+      fetchAllCollection(COLLECTIONS.PROJECTS, [Query.equal('status', 'open')]),
+      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
+    ]);
+
+    const demandMap = extractSkillCounts(projects, 'required_skills');
+    const supplyMap = extractSkillCounts(profiles, 'skills');
+    const allSkills = new Set([...demandMap.keys(), ...supplyMap.keys()]);
+
+    const metrics: SkillLiquidityMetric[] = [];
+    for (const skillName of allSkills) {
+      metrics.push(calculateLiquidityMetric(
+        skillName,
+        demandMap.get(skillName) || 0,
+        supplyMap.get(skillName) || 0
+      ));
+    }
+
+    metrics.sort((a, b) => (b.projectDemandCount + b.talentSupplyCount) - (a.projectDemandCount + a.talentSupplyCount));
+
+    const shortageSkills = metrics.filter(m => m.liquidityStatus === 'shortage');
+    const balancedSkills = metrics.filter(m => m.liquidityStatus === 'balanced');
+    const surplusSkills = metrics.filter(m => m.liquidityStatus === 'surplus');
+
+    const score = metrics.length > 0
+      ? Math.round((balancedSkills.length / metrics.length) * 100)
+      : 100;
+
+    const report: MarketplaceLiquidityReport = {
+      overallLiquidityScore: score,
+      skillsAnalyzed: metrics.length,
+      shortageSkills,
+      balancedSkills,
+      surplusSkills,
+      generatedAt: new Date().toISOString(),
+    };
+
+    marketplaceLiquidityCache.set('marketplace_liquidity', report);
+    return successResult(report);
+  } catch (error) {
+    logger.error('Failed to generate marketplace liquidity report', { error });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
