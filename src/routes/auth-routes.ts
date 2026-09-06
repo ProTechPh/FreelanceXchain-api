@@ -50,7 +50,8 @@ import { asyncHandler } from '../utils/async-handler.js';
 import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { getErrorMessage } from '../utils/index.js';
 import { auditLogRepository } from '../repositories/audit-log-repository.js';
-import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookie-helpers.js';
+import { setAuthCookies, clearAuthCookies, extractTokenFromRequest } from '../utils/auth-cookie-helpers.js';
+import { getAllowedOrigins, validateCorsOrigin } from '../middleware/security-middleware.js';
 
 const router = Router();
 
@@ -67,7 +68,9 @@ function extractClientInfo(req: Request): { ip: string | null; userAgent: string
 
 function extractBearerToken(req: Request, res: Response): string | null {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader?.split(' ')[1];
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : authHeader?.split(' ')[1] || extractTokenFromRequest(req);
   if (!token) {
     sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization token is required', { requestId: getRequestId(req) });
     return null;
@@ -1039,7 +1042,10 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
   let customFrontendUrl: string | undefined;
   if (rawOrigin) {
     try {
-      customFrontendUrl = new URL(rawOrigin).origin;
+      const parsedOrigin = new URL(rawOrigin).origin;
+      if (validateCorsOrigin(parsedOrigin, getAllowedOrigins())) {
+        customFrontendUrl = parsedOrigin;
+      }
     } catch {
       // Ignore invalid URL format
     }
@@ -1060,7 +1066,7 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
 /**
  * @swagger
  * /api/auth/csrf-token:
- *   get:
+ *   post:
  *     summary: Get CSRF token
  *     description: Returns a CSRF token for use in subsequent state-changing requests
  *     tags:
@@ -1083,8 +1089,19 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
  *                   type: string
  *       500:
  *         description: Failed to generate token
+ *   get:
+ *     summary: Get CSRF token
+ *     description: Returns a CSRF token for use in subsequent state-changing requests
+ *     tags:
+ *       - Authentication
+ *     responses:
+ *       200:
+ *         description: CSRF token generated successfully
  */
 router.post('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
+  generateCsrfToken(req, res);
+});
+router.get('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
   generateCsrfToken(req, res);
 });
 
@@ -1184,7 +1201,9 @@ router.post('/change-password', authMiddleware, passwordResetRateLimiter, asyncH
   }
 
   const authHeader = req.headers.authorization;
-  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const accessToken = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : (extractTokenFromRequest(req) || '');
 
   const result = await changePassword(accessToken, validation.currentPassword!, validation.newPassword!);
 

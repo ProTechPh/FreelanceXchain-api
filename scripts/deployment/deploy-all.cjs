@@ -7,7 +7,12 @@ const path = require("path");
 require("dotenv").config();
 
 const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:7545";
-const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY || "0xed1842eb67bd8bd55b930751dc5b9d92436ec8833a9bd1da5bc08ed3c379f95c";
+const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY;
+
+if (!privateKey) {
+  console.error("FATAL: BLOCKCHAIN_PRIVATE_KEY environment variable is required");
+  process.exit(1);
+}
 
 async function deployContract(name, artifactPath, ...constructorArgs) {
   // Create fresh provider and wallet for each deployment

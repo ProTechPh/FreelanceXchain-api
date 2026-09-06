@@ -101,12 +101,29 @@ export function extractTokenFromRequest(req: Request | {
     }
   }
 
-  if (req.cookies) {
+  let cookies = req.cookies;
+  if (!cookies && typeof req.headers['cookie'] === 'string') {
+    cookies = {};
+    for (const pair of (req.headers['cookie'] as string).split(';')) {
+      const idx = pair.indexOf('=');
+      if (idx !== -1) {
+        const key = pair.slice(0, idx).trim();
+        const val = pair.slice(idx + 1).trim();
+        try {
+          cookies[key] = decodeURIComponent(val);
+        } catch {
+          cookies[key] = val;
+        }
+      }
+    }
+  }
+
+  if (cookies) {
     const { accessTokenCookie } = getAuthCookieNames();
     const cookieToken =
-      req.cookies[accessTokenCookie] ||
-      req.cookies['access_token'] ||
-      req.cookies['__Host-psifi.access-token'];
+      cookies[accessTokenCookie] ||
+      cookies['access_token'] ||
+      cookies['__Host-psifi.access-token'];
 
     if (typeof cookieToken === 'string' && cookieToken.trim().length > 0) {
       return cookieToken.trim();

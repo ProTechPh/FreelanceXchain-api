@@ -57,7 +57,6 @@ const CSRF_EXEMPT_PATHS = [
   '/api/auth/refresh',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
-  '/api/auth/change-password',
   '/api/auth/resend-confirmation',
   '/api/auth/verify-email',
   '/api/auth/csrf-token',
