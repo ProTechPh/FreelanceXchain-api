@@ -3,6 +3,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import cors from 'cors';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { errorHandler } from './middleware/error-handler.js';
@@ -113,6 +114,17 @@ export async function createApp(): Promise<Express> {
   app.use(securityHeaders);
   app.use(requestIdMiddleware);
   app.use(httpsEnforcement);
+
+  // Response compression (gzip/deflate for responses >= 1KB)
+  app.use(compression({
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) {
+        return false;
+      }
+      return compression.filter(req, res);
+    },
+    threshold: 1024,
+  }));
 
   // Body parsing middleware
   // Only store rawBody for webhook paths to avoid doubling memory on every request
