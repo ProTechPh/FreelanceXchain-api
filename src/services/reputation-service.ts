@@ -424,33 +424,43 @@ export async function getWorkHistory(
     const reviews = await reviewRepository.findAllByRevieweeId(userId);
     const reviewsByContractId = new Map(reviews.map((r) => [r.contract_id, r]));
 
-    const workHistory: WorkHistoryEntry[] = await Promise.all(
-      completedContracts.map(async (contractEntity) => {
-        const contract = mapContractFromEntity(contractEntity);
-
-        const role: 'freelancer' | 'employer' =
-          contract.freelancerId === userId ? 'freelancer' : 'employer';
-
-        const projectEntity = await projectRepository.getProjectById(contract.projectId);
-        const projectTitle = projectEntity?.title ?? 'Unknown Project';
-
-        const receivedRating = reviewsByContractId.get(contract.id);
-        const workEntry: WorkHistoryEntry = {
-          contractId: contract.id,
-          projectId: contract.projectId,
-          projectTitle,
-          role,
-          completedAt: contract.updatedAt,
-        };
-        if (receivedRating) {
-          workEntry.rating = receivedRating.rating;
-          if (receivedRating.comment) {
-            workEntry.ratingComment = receivedRating.comment;
-          }
-        }
-        return workEntry;
-      })
+    const uniqueProjectIds = [...new Set(completedContracts.map(c => c.project_id).filter(Boolean))];
+    const projectEntities = await Promise.all(
+      uniqueProjectIds.map(id => projectRepository.getProjectById(id).catch(() => null))
     );
+    const projectTitleMap = new Map<string, string>();
+    for (let i = 0; i < uniqueProjectIds.length; i++) {
+      const pid = uniqueProjectIds[i]!;
+      const proj = projectEntities[i];
+      if (proj?.title) {
+        projectTitleMap.set(pid, proj.title);
+      }
+    }
+
+    const workHistory: WorkHistoryEntry[] = completedContracts.map((contractEntity) => {
+      const contract = mapContractFromEntity(contractEntity);
+
+      const role: 'freelancer' | 'employer' =
+        contract.freelancerId === userId ? 'freelancer' : 'employer';
+
+      const projectTitle = projectTitleMap.get(contract.projectId) ?? 'Unknown Project';
+
+      const receivedRating = reviewsByContractId.get(contract.id);
+      const workEntry: WorkHistoryEntry = {
+        contractId: contract.id,
+        projectId: contract.projectId,
+        projectTitle,
+        role,
+        completedAt: contract.updatedAt,
+      };
+      if (receivedRating) {
+        workEntry.rating = receivedRating.rating;
+        if (receivedRating.comment) {
+          workEntry.ratingComment = receivedRating.comment;
+        }
+      }
+      return workEntry;
+    });
 
     workHistory.sort((a, b) =>
       new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()

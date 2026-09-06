@@ -19,13 +19,19 @@ export const redis = new Redis({
 });
 
 redis.on('error', (err: Error) => {
-  logger.error('[redis] connection error', err);
+  if (config?.server?.nodeEnv !== 'test') {
+    logger.error('[redis] connection error', err);
+  }
 });
 
 redis.on('connect', () => {
-  logger.info('[redis] connected');
+  if (config?.server?.nodeEnv !== 'test') {
+    logger.info('[redis] connected');
+  }
 });
 
 redis.on('ready', () => {
-  logger.info('[redis] ready');
+  if (config?.server?.nodeEnv !== 'test') {
+    logger.info('[redis] ready');
+  }
 });

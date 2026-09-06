@@ -1,26 +1,76 @@
 {
-  "note": "Framework-overhead baseline only: Express + auth + real validation middleware + serialization. Appwrite/Redis/service I/O excluded — production latency will be higher.",
+  "note": "Framework-overhead baseline: Express router + auth middleware + validation schemas + serialization. Appwrite/Redis/blockchain I/O mocked to measure pure request processing overhead.",
   "results": [
     {
+      "method": "POST",
       "path": "/api/projects",
       "requests": 1000,
       "concurrency": 25,
-      "rps": 327.0972247435966,
-      "p50Ms": "76.96",
-      "p95Ms": "111.18",
-      "p99Ms": "130.04",
-      "maxMs": "130.89",
+      "rps": 526.2999450753379,
+      "p50Ms": "41.16",
+      "p95Ms": "87.55",
+      "p99Ms": "147.33",
+      "maxMs": "152.94",
       "errors": 0
     },
     {
+      "method": "GET",
+      "path": "/api/projects",
+      "requests": 1000,
+      "concurrency": 25,
+      "rps": 691.9940646285082,
+      "p50Ms": "32.25",
+      "p95Ms": "52.95",
+      "p99Ms": "59.21",
+      "maxMs": "60.40",
+      "errors": 0
+    },
+    {
+      "method": "POST",
       "path": "/api/proposals",
       "requests": 1000,
       "concurrency": 25,
-      "rps": 334.5811313573217,
-      "p50Ms": "60.06",
-      "p95Ms": "141.82",
-      "p99Ms": "170.59",
-      "maxMs": "172.39",
+      "rps": 444.93066467480077,
+      "p50Ms": "55.58",
+      "p95Ms": "67.34",
+      "p99Ms": "79.76",
+      "maxMs": "80.98",
+      "errors": 0
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills",
+      "requests": 1000,
+      "concurrency": 25,
+      "rps": 513.0660478132411,
+      "p50Ms": "48.44",
+      "p95Ms": "60.81",
+      "p99Ms": "65.40",
+      "maxMs": "65.51",
+      "errors": 0
+    },
+    {
+      "method": "GET",
+      "path": "/api/reputation/bench-user",
+      "requests": 1000,
+      "concurrency": 25,
+      "rps": 721.466782370699,
+      "p50Ms": "38.33",
+      "p95Ms": "49.58",
+      "p99Ms": "62.32",
+      "maxMs": "63.88",
+      "errors": 0
+    },
+    {
+      "method": "GET",
+      "path": "/api/reputation/bench-user/history",
+      "requests": 1000,
+      "concurrency": 25,
+      "rps": 1089.2194936305677,
+      "p50Ms": "22.03",
+      "p95Ms": "29.42",
+      "p99Ms": "32.25",
+      "maxMs": "35.64",
       "errors": 0
     }
   ]
