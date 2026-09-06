@@ -22,32 +22,43 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
 
 /**
  * Populate project details (title, description, deadline, milestones) on contract entities
- * so list views show project titles and milestone counts accurately. Fetches projects in parallel (O(N) queries).
+ * so list views show project titles and milestone counts accurately.
+ * Deduplicates project IDs across contracts to avoid redundant network round-trips.
  */
 async function withProjectMilestones(entities: ContractEntity[]): Promise<ContractEntity[]> {
+  if (entities.length === 0) return entities;
   const { projectRepository } = await import('../repositories/project-repository.js');
-  const populated = await Promise.all(
-    entities.map(async (entity) => {
+  const uniqueProjectIds = [...new Set(entities.map(e => e.project_id).filter(Boolean))];
+  const projectMap = new Map<string, any>();
+
+  await Promise.all(
+    uniqueProjectIds.map(async (projectId) => {
       try {
-        const project = await projectRepository.findProjectById(entity.project_id);
+        const project = await projectRepository.findProjectById(projectId);
         if (project) {
-          return {
-            ...entity,
-            project: {
-              ...(entity as any).project,
-              id: project.id,
-              title: project.title,
-              description: project.description,
-              deadline: project.deadline,
-              milestones: project.milestones,
-            },
-          } as ContractEntity;
+          projectMap.set(projectId, project);
         }
       } catch { /* ignore — leave entity unchanged */ }
-      return entity;
     })
   );
-  return populated;
+
+  return entities.map((entity) => {
+    const project = projectMap.get(entity.project_id);
+    if (project) {
+      return {
+        ...entity,
+        project: {
+          ...(entity as any).project,
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          deadline: project.deadline,
+          milestones: project.milestones,
+        },
+      } as ContractEntity;
+    }
+    return entity;
+  });
 }
 
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {

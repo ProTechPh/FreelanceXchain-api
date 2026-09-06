@@ -536,12 +536,14 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
       return [];
     }
 
-    const projectIds = contractsResponse.documents.map(c => c.project_id);
+    const projectIds = contractsResponse.documents.map(c => c.project_id).filter(Boolean);
+    const uniqueProjectIds = [...new Set(projectIds)];
     const skillMap = new Map<string, number>();
 
-    // Fetch each project (Appwrite doesn't support IN queries)
-    const projectSkillSets = await Promise.all(
-      projectIds.map(async (projectId: string) => {
+    // Fetch each unique project once (Appwrite doesn't support IN queries)
+    const projectSkillMap = new Map<string, Array<string | { skill_name?: string; name?: string }>>();
+    await Promise.all(
+      uniqueProjectIds.map(async (projectId: string) => {
         try {
           const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
           const requiredSkills = projectDoc.required_skills;
@@ -549,14 +551,15 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
             ? JSON.parse(requiredSkills)
             : requiredSkills || [];
 
-          return skills;
+          projectSkillMap.set(projectId, skills);
         } catch {
-          return [] as Array<string | { skill_name?: string; name?: string }>;
+          projectSkillMap.set(projectId, []);
         }
       })
     );
 
-    for (const skills of projectSkillSets) {
+    for (const projectId of projectIds) {
+      const skills = projectSkillMap.get(projectId) || [];
       for (const skill of skills) {
         const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
         if (skillName) {
