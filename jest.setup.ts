@@ -16,7 +16,17 @@ dotenv.config({ path: '.env.test' });
 process.env.NODE_ENV = 'test';
 
 beforeAll(startStableSupertestServer);
-afterAll(stopStableSupertestServer);
+afterAll(async () => {
+  await stopStableSupertestServer();
+  try {
+    const { redis } = await import('./src/config/redis.js');
+    if (redis && typeof redis.disconnect === 'function' && redis.status !== 'end') {
+      redis.disconnect();
+    }
+  } catch {
+    // Ignore if redis wasn't loaded
+  }
+});
 
 // Add BigInt serialization support
 BigInt.prototype.toJSON = function() {
