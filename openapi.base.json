@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Blockchain Freelance Marketplace API",
-    "version": "1.0.37",
+    "version": "1.0.38",
     "description": "A decentralized freelance marketplace with AI skill matching and blockchain payments",
     "contact": {
       "name": "API Support"
