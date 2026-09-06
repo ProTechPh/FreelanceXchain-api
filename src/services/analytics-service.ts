@@ -595,6 +595,53 @@ export interface MarketplaceLiquidityReport {
   generatedAt: string;
 }
 
+function extractSkillCounts(documents: Models.DefaultDocument[], fieldName: 'required_skills' | 'skills'): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const doc of documents) {
+    const rawSkills = doc[fieldName];
+    const skills: Array<string | { skill_name?: string; name?: string }> = typeof rawSkills === 'string'
+      ? (() => { try { return JSON.parse(rawSkills); } catch { return []; } })()
+      : rawSkills || [];
+
+    for (const skill of skills) {
+      const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
+      if (!skillName) continue;
+      const normalized = skillName.trim();
+      map.set(normalized, (map.get(normalized) || 0) + 1);
+    }
+  }
+  return map;
+}
+
+function calculateLiquidityMetric(skillName: string, demand: number, supply: number): SkillLiquidityMetric {
+  const tdlr = demand === 0
+    ? (supply > 0 ? 10.0 : 1.0)
+    : Math.round((supply / demand) * 100) / 100;
+
+  let status: 'shortage' | 'balanced' | 'surplus';
+  let action: string;
+
+  if (demand > 0 && tdlr < 1.0) {
+    status = 'shortage';
+    action = `Recruit ${skillName} freelancers or boost AI matching radius; supply deficit.`;
+  } else if (tdlr <= 3.5) {
+    status = 'balanced';
+    action = `Healthy marketplace liquidity zone for ${skillName}.`;
+  } else {
+    status = 'surplus';
+    action = `Acquire employers needing ${skillName}; talent oversupplied.`;
+  }
+
+  return {
+    skillName,
+    projectDemandCount: demand,
+    talentSupplyCount: supply,
+    talentToDemandRatio: tdlr,
+    liquidityStatus: status,
+    actionRecommendation: action,
+  };
+}
+
 /**
  * Compute the Talent-to-Demand Liquidity Ratio (TDLR) across skills by comparing
  * open project demand against registered freelancer profiles.
@@ -615,69 +662,17 @@ export async function getMarketplaceLiquidityReport(): Promise<ServiceResult<Mar
       fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
     ]);
 
-    const demandMap = new Map<string, number>();
-    for (const project of projects) {
-      const requiredSkills = project.required_skills;
-      const skills: Array<string | { skill_name?: string; name?: string }> = typeof requiredSkills === 'string'
-        ? (() => { try { return JSON.parse(requiredSkills); } catch { return []; } })()
-        : requiredSkills || [];
-
-      for (const skill of skills) {
-        const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
-        if (!skillName) continue;
-        const normalized = skillName.trim();
-        demandMap.set(normalized, (demandMap.get(normalized) || 0) + 1);
-      }
-    }
-
-    const supplyMap = new Map<string, number>();
-    for (const profile of profiles) {
-      const skills = profile.skills;
-      const skillList: Array<string | { skill_name?: string; name?: string }> = typeof skills === 'string'
-        ? (() => { try { return JSON.parse(skills); } catch { return []; } })()
-        : skills || [];
-
-      for (const skill of skillList) {
-        const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
-        if (!skillName) continue;
-        const normalized = skillName.trim();
-        supplyMap.set(normalized, (supplyMap.get(normalized) || 0) + 1);
-      }
-    }
-
+    const demandMap = extractSkillCounts(projects, 'required_skills');
+    const supplyMap = extractSkillCounts(profiles, 'skills');
     const allSkills = new Set([...demandMap.keys(), ...supplyMap.keys()]);
+
     const metrics: SkillLiquidityMetric[] = [];
-
     for (const skillName of allSkills) {
-      const demand = demandMap.get(skillName) || 0;
-      const supply = supplyMap.get(skillName) || 0;
-
-      const tdlr = demand === 0
-        ? (supply > 0 ? 10.0 : 1.0)
-        : Math.round((supply / demand) * 100) / 100;
-
-      let status: 'shortage' | 'balanced' | 'surplus';
-      let action: string;
-
-      if (demand > 0 && tdlr < 1.0) {
-        status = 'shortage';
-        action = `Recruit ${skillName} freelancers or boost AI matching radius; supply deficit.`;
-      } else if (tdlr <= 3.5) {
-        status = 'balanced';
-        action = `Healthy marketplace liquidity zone for ${skillName}.`;
-      } else {
-        status = 'surplus';
-        action = `Acquire employers needing ${skillName}; talent oversupplied.`;
-      }
-
-      metrics.push({
+      metrics.push(calculateLiquidityMetric(
         skillName,
-        projectDemandCount: demand,
-        talentSupplyCount: supply,
-        talentToDemandRatio: tdlr,
-        liquidityStatus: status,
-        actionRecommendation: action,
-      });
+        demandMap.get(skillName) || 0,
+        supplyMap.get(skillName) || 0
+      ));
     }
 
     metrics.sort((a, b) => (b.projectDemandCount + b.talentSupplyCount) - (a.projectDemandCount + a.talentSupplyCount));

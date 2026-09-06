@@ -26,12 +26,15 @@ A comprehensive business and codebase audit uncovered three structural opportuni
 ## Decision
 
 ### 1. Decouple True GMV from Revenue Benchmarking
+
 - The primary marketplace North Star metric is officially designated as **Gross Marketplace Volume (GMV)** ($\sum c.total\_amount$ across completed contracts).
 - `AdminAnalytics` now explicitly returns `grossMarketplaceVolume` and `platformFeeRate: 0.05`.
 - The frontend admin dashboard was upgraded to display true GMV alongside a transparent **Protocol Economics & Take-Rate Transparency Card** showing `0.00 ETH (0%)` actual treasury take, with 5% displayed as an industry benchmark.
 
 ### 2. Protocol Micro-Fee Roadmap (2.5% Target)
+
 To ensure platform solvency while preserving the anti-Upwork 0% value proposition:
+
 - A planned revision to `FreelanceEscrow.sol` will introduce `uint256 public immutable platformFeeBps` (default 250 bps = 2.5%) and `address public immutable platformTreasury`.
 - When an employer approves a milestone, the escrow contract will calculate:
   $$\text{platformCut} = \frac{\text{milestone.amount} \times \text{platformFeeBps}}{10000}$$
@@ -39,13 +42,17 @@ To ensure platform solvency while preserving the anti-Upwork 0% value propositio
 - Until contracts are redeployed, the platform leverages voluntary value-added revenue (priority AI bidding and the rush fee split from ADR-003).
 
 ### 3. Tiered KYC Gateway (`requireTieredKyc`)
+
 A new configurable middleware `requireTieredKyc(getAmount?, thresholdEth = 0.1)` was introduced:
+
 - **Micro-contracts (< 0.1 ETH / ~$300):** Exempted from mandatory Didit checks, requiring only verified email and connected wallet signature.
 - **Standard & High-value contracts (≥ 0.1 ETH) and Disputes:** Full Didit government ID and biometric verification strictly enforced.
 - **Benefits:** Decreases checkout abandonment by an estimated 35% and drastically reduces Didit verification costs on low-intent accounts.
 
 ### 4. Talent-to-Demand Liquidity Ratio (TDLR)
+
 A dedicated liquidity analytics engine `getMarketplaceLiquidityReport()` was deployed at `GET /api/analytics/liquidity`:
+
 - Compares open project skill demand against verified freelancer profile skills.
 - Categorizes skills into:
   - `shortage` ($\text{TDLR} < 1.0$): Automated prompt to recruit talent or broaden AI matching.
@@ -55,10 +62,12 @@ A dedicated liquidity analytics engine `getMarketplaceLiquidityReport()` was dep
 ## Consequences
 
 ### Benefits
+
 - **Financial Honesty:** Metrics in the UI reflect actual money movements on-chain, eliminating confusion for founders and prospective investors.
 - **Operational Liquidity:** Operations and marketing teams have instant visibility into which developer skills are experiencing supply deficits.
 - **Conversion Optimization:** The tiered KYC middleware provides an actionable path to unblock casual users and reduce CAC.
 
 ### Verification
+
 - Covered by unit test suites: `analytics-service.test.ts`, `analytics-routes.test.ts`, and `admin-routes.test.ts` (189+ tests passing, 0 regressions).
 - Clean TypeScript compilation across both `FreelanceXchain-api` and `FreelanceXchain-frontend`.
