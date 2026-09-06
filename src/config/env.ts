@@ -93,8 +93,7 @@ export const config = {
   },
   cryptoPanic: {
     // Secondary news source (https://cryptopanic.com/developers/api/).
-    // Free tier works without a token (public=true). Set CRYPTOPANIC_AUTH_TOKEN
-    // to unlock authenticated endpoints and higher per-minute limits.
+    // CryptoPanic requires an auth token; unauthenticated public requests are no longer supported.
     baseUrl: getEnvVar('CRYPTOPANIC_BASE_URL', 'https://cryptopanic.com/api/v1'),
     authToken: getEnvVarOptional('CRYPTOPANIC_AUTH_TOKEN'),
     timeoutMs: getEnvVarNumber('CRYPTOPANIC_TIMEOUT_MS', 8000),
