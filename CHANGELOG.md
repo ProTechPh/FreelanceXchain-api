@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Deployments
 
+- **1.0.40+build.339f1ff** (2026-09-07) - commit `339f1ff`: Merge pull request #275 from ProTechPh/security
 - **1.0.39+build.047cb68** (2026-09-07) - commit `047cb68`: Merge pull request #274 from ProTechPh/security
 - **1.0.38+build.89f890e** (2026-09-06) - commit `89f890e`: Merge pull request #273 from ProTechPh/security
 - **1.0.37+build.442b188** (2026-09-06) - commit `442b188`: Merge pull request #272 from ProTechPh/security
