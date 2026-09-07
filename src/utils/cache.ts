@@ -97,3 +97,26 @@ export const freelancerAnalyticsCache = new LRUCache<any>(500, 60_000);
 export const employerAnalyticsCache = new LRUCache<any>(500, 60_000);
 export const adminAnalyticsCache = new LRUCache<any>(10, 60_000);
 export const marketplaceLiquidityCache = new LRUCache<any>(10, 60_000);
+
+const allCaches: LRUCache<any>[] = [
+  skillCache,
+  platformMetricsCache,
+  skillTrendsCache,
+  paymentSummaryCache,
+  freelancerAnalyticsCache,
+  employerAnalyticsCache,
+  adminAnalyticsCache,
+  marketplaceLiquidityCache,
+];
+
+export function startAllCacheCleanups(intervalMs: number = 60_000): void {
+  for (const cache of allCaches) {
+    cache.startCleanup(intervalMs);
+  }
+}
+
+export function stopAllCacheCleanups(): void {
+  for (const cache of allCaches) {
+    cache.stopCleanup();
+  }
+}
