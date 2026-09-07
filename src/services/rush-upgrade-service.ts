@@ -13,7 +13,7 @@ import { withLock } from '../utils/async-lock.js';
 import { paymentRepository } from '../repositories/payment-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { getBlockchainMode } from './blockchain/factory.js';
-import { isWeb3Available, sendTransaction } from './web3-client.js';
+import { isWeb3Available, sendTransaction, getTransactionByHash } from './web3-client.js';
 
 function hasDeployedEscrow(contractEntity: { escrow_address?: string | null }): boolean {
   return Boolean(contractEntity.escrow_address && contractEntity.escrow_address.trim().length > 0);
@@ -112,6 +112,44 @@ async function transferRushFee(params: {
 
   let transactionHash: string;
   if (clientTxHash) {
+    if (!/^0x[a-fA-F0-9]{64}$/.test(clientTxHash)) {
+      return { error: errorResult('INVALID_TRANSACTION_HASH', 'Transaction hash must be a valid 66-character hexadecimal string') };
+    }
+
+    const existingPayment = await paymentRepository.findByTxHash(clientTxHash);
+    if (existingPayment) {
+      return { error: errorResult('DUPLICATE_TRANSACTION', 'This transaction has already been registered for a payment') };
+    }
+
+    if (getBlockchainMode() === 'real' && isWeb3Available()) {
+      if (!freelancer?.wallet_address) {
+        return { error: errorResult('MISSING_WALLET', 'Freelancer wallet address is required to verify rush fee payment') };
+      }
+
+      try {
+        const tx = await getTransactionByHash(clientTxHash);
+        if (!tx) {
+          return { error: errorResult('TRANSACTION_NOT_FOUND', 'Transaction was not found on the blockchain') };
+        }
+
+        if (tx.status !== 'success') {
+          return { error: errorResult('TRANSACTION_NOT_CONFIRMED', 'Transaction has not succeeded or is still pending on the blockchain') };
+        }
+
+        if (!tx.to || tx.to.toLowerCase() !== freelancer.wallet_address.toLowerCase()) {
+          return { error: errorResult('INVALID_RECIPIENT', `Transaction recipient does not match freelancer wallet (${freelancer.wallet_address})`) };
+        }
+
+        const expectedWei = parseUnits(amount.toString(), 18);
+        if (tx.value < expectedWei) {
+          return { error: errorResult('INSUFFICIENT_AMOUNT', `Transaction value is less than required rush fee (${amount} ETH)`) };
+        }
+      } catch (err) {
+        logger.error('Failed to verify on-chain rush fee transaction', { error: err, clientTxHash });
+        return { error: errorResult('VERIFICATION_FAILED', 'Failed to verify transaction on the blockchain') };
+      }
+    }
+
     transactionHash = clientTxHash;
   } else if (getBlockchainMode() === 'real' && isWeb3Available()) {
     if (!freelancer?.wallet_address) {

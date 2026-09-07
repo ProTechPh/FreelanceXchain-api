@@ -64,6 +64,7 @@ const mockPaymentRepo = {
     paymentStore.set(entity.id, entity);
     return entity;
   }),
+  findByTxHash: jest.fn<any>(async () => null),
   clear: () => paymentStore.clear(),
 };
 
@@ -78,6 +79,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts')
 const mockGetBlockchainMode = jest.fn<any>(() => 'simulated');
 const mockIsWeb3Available = jest.fn<any>(() => false);
 const mockSendTransaction = jest.fn<any>();
+const mockGetTransactionByHash = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
   getBlockchainMode: mockGetBlockchainMode,
@@ -86,6 +88,7 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), ()
 jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
   isWeb3Available: mockIsWeb3Available,
   sendTransaction: mockSendTransaction,
+  getTransactionByHash: mockGetTransactionByHash,
 }));
 
 // Mock Appwrite RPC
@@ -1516,5 +1519,120 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
       expect.objectContaining({ total_amount: expect.anything() }),
     );
     expect(Array.from(paymentStore.values())).toHaveLength(1);
+  });
+
+  describe('rush upgrade - clientTxHash verification', () => {
+    it('rejects clientTxHash with invalid hex format', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({
+        employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000,
+      });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'accepted',
+      });
+
+      const result = await payRushUpgradeFee(employer.id, {
+        requestId: request.id,
+        transactionHash: 'not-a-valid-hex-hash',
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe('INVALID_TRANSACTION_HASH');
+    });
+
+    it('rejects clientTxHash if duplicate transaction already registered', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({
+        employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000,
+      });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'accepted',
+      });
+
+      const validHash = '0x' + 'a'.repeat(64);
+      mockPaymentRepo.findByTxHash.mockResolvedValueOnce({ id: 'existing-payment' });
+
+      const result = await payRushUpgradeFee(employer.id, {
+        requestId: request.id,
+        transactionHash: validHash,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe('DUPLICATE_TRANSACTION');
+    });
+
+    it('verifies clientTxHash on-chain when blockchain mode is real', async () => {
+      mockGetBlockchainMode.mockReturnValue('real');
+      mockIsWeb3Available.mockReturnValue(true);
+
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer', wallet_address: '0x' + '2'.repeat(40) });
+      const contract = seedContract({
+        employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000,
+      });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'accepted',
+      });
+
+      const validHash = '0x' + 'b'.repeat(64);
+      mockGetTransactionByHash.mockResolvedValueOnce({
+        hash: validHash,
+        status: 'success',
+        to: freelancer.wallet_address,
+        value: BigInt('200000000000000000000'), // 200 ETH in wei (1000 * 20%)
+      });
+
+      const result = await payRushUpgradeFee(employer.id, {
+        requestId: request.id,
+        transactionHash: validHash,
+      });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.contract.rushFee).toBe(200);
+      mockGetBlockchainMode.mockReturnValue('simulated');
+      mockIsWeb3Available.mockReturnValue(false);
+    });
+
+    it('rejects clientTxHash if on-chain recipient does not match freelancer', async () => {
+      mockGetBlockchainMode.mockReturnValue('real');
+      mockIsWeb3Available.mockReturnValue(true);
+
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer', wallet_address: '0x' + '2'.repeat(40) });
+      const contract = seedContract({
+        employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000,
+      });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'accepted',
+      });
+
+      const validHash = '0x' + 'c'.repeat(64);
+      mockGetTransactionByHash.mockResolvedValueOnce({
+        hash: validHash,
+        status: 'success',
+        to: '0x' + '9'.repeat(40), // Wrong recipient!
+        value: BigInt('200000000000000000000'),
+      });
+
+      const result = await payRushUpgradeFee(employer.id, {
+        requestId: request.id,
+        transactionHash: validHash,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe('INVALID_RECIPIENT');
+      mockGetBlockchainMode.mockReturnValue('simulated');
+      mockIsWeb3Available.mockReturnValue(false);
+    });
   });
 });
