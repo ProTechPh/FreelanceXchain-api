@@ -13,7 +13,7 @@ jobs:
       contents: read
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.21.0
+        uses: step-security/harden-runner@v2.21.1
         with:
           egress-policy: audit
           allowed-endpoints: >
@@ -74,7 +74,7 @@ jobs:
       contents: read
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.21.0
+        uses: step-security/harden-runner@v2.21.1
         with:
           egress-policy: audit
           allowed-endpoints: >
@@ -131,7 +131,7 @@ jobs:
       contents: read
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.21.0
+        uses: step-security/harden-runner@v2.21.1
         with:
           egress-policy: audit
           allowed-endpoints: >
@@ -181,7 +181,7 @@ jobs:
       contents: read
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.21.0
+        uses: step-security/harden-runner@v2.21.1
         with:
           egress-policy: audit
           allowed-endpoints: >
