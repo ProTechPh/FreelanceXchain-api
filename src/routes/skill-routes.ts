@@ -107,6 +107,7 @@ const router = Router();
  *               $ref: '#/components/schemas/SkillTaxonomy'
  */
 router.get('/', apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
   const taxonomy = await getFullTaxonomy();
   res.status(200).json(taxonomy);
 }));
@@ -197,6 +198,7 @@ router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['cate
     return;
   }
   
+  res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
   const skills = await getActiveSkillsByCategory(categoryId);
   res.status(200).json(skills);
 }));

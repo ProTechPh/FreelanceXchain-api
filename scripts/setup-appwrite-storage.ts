@@ -16,11 +16,11 @@ const client = new Client().setEndpoint(ENDPOINT).setProject(PROJECT_ID).setKey(
 const storage = new Storage(client);
 
 const BUCKETS_TO_SETUP = [
-  { id: 'proposal-attachments', name: 'Proposal Attachments', permissions: [Permission.read(Role.any()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())] },
-  { id: 'project-attachments', name: 'Project Attachments', permissions: [Permission.read(Role.any()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())] },
-  { id: 'dispute-evidence', name: 'Dispute Evidence', permissions: [Permission.read(Role.users()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())] },
-  { id: 'portfolio-images', name: 'Portfolio Images', permissions: [Permission.read(Role.any()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())] },
-  { id: 'milestone-deliverables', name: 'Milestone Deliverables', permissions: [Permission.read(Role.users()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())] },
+  { id: 'proposal-attachments', name: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true },
+  { id: 'project-attachments', name: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false },
+  { id: 'dispute-evidence', name: 'Dispute Evidence', permissions: [], fileSecurity: true },
+  { id: 'portfolio-images', name: 'Portfolio Images', permissions: [Permission.read(Role.any())], fileSecurity: false },
+  { id: 'milestone-deliverables', name: 'Milestone Deliverables', permissions: [], fileSecurity: true },
 ];
 
 async function run() {
@@ -34,7 +34,7 @@ async function run() {
     } else {
       console.log(`Creating bucket '${b.id}' (${b.name})...`);
       try {
-        await storage.createBucket(b.id, b.name, b.permissions, false, true, undefined, ['jpg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'xlsx', 'csv']);
+        await storage.createBucket(b.id, b.name, b.permissions, b.fileSecurity, true, undefined, ['jpg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'xlsx', 'csv']);
         console.log(`✓ Bucket '${b.id}' created successfully.`);
       } catch (err) {
         console.error(`✗ Error creating bucket '${b.id}':`, err);

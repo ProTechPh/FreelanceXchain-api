@@ -13,6 +13,8 @@ import type {
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
 import { generateId } from '../utils/id.js';
+import { deleteFileFromStorage, extractFileIdFromUrl } from '../utils/storage-uploader.js';
+import { BUCKETS } from '../config/appwrite.js';
 
 export async function submitEvidence(
   input: SubmitEvidenceInput
@@ -176,6 +178,17 @@ export async function deleteEvidence(
     }
 
     await disputeEvidenceRepository.deleteEvidence(evidenceId);
+
+    if (evidenceEntity.file_url) {
+      const fileId = extractFileIdFromUrl(evidenceEntity.file_url);
+      if (fileId) {
+        try {
+          await deleteFileFromStorage(fileId, BUCKETS.DISPUTE_EVIDENCE);
+        } catch (storageErr) {
+          logger.warn('Failed to clean up evidence file from storage', { error: storageErr, evidenceId, fileId });
+        }
+      }
+    }
 
     logger.info(`Evidence ${evidenceId} deleted by user ${userId}`);
 

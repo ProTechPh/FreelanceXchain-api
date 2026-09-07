@@ -267,7 +267,7 @@ contract FreelanceEscrow {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         if (freelancerBps > 10000) revert InvalidResolutionBps();
         Milestone storage milestone = milestones[milestoneIndex];
-        if (milestone.status != MilestoneStatus.Disputed && milestone.status != MilestoneStatus.Submitted && milestone.status != MilestoneStatus.Pending) revert MilestoneNotDisputed();
+        if (milestone.status != MilestoneStatus.Disputed) revert MilestoneNotDisputed();
 
         uint256 amt = milestone.amount;
         uint256 freelancerAmt = (amt * freelancerBps) / 10000;
@@ -389,8 +389,11 @@ contract FreelanceEscrow {
             isActive = false;
         }
 
+        // Transfer funds to employer; fallback to pull-payment if recipient reverts or rejects push
         (bool success, ) = employer.call{value: amt}("");
-        if (!success) revert RefundFailed();
+        if (!success) {
+            pendingWithdrawals[employer] += amt;
+        }
 
         emit MilestoneRefunded(milestoneIndex, amt);
 
@@ -419,7 +422,9 @@ contract FreelanceEscrow {
 
         if (remainingFunds > 0) {
             (bool success, ) = employer.call{value: remainingFunds}("");
-            if (!success) revert RefundFailed();
+            if (!success) {
+                pendingWithdrawals[employer] += remainingFunds;
+            }
         }
 
         emit ContractCancelled();

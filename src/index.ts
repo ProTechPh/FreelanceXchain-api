@@ -5,6 +5,7 @@ import { stopHeartbeat } from './services/notification-delivery-service.js';
 import { logger } from './config/logger.js';
 import { redis } from './config/redis.js';
 import { isAIAvailable } from './services/ai-client.js';
+import { startAllCacheCleanups, stopAllCacheCleanups } from './utils/cache.js';
 
 async function main(): Promise<void> {
   // Wait for Redis to be ready before accepting traffic.
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   }
 
   initializeScheduler();
+  startAllCacheCleanups();
 
   const app = await createApp();
 
@@ -44,6 +46,7 @@ async function main(): Promise<void> {
 
     stopScheduler();
     stopHeartbeat();
+    stopAllCacheCleanups();
 
     server.close(() => {
       logger.info('HTTP server closed');
