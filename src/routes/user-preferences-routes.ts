@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getUserPreferences, updateTourProgress, setTourAutoStart } from '../services/user-preferences-service.js';
-import { requireAuth } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import type { UserRole } from '../models/user.js';
 
@@ -10,9 +10,9 @@ const router = Router();
  * GET /api/user-preferences
  * Get user preferences (creates default if doesn't exist)
  */
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
@@ -21,8 +21,8 @@ router.get('/', requireAuth, async (req, res) => {
     const result = await getUserPreferences(userId);
 
     if (!result.success) {
-      const status = result.code === 'NOT_FOUND' ? 404 : 500;
-      res.status(status).json({ error: result.error });
+      const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+      res.status(status).json({ error: result.error.message });
       return;
     }
 
@@ -37,9 +37,9 @@ router.get('/', requireAuth, async (req, res) => {
  * PATCH /api/user-preferences/tour-progress
  * Update tour progress for a specific role
  */
-router.patch('/tour-progress', requireAuth, async (req, res) => {
+router.patch('/tour-progress', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
@@ -57,8 +57,8 @@ router.patch('/tour-progress', requireAuth, async (req, res) => {
       const result = await setTourAutoStart(userId, role as UserRole, autoStart);
       
       if (!result.success) {
-        const status = result.code === 'NOT_FOUND' ? 404 : 500;
-        res.status(status).json({ error: result.error });
+        const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+        res.status(status).json({ error: result.error.message });
         return;
       }
 
@@ -73,8 +73,8 @@ router.patch('/tour-progress', requireAuth, async (req, res) => {
     });
 
     if (!result.success) {
-      const status = result.code === 'NOT_FOUND' ? 404 : 500;
-      res.status(status).json({ error: result.error });
+      const status = result.error.code === 'NOT_FOUND' ? 404 : 500;
+      res.status(status).json({ error: result.error.message });
       return;
     }
 

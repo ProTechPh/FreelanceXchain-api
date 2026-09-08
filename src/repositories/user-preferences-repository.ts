@@ -75,8 +75,9 @@ export class UserPreferencesRepository extends BaseRepository<UserPreferencesEnt
     
     if (existingEntity.documents.length === 0) return null;
     
-    const updated = await this.update(existingEntity.documents[0].$id, entity);
-    return this.mapToModel(updated);
+    const docId = existingEntity.documents[0]!.$id;
+    const updated = await this.update(docId, entity);
+    return this.mapToModel(updated!);
   }
 
   /**
