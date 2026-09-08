@@ -27,6 +27,7 @@ import transactionRoutes from './transaction-routes.js';
 import analyticsRoutes from './analytics-routes.js';
 import portfolioRoutes from './portfolio-routes.js';
 import emailPreferenceRoutes from './email-preference-routes.js';
+import userPreferencesRoutes from './user-preferences-routes.js';
 import savedSearchRoutes from './saved-search-routes.js';
 import milestoneRoutes from './milestone-routes.js';
 import disputeEvidenceRoutes from './dispute-evidence-routes.js';
@@ -120,6 +121,9 @@ router.use('/portfolio', portfolioRoutes);
 
 // Email preference routes
 router.use('/email-preferences', emailPreferenceRoutes);
+
+// User preferences routes (tour progress, etc.)
+router.use('/user-preferences', userPreferencesRoutes);
 
 // Saved search routes
 router.use('/saved-searches', savedSearchRoutes);
