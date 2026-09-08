@@ -389,6 +389,17 @@ const COLLECTIONS = [
     ],
   },
   {
+    id: 'user_preferences',
+    name: 'User Preferences',
+    attributes: [
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      { name: 'tour_progress', type: 'string', size: 5000, required: false, default: '{}' }, // JSON object
+    ],
+    indexes: [
+      { key: 'user_id', type: DatabasesIndexType.Unique, attributes: ['user_id'] },
+    ],
+  },
+  {
     id: 'pending_mfa_sessions',
     name: 'Pending MFA Sessions',
     attributes: [

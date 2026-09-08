@@ -2,6 +2,8 @@ import { BaseRepository, PaginatedResult, QueryOptions, fromAppwriteDoc } from '
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 export type { NotificationType } from '../models/notification.js';
 import type { NotificationType } from '../models/notification.js';
+import { logger } from '../config/logger.js';
+import { getErrorMessage } from '../utils/index.js';
 
 export type NotificationEntity = {
   id: string;
@@ -95,22 +97,24 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
 
   async markAllAsRead(userId: string): Promise<number> {
     try {
-      // fetchAll so >1000 unread notifications are ALL marked read — the old
-      // Query.limit(1000) left the rest unread, so the badge (an exact count
-      // query) and the read state diverged.
       const unread = await this.fetchAll([
         Query.equal('user_id', userId),
         Query.equal('is_read', false),
       ]);
-      const now = new Date().toISOString();
+      
+      if (unread.length === 0) {
+        return 0;
+      }
+      
       await Promise.all(
         unread.map(notification =>
-          databases.updateDocument(DATABASE_ID, COLLECTION_ID, notification.id, { is_read: true, updated_at: now })
+          databases.updateDocument(DATABASE_ID, COLLECTION_ID, notification.id, { is_read: true })
         )
       );
       return unread.length;
-    } catch {
-      return 0;
+    } catch (error) {
+      logger.error('Failed to mark all notifications as read', { error: getErrorMessage(error), userId });
+      throw error;
     }
   }
 
