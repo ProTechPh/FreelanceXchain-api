@@ -85,7 +85,9 @@ export class UserPreferencesRepository extends BaseRepository<UserPreferencesEnt
   private mapToModel(entity: UserPreferencesEntity): UserPreferences {
     let tourProgress = {};
     try {
-      if (entity.tour_progress) {
+      if (typeof entity.tour_progress === 'object' && entity.tour_progress !== null) {
+        tourProgress = entity.tour_progress;
+      } else if (typeof entity.tour_progress === 'string') {
         tourProgress = JSON.parse(entity.tour_progress);
       }
     } catch {

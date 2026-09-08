@@ -219,10 +219,9 @@ describe('NotificationRepository', () => {
       expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(250);
     });
 
-    it('should return fallback on database error', async () => {
+    it('should rethrow on database error', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('update failed'));
-      const result = await repo.markAllAsRead('u1');
-      expect(result).toBe(0);
+      await expect(repo.markAllAsRead('u1')).rejects.toThrow('update failed');
     });
   });
 
