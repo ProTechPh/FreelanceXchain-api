@@ -1,7 +1,7 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
-import type { UserPreferences, CreateUserPreferencesInput, UpdateUserPreferencesInput } from '../models/user-preferences.js';
+import type { UserPreferences, UpdateUserPreferencesInput } from '../models/user-preferences.js';
 
 export type UserPreferencesEntity = {
   id: string;
@@ -54,9 +54,8 @@ export class UserPreferencesRepository extends BaseRepository<UserPreferencesEnt
   async updatePreferences(userId: string, updates: UpdateUserPreferencesInput): Promise<UserPreferences | null> {
     const existing = await this.findByUserId(userId);
     if (!existing) {
-      // Create if doesn't exist
-      const newPrefs = await this.createDefault(userId);
-      // Apply updates
+      // Create if doesn't exist then apply updates
+      await this.createDefault(userId);
       return this.updatePreferences(userId, updates);
     }
 
