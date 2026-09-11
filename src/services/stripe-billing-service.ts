@@ -318,6 +318,11 @@ export async function getPlanPrices(): Promise<PlanPrice[]> {
   return value;
 }
 
+/** Test-only: drop the memoized prices so the next read hits Stripe. */
+export function resetPlanPricesCache(): void {
+  cachedPrices = null;
+}
+
 /** The authoritative subscription object, re-fetched from Stripe. */
 export async function fetchSubscription(subscriptionId: string): Promise<Stripe.Subscription | null> {
   const stripe = getStripeClient();

@@ -41,6 +41,10 @@ export default {
     '!src/config/database.ts',
     '!src/config/appwrite.ts',
     '!src/config/redis.ts',
+    // Thin memoized SDK client, same rationale as redis/appwrite/web3-client:
+    // no business logic, and constructing a real Stripe client in tests proves
+    // nothing. The logic that uses it is covered in the services below.
+    '!src/config/stripe.ts',
     '!src/services/contract-abis.ts',
     '!src/services/web3-client.ts',
     '!src/services/escrow-blockchain.ts',

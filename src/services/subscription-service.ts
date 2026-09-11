@@ -203,10 +203,3 @@ export async function getProUserIdSet(userIds: string[]): Promise<Set<string>> {
     return new Set();
   }
 }
-
-/** The raw subscription row, for the billing endpoints and admin tooling. */
-export async function getSubscriptionForUser(
-  userId: string
-): Promise<SubscriptionEntity | null> {
-  return subscriptionRepository.getByUserId(userId);
-}
