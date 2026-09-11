@@ -46,13 +46,14 @@ export function setAuthCookies(
     res.cookie('access_token', accessToken, accessOptions);
   }
 
-  // Refresh token cookie (30 days expiry, scoped strictly to auth routes)
+  // Refresh token cookie (30 days expiry)
+  // RFC 6265bis: __Host- prefixed cookies MUST have path=/ (browsers reject them otherwise)
   if (refreshToken) {
     const refreshOptions: CookieOptions = {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
-      path: '/api/auth',
+      path: isProd ? '/' : '/api/auth',
       maxAge: 30 * 24 * 3600 * 1000,
     };
 
@@ -78,11 +79,12 @@ export function clearAuthCookies(res: Response): void {
   };
 
   res.clearCookie(accessTokenCookie, { ...baseOptions, path: '/' });
-  res.clearCookie(refreshTokenCookie, { ...baseOptions, path: '/api/auth' });
+  res.clearCookie(refreshTokenCookie, { ...baseOptions, path: isProd ? '/' : '/api/auth' });
   res.clearCookie('access_token', { ...baseOptions, path: '/' });
   res.clearCookie('refresh_token', { ...baseOptions, path: '/api/auth' });
+  res.clearCookie('refresh_token', { ...baseOptions, path: '/' });
   res.clearCookie('__Host-psifi.access-token', { ...baseOptions, path: '/' });
-  res.clearCookie('__Host-psifi.refresh-token', { ...baseOptions, path: '/api/auth' });
+  res.clearCookie('__Host-psifi.refresh-token', { ...baseOptions, path: '/' });
 }
 
 /**

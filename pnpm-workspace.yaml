@@ -12,3 +12,5 @@ minimumReleaseAgeExclude:
   - electron-to-chromium
   - caniuse-lite
 trustPolicy: no-downgrade
+trustPolicyExclude:
+  - semver@6.3.1
