@@ -38,9 +38,22 @@ const mockConfig = {
     password: undefined,
     tls: false,
   },
+  // matching-service → subscription-service → config/stripe reads this.
+  // Left unconfigured on purpose so the Pro ranking boost is a no-op here and
+  // these scoring assertions stay independent of billing.
+  stripe: {
+    monthlyPriceId: undefined,
+    annualPriceId: undefined,
+    publishableKey: undefined,
+    baseUrl: 'https://api.stripe.com',
+    devGrantPro: false,
+  },
 };
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: mockConfig,
+  getNodeEnv: () => 'test',
+  getStripeSecretKey: () => undefined,
+  getStripeWebhookSecret: () => undefined,
 }));
 
 // Cache

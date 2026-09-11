@@ -17,6 +17,7 @@ import {
   validateCorsOrigin
 } from './middleware/security-middleware.js';
 import { csrfProtection } from './middleware/csrf-middleware.js';
+import { assertBillingConfigSafe } from './services/subscription-service.js';
 import { config } from './config/env.js';
 import routes from './routes/index.js';
 import rootRoutes from './routes/root-routes.js';
@@ -103,6 +104,9 @@ function configureSwaggerDocs(app: Express, openApiSpec: Record<string, unknown>
 }
 
 export async function createApp(): Promise<Express> {
+  // Refuse to boot a production server that would hand Pro to every user.
+  assertBillingConfigSafe();
+
   const app = express();
 
   // Trust the configured number of reverse-proxy hops so req.ip reflects the real

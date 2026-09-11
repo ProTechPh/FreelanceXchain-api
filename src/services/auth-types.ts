@@ -1,4 +1,5 @@
 import { UserRole } from '../models/user.js';
+import type { PlanTier, SubscriptionStatus } from '../models/subscription.js';
 
 export type RegisterInput = {
   email: string;
@@ -37,6 +38,13 @@ export type AuthResult = {
     createdAt: string;
     authProvider?: 'email' | 'oauth';
     emailVerification?: boolean;
+    /**
+     * Billing entitlement, computed server-side. The frontend gates on THIS,
+     * never on the raw Stripe status, so a grace period stays a server
+     * decision. Optional so an older client still type-checks.
+     */
+    plan?: PlanTier;
+    planStatus?: SubscriptionStatus;
   };
   accessToken: string;
   refreshToken: string;

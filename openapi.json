@@ -1806,6 +1806,68 @@
             "type": "boolean"
           }
         }
+      },
+      "Subscription": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "string",
+            "enum": [
+              "free",
+              "pro"
+            ],
+            "description": "Entitlement tier. Gate on this, not on status."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "none",
+              "incomplete",
+              "incomplete_expired",
+              "trialing",
+              "active",
+              "past_due",
+              "canceled",
+              "unpaid",
+              "paused"
+            ]
+          },
+          "isPro": {
+            "type": "boolean"
+          },
+          "currentPeriodEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelAtPeriodEnd": {
+            "type": "boolean"
+          },
+          "manageable": {
+            "type": "boolean",
+            "description": "True once a Stripe customer exists, so the portal can be offered."
+          }
+        }
+      },
+      "CheckoutSession": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Stripe-hosted Checkout URL to redirect the browser to."
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        }
+      },
+      "BillingRedirect": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        }
       }
     }
   },
@@ -4416,8 +4478,14 @@
           "401": {
             "description": "Unauthorized - Invalid or missing token"
           },
+          "403": {
+            "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
           "404": {
             "description": "Freelancer profile not found"
+          },
+          "503": {
+            "description": "Subscription status could not be verified"
           }
         }
       }
@@ -4477,8 +4545,14 @@
           "401": {
             "description": "Unauthorized - Invalid or missing token"
           },
+          "403": {
+            "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
           "404": {
             "description": "Project not found"
+          },
+          "503": {
+            "description": "Subscription status could not be verified"
           }
         }
       }
@@ -4524,6 +4598,12 @@
           },
           "401": {
             "description": "Unauthorized - Invalid or missing token"
+          },
+          "403": {
+            "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
+          "503": {
+            "description": "Subscription status could not be verified"
           }
         }
       }
@@ -4554,8 +4634,14 @@
           "401": {
             "description": "Unauthorized - Invalid or missing token"
           },
+          "403": {
+            "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
           "404": {
             "description": "Freelancer profile not found"
+          },
+          "503": {
+            "description": "Subscription status could not be verified"
           }
         }
       }
@@ -7897,6 +7983,183 @@
         }
       }
     },
+    "/api/billing/plans": {
+      "get": {
+        "summary": "Public plan descriptor",
+        "description": "Static Free/Pro descriptor for the pricing page. Makes no Stripe call and needs no auth.",
+        "tags": [
+          "Billing"
+        ],
+        "responses": {
+          "200": {
+            "description": "Plans retrieved successfully"
+          }
+        }
+      }
+    },
+    "/api/billing/subscription": {
+      "get": {
+        "summary": "Current subscription state",
+        "description": "The caller's plan and subscription detail. Free is a valid state, not an error.",
+        "tags": [
+          "Billing"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription state retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          },
+          "503": {
+            "description": "Subscription state could not be read"
+          }
+        }
+      }
+    },
+    "/api/billing/checkout-session": {
+      "post": {
+        "summary": "Start a Pro subscription checkout",
+        "description": "Creates a Stripe-hosted Checkout Session. Entitlement is granted by webhook, never by the success redirect.",
+        "tags": [
+          "Billing"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Checkout session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid interval or redirect URL, or annual billing is unavailable"
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          },
+          "409": {
+            "description": "Already subscribed - use the customer portal instead"
+          },
+          "502": {
+            "description": "Stripe unavailable"
+          },
+          "503": {
+            "description": "Billing is not configured on this server"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "interval": {
+                    "type": "string",
+                    "enum": [
+                      "month",
+                      "year"
+                    ],
+                    "default": "month",
+                    "description": "Billing variant of the Pro plan. Both are Prices on the same Product."
+                  },
+                  "successUrl": {
+                    "type": "string",
+                    "description": "Must be on the app's own origin."
+                  },
+                  "cancelUrl": {
+                    "type": "string",
+                    "description": "Must be on the app's own origin."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/billing/portal-session": {
+      "post": {
+        "summary": "Open the Stripe Customer Portal",
+        "description": "Returns a hosted portal URL where the user can update payment details, cancel or resume.",
+        "tags": [
+          "Billing"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portal session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRedirect"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          },
+          "409": {
+            "description": "No billing account yet"
+          },
+          "502": {
+            "description": "Stripe unavailable"
+          },
+          "503": {
+            "description": "Billing is not configured on this server"
+          }
+        }
+      }
+    },
+    "/api/webhooks/stripe": {
+      "post": {
+        "summary": "Stripe webhook",
+        "description": "Receives Stripe subscription lifecycle events. Signature-verified via the stripe-signature header; never authenticated and exempt from CSRF.",
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Event processed, or acknowledged as a duplicate"
+          },
+          "400": {
+            "description": "Missing raw body, missing signature, or invalid signature"
+          },
+          "500": {
+            "description": "Processing failed; Stripe will retry"
+          },
+          "503": {
+            "description": "Stripe webhooks are not configured"
+          }
+        }
+      }
+    },
     "/api/contracts/{id}/fund": {
       "post": {
         "summary": "Fund contract escrow",
@@ -8042,6 +8305,7 @@
   },
   "tags": [
     "Messages",
-    "Crypto News"
+    "Crypto News",
+    "Billing"
   ]
 }

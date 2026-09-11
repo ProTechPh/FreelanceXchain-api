@@ -38,6 +38,8 @@ import emailInboxRoutes from './email-inbox-routes.js';
 import dashboardRoutes from './dashboard-routes.js';
 import metricsRoutes from './metrics-routes.js';
 import cryptoNewsRoutes from './crypto-news-routes.js';
+import billingRoutes from './billing-routes.js';
+import stripeWebhookRoutes from './stripe-webhook-routes.js';
 
 const router = Router();
 
@@ -136,6 +138,13 @@ router.use('/escrow', escrowRefundRoutes);
 
 // Webhook routes
 router.use('/webhooks', webhookRoutes);
+
+// Stripe webhook (same prefix, separate router so the blockchain webhook tests
+// don't transitively import the Stripe SDK)
+router.use('/webhooks', stripeWebhookRoutes);
+
+// Subscription billing (Stripe Checkout + Customer Portal)
+router.use('/billing', billingRoutes);
 
 // Rush upgrade routes
 router.use('/', rushUpgradeRoutes);

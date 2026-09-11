@@ -204,6 +204,14 @@ export async function createProject(
 
 async function notifyMatchedFreelancers(project: ProjectEntity): Promise<void> {
   try {
+    // No Pro gate here, and that is deliberate rather than an oversight.
+    // The priority-matching boost lives inside getFreelancerRecommendations,
+    // not in route middleware, so this internal caller inherits it: Pro
+    // freelancers are likelier to make this top-5 and so get told about a new
+    // matching project first. That IS the priority-matching perk. The gate on
+    // /api/matching/* controls who can PULL recommendations on demand; the
+    // boost is a ranking property of the data and applies on every path.
+    // Fan-out itself is free — the posting employer is not checked for Pro.
     const recResult = await getFreelancerRecommendations(project.id, 5);
     if (!recResult.success || recResult.data.length === 0) return;
 

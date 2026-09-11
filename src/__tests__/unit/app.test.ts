@@ -15,6 +15,15 @@ jest.unstable_mockModule(resolveModule('src/routes/index.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: {
+    // Billing left unconfigured: the app must boot and every free feature must
+    // work with no Stripe keys present.
+    stripe: {
+      monthlyPriceId: undefined,
+      annualPriceId: undefined,
+      publishableKey: undefined,
+      baseUrl: 'https://api.stripe.com',
+      devGrantPro: false,
+    },
     server: {
       port: 3000,
       nodeEnv: 'test',
@@ -77,6 +86,8 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   getCorsOrigin: () => process.env['CORS_ORIGIN'],
   getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
   getCsrfSecret: () => process.env['CSRF_SECRET'],
+  getStripeSecretKey: () => process.env['STRIPE_SECRET_KEY'],
+  getStripeWebhookSecret: () => process.env['STRIPE_WEBHOOK_SECRET'],
   getBlockchainWebhookSecret: () => process.env['BLOCKCHAIN_WEBHOOK_SECRET'],
   getEmailWebhookSecret: () => process.env['EMAIL_WEBHOOK_SECRET'],
 }));

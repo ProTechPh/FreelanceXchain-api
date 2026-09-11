@@ -583,6 +583,57 @@ DIDIT_WEBHOOK_SECRET=your-webhook-secret
 DIDIT_WORKFLOW_ID=your-workflow-id
 ```
 
+#### Stripe Billing (Pro subscription)
+
+Optional. Leaving these unset disables billing: the server still boots, every
+free feature keeps working, `/api/billing/*` returns `503
+BILLING_NOT_CONFIGURED`, and every user is Free. This fails **closed** on
+purpose — a dropped secret in a deploy must never hand the paid feature set to
+everyone.
+
+Billing counts as configured only when the API key, the webhook secret **and**
+the monthly price id are all present. A partial configuration is treated as
+unconfigured, so you never get a half-live system that creates Checkout Sessions
+no webhook can turn into an entitlement.
+
+```env
+STRIPE_BASE_URL=https://api.stripe.com   # Stripe API host; override only for a proxy/mock
+STRIPE_API_KEY=rk_test_...               # Server key. Prefer a restricted key over sk_
+STRIPE_SECRET_KEY=                       # Optional alias for STRIPE_API_KEY; API_KEY wins
+STRIPE_PUBLISHABLE_KEY=pk_test_...       # Client key (safe to expose)
+STRIPE_WEBHOOK_SECRET=whsec_...          # Signing secret for POST /api/webhooks/stripe
+STRIPE_MONTHLY_PRICE_ID=price_...        # Monthly Price on the Pro Product
+STRIPE_ANNUAL_PRICE_ID=price_...         # Annual Price on the SAME Product (optional)
+BILLING_DEV_GRANT_PRO=false              # Dev-only; fatal at boot in production
+```
+
+Restricted key permissions (principle of least privilege):
+
+| Resource | Access |
+| --- | --- |
+| Checkout Sessions, Customers, Customer portal | Write |
+| Subscriptions, Products, Prices, Invoices | Read |
+| Everything else | None |
+
+Checkout and portal redirects are built from `FRONTEND_URL`, so there are no
+separate redirect-URL variables to keep in sync.
+
+Configure the webhook endpoint at `POST /api/webhooks/stripe` with these events:
+`checkout.session.completed`, `customer.subscription.created`,
+`customer.subscription.updated`, `customer.subscription.deleted`,
+`invoice.paid`, `invoice.payment_failed`. Locally, `stripe listen --forward-to
+localhost:3001/api/webhooks/stripe` forwards them and prints the signing secret.
+
+`BILLING_DEV_GRANT_PRO=true` treats every authenticated user as Pro, but only
+when Stripe is unconfigured and `NODE_ENV` is not `production`. Setting it in
+production **throws at boot** — a dev escape hatch that can reach production is
+not an escape hatch.
+
+**Stripe Tax is deliberately not enabled.** `automatic_tax` calculates nothing,
+and returns no error, until the account has an active tax registration — which
+looks like compliance while collecting zero tax. Turning it on is a separate,
+deliberate change once registrations are confirmed.
+
 ### Setup
 
 ```bash

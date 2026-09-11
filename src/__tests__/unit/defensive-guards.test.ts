@@ -12,7 +12,12 @@ import request from 'supertest';
 const resolveModule = (p: string) => path.resolve(process.cwd(), p);
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
-  logger: { error: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn(), security: jest.fn() },
+  logger: { error: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn(), security: jest.fn(), auth: jest.fn(), authzFailure: jest.fn() },
+}));
+
+jest.unstable_mockModule(resolveModule('src/middleware/subscription-middleware.ts'), () => ({
+  requirePro: (_req: any, _res: any, next: any) => next(),
+  PLAN_UPGRADE_REQUIRED: 'PLAN_UPGRADE_REQUIRED',
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -29,7 +34,14 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
-  config: { appwrite: { endpoint: 'http://localhost', projectId: 'test' } },
+  config: {
+    appwrite: { endpoint: 'http://localhost', projectId: 'test' },
+    // Billing unconfigured, so every user resolves to Free.
+    stripe: { monthlyPriceId: undefined, annualPriceId: undefined, publishableKey: undefined, baseUrl: 'https://api.stripe.com', devGrantPro: false },
+  },
+  getNodeEnv: () => 'test',
+  getStripeSecretKey: () => undefined,
+  getStripeWebhookSecret: () => undefined,
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
