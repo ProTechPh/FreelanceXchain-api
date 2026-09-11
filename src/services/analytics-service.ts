@@ -9,6 +9,7 @@ import {
   employerAnalyticsCache,
   adminAnalyticsCache,
   marketplaceLiquidityCache,
+  funnelMetricsCache,
 } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -82,6 +83,23 @@ interface PlatformMetrics {
   completionRate: number;
 }
 
+export interface FunnelStageMetric {
+  stage: string;
+  label: string;
+  count: number;
+  conversionRate: number;
+  overallRate: number;
+  dropoffCount: number;
+  dropoffRate: number;
+}
+
+export interface FunnelMetricsReport {
+  stages: FunnelStageMetric[];
+  totalRegistered: number;
+  overallConversionRate: number;
+  generatedAt: string;
+}
+
 export interface AdminAnalytics {
   totalUsers: number;
   totalProjects: number;
@@ -93,6 +111,11 @@ export interface AdminAnalytics {
   projectGrowth: number;
   userGrowthData: { month: string; count: number }[];
   projectActivityData: { month: string; count: number }[];
+  escrowFundingRate?: number;
+  repeatEmployerRate?: number;
+  rushUpgradeAdoptionRate?: number;
+  rushFeeRevenue?: number;
+  realizedRevenue?: number;
 }
 
 /**
@@ -308,6 +331,41 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
   }
 }
 
+function computeAdminContractMetrics(
+  completedContracts: Models.DefaultDocument[],
+  activeContracts: number
+) {
+  const totalRushFees = completedContracts.reduce(
+    (sum, c) => sum + Number(c['rush_fee'] || 0), 0
+  );
+  const rushFeeRevenue = Math.round(totalRushFees * 0.10 * 100) / 100;
+  const realizedRevenue = rushFeeRevenue;
+
+  const rushContractsCount = completedContracts.filter(c => Number(c['rush_fee'] || 0) > 0).length;
+  const rushUpgradeAdoptionRate = completedContracts.length > 0
+    ? Math.round((rushContractsCount / completedContracts.length) * 1000) / 10
+    : 0;
+
+  const totalKnownContracts = activeContracts + completedContracts.length;
+  const escrowFundingRate = totalKnownContracts > 0
+    ? Math.round((completedContracts.length / totalKnownContracts) * 1000) / 10
+    : 0;
+
+  const employerCompletedCounts = new Map<string, number>();
+  for (const c of completedContracts) {
+    if (c['employer_id']) {
+      employerCompletedCounts.set(c['employer_id'], (employerCompletedCounts.get(c['employer_id']) || 0) + 1);
+    }
+  }
+  const employersWithCompleted = Array.from(employerCompletedCounts.values()).filter(cnt => cnt >= 1);
+  const repeatEmployers = Array.from(employerCompletedCounts.values()).filter(cnt => cnt >= 2);
+  const repeatEmployerRate = employersWithCompleted.length > 0
+    ? Math.round((repeatEmployers.length / employersWithCompleted.length) * 1000) / 10
+    : 0;
+
+  return { rushFeeRevenue, realizedRevenue, rushUpgradeAdoptionRate, escrowFundingRate, repeatEmployerRate };
+}
+
 /**
  * Get admin analytics
  *
@@ -339,16 +397,12 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     const totalProjects = projectsResponse.total;
     const activeContracts = activeContractsResponse.total;
 
-    // Full cursor fetches — the old Query.limit(1000) undercounted revenue and
-    // growth metrics past 1000 records (the limit(1000) truncation class).
     const completedContracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
       Query.equal('status', 'completed'),
     ]);
-    // Calculate gross marketplace volume (total settled contract volume)
     const grossMarketplaceVolume = completedContracts.reduce(
       (sum, c) => sum + Number(c.total_amount || 0), 0
     );
-    // Calculate total revenue (5% fee benchmark on completed contracts)
     const totalRevenue = completedContracts.reduce(
       (sum, c) => sum + Number(c.total_amount || 0) * 0.05, 0
     );
@@ -357,16 +411,11 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const allUsers = await fetchAllCollection(COLLECTIONS.USERS, []);
-    const userGrowth = allUsers.filter(
-      u => new Date(u.created_at) >= thirtyDaysAgo
-    ).length;
+    const userGrowth = allUsers.filter(u => new Date(u.created_at) >= thirtyDaysAgo).length;
 
     const allProjects = await fetchAllCollection(COLLECTIONS.PROJECTS, []);
-    const projectGrowth = allProjects.filter(
-      p => new Date(p.created_at) >= thirtyDaysAgo
-    ).length;
+    const projectGrowth = allProjects.filter(p => new Date(p.created_at) >= thirtyDaysAgo).length;
 
-    // Get growth data for charts (last 12 months, group by month)
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
@@ -376,6 +425,8 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     const projectActivityData = computeMonthlyCounts(
       allProjects.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
     );
+
+    const contractMetrics = computeAdminContractMetrics(completedContracts, activeContracts);
 
     const data: AdminAnalytics = {
       totalUsers,
@@ -388,6 +439,7 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       projectGrowth,
       userGrowthData,
       projectActivityData,
+      ...contractMetrics,
     };
     adminAnalyticsCache.set('admin_analytics', data);
     return successResult(data);
@@ -701,6 +753,179 @@ export async function getMarketplaceLiquidityReport(): Promise<ServiceResult<Mar
     return successResult(report);
   } catch (error) {
     logger.error('Failed to generate marketplace liquidity report', { error });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
+type RawFunnelStage = { stage: string; label: string; count: number };
+
+interface FunnelRawData {
+  allUsers: Models.DefaultDocument[];
+  freelancerProfiles: Models.DefaultDocument[];
+  projects: Models.DefaultDocument[];
+  proposals: Models.DefaultDocument[];
+  contracts: Models.DefaultDocument[];
+}
+
+function computeFunnelCounts(
+  data: FunnelRawData
+): { rawStages: RawFunnelStage[]; completedCount: number } {
+  const { allUsers, freelancerProfiles, projects, proposals, contracts } = data;
+  const totalRegistered = allUsers.length;
+
+  const freelancerUserIds = new Set(freelancerProfiles.map(p => p['user_id']).filter(Boolean));
+  const employerUserIds = new Set(
+    allUsers
+      .filter(u => u['role'] === 'employer' && (u['name'] || (u as any)['company_name']))
+      .map(u => u.$id || (u as any).id)
+      .filter(Boolean)
+  );
+  const profileCompletedCount = new Set([...freelancerUserIds, ...employerUserIds]).size;
+
+  const kycCount = allUsers.filter(u => Boolean((u as any).kyc_verified)).length;
+  const walletCount = allUsers.filter(
+    u => u['wallet_address'] && String(u['wallet_address']).trim().length > 0
+  ).length;
+
+  const activatedUserIds = new Set([
+    ...projects.map(p => p['employer_id']),
+    ...proposals.map(p => p['freelancer_id']),
+  ].filter(Boolean));
+  const activatedCount = activatedUserIds.size;
+
+  const fundedContracts = contracts.filter(c => c['status'] === 'active' || c['status'] === 'completed');
+  const fundedUserIds = new Set<string>();
+  for (const c of fundedContracts) {
+    if (c['employer_id']) fundedUserIds.add(c['employer_id']);
+    if (c['freelancer_id']) fundedUserIds.add(c['freelancer_id']);
+  }
+  const fundedCount = fundedUserIds.size;
+
+  const completedContracts = contracts.filter(c => c['status'] === 'completed');
+  const completedUserIds = new Set<string>();
+  for (const c of completedContracts) {
+    if (c['employer_id']) completedUserIds.add(c['employer_id']);
+    if (c['freelancer_id']) completedUserIds.add(c['freelancer_id']);
+  }
+  const completedCount = completedUserIds.size;
+
+  const contractCountByUser = new Map<string, number>();
+  for (const c of completedContracts) {
+    if (c['employer_id']) {
+      contractCountByUser.set(c['employer_id'], (contractCountByUser.get(c['employer_id']) || 0) + 1);
+    }
+    if (c['freelancer_id']) {
+      contractCountByUser.set(c['freelancer_id'], (contractCountByUser.get(c['freelancer_id']) || 0) + 1);
+    }
+  }
+  const repeatCount = Array.from(contractCountByUser.values()).filter(cnt => cnt >= 2).length;
+
+  const rawStages: RawFunnelStage[] = [
+    { stage: 'registered', label: 'Registered Accounts', count: totalRegistered },
+    { stage: 'profile_completed', label: 'Profile Completed', count: profileCompletedCount },
+    { stage: 'kyc_verified', label: 'KYC Verified', count: kycCount },
+    { stage: 'wallet_connected', label: 'Wallet Linked', count: walletCount },
+    { stage: 'marketplace_active', label: 'Marketplace Active', count: activatedCount },
+    { stage: 'contract_funded', label: 'Escrow Funded', count: fundedCount },
+    { stage: 'contract_completed', label: 'Contract Completed', count: completedCount },
+    { stage: 'repeat_users', label: 'Repeat Users', count: repeatCount },
+  ];
+
+  return { rawStages, completedCount };
+}
+
+function buildFunnelStages(rawStages: RawFunnelStage[], totalRegistered: number): FunnelStageMetric[] {
+  return rawStages.map((st, idx) => {
+    if (idx === 0) {
+      return {
+        stage: st.stage,
+        label: st.label,
+        count: st.count,
+        conversionRate: 100,
+        overallRate: 100,
+        dropoffCount: 0,
+        dropoffRate: 0,
+      };
+    }
+
+    const prevStage = rawStages[idx - 1];
+    const prevCount = prevStage ? prevStage.count : 0;
+    const conversionRate = prevCount > 0 ? Math.round((st.count / prevCount) * 1000) / 10 : 0;
+    const overallRate = totalRegistered > 0 ? Math.round((st.count / totalRegistered) * 1000) / 10 : 0;
+    const dropoffCount = Math.max(0, prevCount - st.count);
+    const dropoffRate = prevCount > 0 ? Math.round((dropoffCount / prevCount) * 1000) / 10 : 0;
+
+    return {
+      stage: st.stage,
+      label: st.label,
+      count: st.count,
+      conversionRate,
+      overallRate,
+      dropoffCount,
+      dropoffRate,
+    };
+  });
+}
+
+/**
+ * Get customer acquisition and marketplace conversion funnel metrics.
+ *
+ * Cached for 60s. Tracks progression across 8 key stages:
+ * 1. Registered Accounts
+ * 2. Profile Completed
+ * 3. KYC Verified
+ * 4. Wallet Linked
+ * 5. Marketplace Active (project posted or proposal submitted)
+ * 6. Escrow Funded (active or completed contract)
+ * 7. Contract Completed
+ * 8. Repeat Users (>= 2 completed contracts)
+ */
+export async function getFunnelMetrics(): Promise<ServiceResult<FunnelMetricsReport>> {
+  const cached = funnelMetricsCache.get('funnel_metrics');
+  if (cached) {
+    return successResult(cached);
+  }
+
+  try {
+    const [
+      allUsers,
+      freelancerProfiles,
+      projects,
+      proposals,
+      contracts,
+    ] = await Promise.all([
+      fetchAllCollection(COLLECTIONS.USERS, []),
+      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
+      fetchAllCollection(COLLECTIONS.PROJECTS, []),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
+    ]);
+
+    const totalRegistered = allUsers.length;
+    const { rawStages, completedCount } = computeFunnelCounts({
+      allUsers,
+      freelancerProfiles,
+      projects,
+      proposals,
+      contracts,
+    });
+
+    const stages = buildFunnelStages(rawStages, totalRegistered);
+    const overallConversionRate = totalRegistered > 0
+      ? Math.round((completedCount / totalRegistered) * 1000) / 10
+      : 0;
+
+    const report: FunnelMetricsReport = {
+      stages,
+      totalRegistered,
+      overallConversionRate,
+      generatedAt: new Date().toISOString(),
+    };
+
+    funnelMetricsCache.set('funnel_metrics', report);
+    return successResult(report);
+  } catch (error) {
+    logger.error('Failed to get funnel metrics', { error });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }

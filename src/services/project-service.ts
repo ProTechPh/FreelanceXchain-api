@@ -7,6 +7,8 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 import { logger } from '../config/logger.js';
+import { getFreelancerRecommendations } from './matching-service.js';
+import { notificationRepository } from '../repositories/notification-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
@@ -187,7 +189,48 @@ export async function createProject(
   };
 
   const created = await projectRepository.createProject(projectInput);
+
+  if (created.status === 'open' && process.env['NODE_ENV'] !== 'test') {
+    notifyMatchedFreelancers(created).catch((err) => {
+      logger.warn('Failed to dispatch background match notifications', {
+        projectId: created.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
   return successResult(created);
+}
+
+async function notifyMatchedFreelancers(project: ProjectEntity): Promise<void> {
+  try {
+    const recResult = await getFreelancerRecommendations(project.id, 5);
+    if (!recResult.success || recResult.data.length === 0) return;
+
+    for (const rec of recResult.data) {
+      if (rec.combinedScore >= 50 && rec.freelancerId) {
+        await notificationRepository.createNotification({
+          id: generateId(),
+          user_id: rec.freelancerId,
+          type: 'project_match',
+          title: 'New Matching Project Posted!',
+          message: `A new project matching your skills was posted: "${project.title}" (${project.budget} ETH)`,
+          data: {
+            projectId: project.id,
+            matchScore: rec.matchScore,
+            combinedScore: rec.combinedScore,
+            matchedSkills: rec.matchedSkills,
+          },
+          is_read: false,
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn('Error in notifyMatchedFreelancers', {
+      projectId: project.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export async function getProjectById(projectId: string): Promise<ServiceResult<ProjectWithProposalCount>> {

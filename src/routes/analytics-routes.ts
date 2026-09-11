@@ -9,6 +9,7 @@ import {
   getPlatformMetrics,
   getSkillTrends,
   getMarketplaceLiquidityReport,
+  getFunnelMetrics,
 } from '../services/analytics-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -89,6 +90,18 @@ router.get('/platform', authMiddleware, apiRateLimiter, asyncHandler(async (req:
 router.get('/liquidity', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const result = await getMarketplaceLiquidityReport();
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/funnel', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const result = await getFunnelMetrics();
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
