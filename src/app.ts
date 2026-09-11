@@ -162,9 +162,11 @@ export async function createApp(): Promise<Express> {
   // Root routes (health check, robots.txt, sitemap.xml, reset-password redirect)
   app.use('/', rootRoutes);
 
-  // Prevent caching of API responses
-  app.use('/api', (_req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store');
+  // Cache policy: no-store on mutating requests, allow read-only routes to define caching
+  app.use('/api', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Cache-Control', 'no-store');
+    }
     next();
   });
 

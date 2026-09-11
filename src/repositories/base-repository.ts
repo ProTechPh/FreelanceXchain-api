@@ -188,6 +188,21 @@ export class BaseRepository<T extends BaseEntity> {
    */
   protected async fetchAll(baseQueries: string[] = [], pageSize = 100): Promise<T[]> {
     const allDocs: Record<string, unknown>[] = [];
+    await this.fetchInBatches(baseQueries, pageSize, (batchDocs) => {
+      allDocs.push(...batchDocs);
+    });
+    return mapDocuments<T>(allDocs);
+  }
+
+  /**
+   * Stream documents matching queries in batches using cursor-based pagination.
+   * Enables batch-by-batch processing to prevent memory spikes on large collections.
+   */
+  protected async fetchInBatches(
+    baseQueries: string[] = [],
+    pageSize = 100,
+    callback: (batchDocs: Record<string, unknown>[]) => Promise<boolean | void> | boolean | void
+  ): Promise<void> {
     let lastId: string | undefined;
 
     while (true) {
@@ -197,14 +212,13 @@ export class BaseRepository<T extends BaseEntity> {
       }
 
       const response = await databases.listDocuments(DATABASE_ID, this.collectionId, queries);
-      allDocs.push(...response.documents);
+      const shouldStop = await callback(response.documents);
+      if (shouldStop === false) break;
 
       if (response.documents.length < pageSize) break;
       lastId = response.documents[response.documents.length - 1]?.$id;
       if (!lastId) break;
     }
-
-    return mapDocuments<T>(allDocs);
   }
 
   async queryPaginated(

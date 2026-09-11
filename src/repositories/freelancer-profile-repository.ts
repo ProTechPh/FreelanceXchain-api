@@ -118,6 +118,10 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     super(COLLECTION_ID);
   }
 
+  protected override mapDoc(doc: Record<string, unknown>): FreelancerProfileEntity {
+    return mapProfile(doc);
+  }
+
   async createProfile(profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>): Promise<FreelancerProfileEntity> {
     return normalizeProfileEntity(await this.create(profile));
   }
@@ -134,22 +138,21 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
 
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {
     try {
-      // fetchAll (cursor pagination) instead of Query.limit(1000): AI matching
-      // silently ignored available freelancers past the first 1000.
-      const rawProfiles = await this.fetchAll([
-        Query.equal('availability', 'available'),
-        Query.orderDesc('$createdAt'),
-      ]);
       const seen = new Set<string>();
       const uniqueProfiles: FreelancerProfileEntity[] = [];
-      for (const p of rawProfiles) {
-        const normalized = normalizeProfileEntity(p);
-        const key = normalized.user_id || normalized.id;
-        if (key && !seen.has(key)) {
-          seen.add(key);
-          uniqueProfiles.push(normalized);
+      await this.fetchInBatches([
+        Query.equal('availability', 'available'),
+        Query.orderDesc('$createdAt'),
+      ], 100, (batchDocs) => {
+        for (const doc of batchDocs) {
+          const normalized = mapProfile(doc);
+          const key = normalized.user_id || normalized.id;
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            uniqueProfiles.push(normalized);
+          }
         }
-      }
+      });
       return uniqueProfiles;
     } catch {
       return [];
@@ -160,18 +163,21 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
     const lowerSkillNames = skillNames.map(s => s.toLowerCase());
+    const lowerSkillNameSet = new Set(lowerSkillNames);
 
     try {
-      // fetchAll instead of Query.limit(1000): the in-memory filter below only
-      // saw the newest 1000 profiles, so older freelancers were unreachable by
-      // skill search and total/hasMore were computed from the truncated slice.
-      const allProfiles = (await this.fetchAll([Query.orderDesc('$createdAt')])).map(normalizeProfileEntity);
-      const lowerSkillNameSet = new Set(lowerSkillNames);
-      const filtered = allProfiles.filter(profile =>
-        profile.skills.some(skill => lowerSkillNameSet.has(skill.name.toLowerCase()))
-      );
-      const total = filtered.length;
-      const items = filtered.slice(offset, offset + limit);
+      const matchingProfiles: FreelancerProfileEntity[] = [];
+      await this.fetchInBatches([Query.orderDesc('$createdAt')], 100, (batchDocs) => {
+        for (const doc of batchDocs) {
+          const profile = mapProfile(doc);
+          if (profile.skills.some(skill => lowerSkillNameSet.has(skill.name.toLowerCase()))) {
+            matchingProfiles.push(profile);
+          }
+        }
+      });
+
+      const total = matchingProfiles.length;
+      const items = matchingProfiles.slice(offset, offset + limit);
       return {
         items,
         hasMore: offset + limit < total,
@@ -185,17 +191,21 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   async searchByKeyword(keyword: string, options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
+    const lowerKeyword = keyword.toLowerCase();
 
     try {
-      // fetchAll instead of Query.limit(1000): same truncation class as
-      // searchBySkills — the keyword filter only saw the newest 1000 profiles.
-      const allProfiles = (await this.fetchAll([Query.orderDesc('$createdAt')])).map(normalizeProfileEntity);
-      const lowerKeyword = keyword.toLowerCase();
-      const filtered = allProfiles.filter(profile =>
-        profile.bio.toLowerCase().includes(lowerKeyword)
-      );
-      const total = filtered.length;
-      const items = filtered.slice(offset, offset + limit);
+      const matchingProfiles: FreelancerProfileEntity[] = [];
+      await this.fetchInBatches([Query.orderDesc('$createdAt')], 100, (batchDocs) => {
+        for (const doc of batchDocs) {
+          const profile = mapProfile(doc);
+          if (profile.bio.toLowerCase().includes(lowerKeyword)) {
+            matchingProfiles.push(profile);
+          }
+        }
+      });
+
+      const total = matchingProfiles.length;
+      const items = matchingProfiles.slice(offset, offset + limit);
       return {
         items,
         hasMore: offset + limit < total,
