@@ -254,6 +254,70 @@ export async function createPortalSession(params: {
   }
 }
 
+export type PlanPrice = {
+  interval: BillingInterval;
+  priceId: string;
+  /** Minor units (cents), as Stripe stores it. Null if Stripe was unreachable. */
+  unitAmount: number | null;
+  currency: string | null;
+};
+
+/**
+ * The live Pro prices, read from Stripe rather than hardcoded.
+ *
+ * The pricing page renders these, so an amount changed in the Dashboard is
+ * reflected without a deploy — and the page can never quote a figure the
+ * checkout will not honour.
+ *
+ * Cached because /billing/plans is public and unauthenticated: without it, the
+ * pricing page would hit the Stripe API once per visitor.
+ */
+let cachedPrices: { at: number; value: PlanPrice[] } | null = null;
+const PRICE_CACHE_MS = 5 * 60_000;
+
+export async function getPlanPrices(): Promise<PlanPrice[]> {
+  const configured: Array<{ interval: BillingInterval; priceId: string | undefined }> = [
+    { interval: 'month', priceId: config.stripe.monthlyPriceId },
+    { interval: 'year', priceId: config.stripe.annualPriceId },
+  ];
+  const present = configured.filter(
+    (entry): entry is { interval: BillingInterval; priceId: string } => Boolean(entry.priceId)
+  );
+
+  if (present.length === 0) return [];
+
+  if (cachedPrices && Date.now() - cachedPrices.at < PRICE_CACHE_MS) {
+    return cachedPrices.value;
+  }
+
+  const stripe = getStripeClient();
+  if (!stripe) {
+    // Still report which intervals exist so the UI can offer them; the amount
+    // is simply unknown.
+    return present.map((entry) => ({ ...entry, unitAmount: null, currency: null }));
+  }
+
+  const value = await Promise.all(
+    present.map(async (entry) => {
+      try {
+        const price = await stripe.prices.retrieve(entry.priceId);
+        return {
+          interval: entry.interval,
+          priceId: entry.priceId,
+          unitAmount: price.unit_amount ?? null,
+          currency: price.currency ?? null,
+        };
+      } catch (error) {
+        logger.warn('Could not read Stripe price', { priceId: entry.priceId, error });
+        return { interval: entry.interval, priceId: entry.priceId, unitAmount: null, currency: null };
+      }
+    })
+  );
+
+  cachedPrices = { at: Date.now(), value };
+  return value;
+}
+
 /** The authoritative subscription object, re-fetched from Stripe. */
 export async function fetchSubscription(subscriptionId: string): Promise<Stripe.Subscription | null> {
   const stripe = getStripeClient();

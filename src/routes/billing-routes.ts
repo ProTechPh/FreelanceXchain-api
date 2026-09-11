@@ -4,9 +4,8 @@ import { apiRateLimiter, billingRateLimiter } from '../middleware/rate-limiter.j
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { config } from '../config/env.js';
 import { isStripeConfigured } from '../config/stripe.js';
-import { createCheckoutSession, createPortalSession } from '../services/stripe-billing-service.js';
+import { createCheckoutSession, createPortalSession, getPlanPrices } from '../services/stripe-billing-service.js';
 import { getEntitlement } from '../services/subscription-service.js';
 
 const router = Router();
@@ -49,26 +48,25 @@ function statusForBillingError(code: string): number {
  *         description: Plans retrieved successfully
  */
 router.get('/plans', apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
+  // Amounts come from Stripe, not from constants here, so the page can never
+  // quote a figure checkout will not honour.
+  const prices = await getPlanPrices();
+
   res.status(200).json({
     billingEnabled: isStripeConfigured(),
     plans: [
       {
         id: 'free',
         name: 'Free',
-        price: null,
-        interval: null,
+        prices: [],
         description: 'The full marketplace: projects, proposals, escrow, messaging and reputation.',
       },
       {
         id: 'pro',
         name: 'Pro',
         description: 'Everything in Free, plus AI matching, AI proposals, your analytics and priority matching.',
-        // Two Prices on one Product: monthly and annual are billing variants of
-        // the same plan, not separate tiers.
-        prices: [
-          { interval: 'month', priceId: config.stripe.monthlyPriceId ?? null },
-          { interval: 'year', priceId: config.stripe.annualPriceId ?? null },
-        ].filter((price) => price.priceId !== null),
+        // Monthly and annual are billing variants of one plan, not two tiers.
+        prices,
       },
     ],
   });
