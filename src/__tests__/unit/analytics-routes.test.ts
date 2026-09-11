@@ -12,6 +12,7 @@ const mockGetPlatformMetrics = jest.fn<any>();
 const mockGetAdminAnalytics = jest.fn<any>();
 const mockGetSkillTrends = jest.fn<any>();
 const mockGetMarketplaceLiquidityReport = jest.fn<any>();
+const mockGetFunnelMetrics = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
   getFreelancerAnalytics: mockGetFreelancerAnalytics,
@@ -20,6 +21,7 @@ jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () 
   getAdminAnalytics: mockGetAdminAnalytics,
   getSkillTrends: mockGetSkillTrends,
   getMarketplaceLiquidityReport: mockGetMarketplaceLiquidityReport,
+  getFunnelMetrics: mockGetFunnelMetrics,
 }));
 
 const mockAuthMiddleware = jest.fn((req: any, _res: any, next: any) => {
@@ -167,6 +169,36 @@ describe('Analytics Routes', () => {
         error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
       });
       const res = await request(app).get('/api/analytics/liquidity');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /funnel', () => {
+    it('should return funnel metrics report', async () => {
+      mockGetFunnelMetrics.mockResolvedValue({
+        success: true,
+        data: {
+          stages: [
+            { stage: 'registered', label: 'Registered', count: 10, conversionRate: 100, overallRate: 100, dropoffCount: 0, dropoffRate: 0 },
+            { stage: 'contract_completed', label: 'Completed', count: 4, conversionRate: 40, overallRate: 40, dropoffCount: 6, dropoffRate: 60 },
+          ],
+          totalRegistered: 10,
+          overallConversionRate: 40,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+      const res = await request(app).get('/api/analytics/funnel');
+      expect(res.status).toBe(200);
+      expect(res.body.totalRegistered).toBe(10);
+      expect(res.body.stages.length).toBe(2);
+    });
+
+    it('should return 400 on service failure', async () => {
+      mockGetFunnelMetrics.mockResolvedValue({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to compute funnel' },
+      });
+      const res = await request(app).get('/api/analytics/funnel');
       expect(res.status).toBe(400);
     });
   });

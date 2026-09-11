@@ -1640,6 +1640,7 @@ describe('Analytics Service — branch coverage', () => {
       employerAnalyticsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
       adminAnalyticsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
       marketplaceLiquidityCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
+      funnelMetricsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
     }));
   });
 

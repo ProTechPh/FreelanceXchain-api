@@ -1544,4 +1544,91 @@ describe('Analytics Service - Additional Branch Coverage', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('getFunnelMetrics', () => {
+    it('should compute funnel metrics across all 8 stages', async () => {
+      const { getFunnelMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+      const { funnelMetricsCache } = await import('../../utils/cache.js');
+      funnelMetricsCache.delete('funnel_metrics');
+
+      mockDatabases.listDocuments
+        // allUsers
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'u1', id: 'u1', role: 'employer', name: 'Acme', wallet_address: '0x123', kyc_verified: true },
+            { $id: 'u2', id: 'u2', role: 'freelancer', name: 'Bob', wallet_address: '0x456', kyc_verified: false },
+          ],
+          total: 2,
+        })
+        // freelancerProfiles
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'fp1', user_id: 'u2' },
+          ],
+          total: 1,
+        })
+        // projects
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p1', employer_id: 'u1' },
+          ],
+          total: 1,
+        })
+        // proposals
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'pr1', freelancer_id: 'u2', project_id: 'p1' },
+          ],
+          total: 1,
+        })
+        // contracts
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'c1', employer_id: 'u1', freelancer_id: 'u2', status: 'completed' },
+            { $id: 'c2', employer_id: 'u1', freelancer_id: 'u2', status: 'completed' },
+          ],
+          total: 2,
+        });
+
+      const result = await getFunnelMetrics();
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.totalRegistered).toBe(2);
+        expect(result.data.stages.length).toBe(8);
+        expect(result.data.stages[0]?.stage).toBe('registered');
+        expect(result.data.stages[0]?.count).toBe(2);
+        expect(result.data.stages[7]?.stage).toBe('repeat_users');
+        expect(result.data.overallConversionRate).toBeGreaterThan(0);
+      }
+    });
+
+    it('should return cached funnel metrics on cache hit', async () => {
+      const { getFunnelMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+      const { funnelMetricsCache } = await import('../../utils/cache.js');
+      const cachedData: any = { stages: [], totalRegistered: 10, overallConversionRate: 50, generatedAt: new Date().toISOString() };
+      funnelMetricsCache.set('funnel_metrics', cachedData);
+
+      const result = await getFunnelMetrics();
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.totalRegistered).toBe(10);
+      }
+    });
+
+    it('should handle errors gracefully in getFunnelMetrics', async () => {
+      const { getFunnelMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+      const { funnelMetricsCache } = await import('../../utils/cache.js');
+      funnelMetricsCache.delete('funnel_metrics');
+
+      mockDatabases.listDocuments.mockImplementationOnce(() => {
+        throw new Error('Database error');
+      });
+
+      const result = await getFunnelMetrics();
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    });
+  });
 });
