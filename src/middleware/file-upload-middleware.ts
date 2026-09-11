@@ -135,6 +135,13 @@ const upload = multer({
  */
 function handleMulterUpload(fieldName: string, maxFiles: number): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
+    // Reject upfront if Content-Length header exceeds MAX_TOTAL_SIZE to prevent memory spikes
+    const contentLength = req.headers['content-length'];
+    if (contentLength && parseInt(contentLength, 10) > MAX_TOTAL_SIZE) {
+      sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
+      return;
+    }
+
     upload.array(fieldName, maxFiles)(req, res, (err: unknown) => {
       if (!err) return next();
 

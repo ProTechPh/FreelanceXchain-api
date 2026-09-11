@@ -425,15 +425,25 @@ export async function getWorkHistory(
     const reviewsByContractId = new Map(reviews.map((r) => [r.contract_id, r]));
 
     const uniqueProjectIds = [...new Set(completedContracts.map(c => c.project_id).filter(Boolean))];
-    const projectEntities = await Promise.all(
-      uniqueProjectIds.map(id => projectRepository.getProjectById(id).catch(() => null))
-    );
     const projectTitleMap = new Map<string, string>();
-    for (let i = 0; i < uniqueProjectIds.length; i++) {
-      const pid = uniqueProjectIds[i]!;
-      const proj = projectEntities[i];
-      if (proj?.title) {
-        projectTitleMap.set(pid, proj.title);
+
+    try {
+      const batchedProjects = await projectRepository.getProjectsByIds(uniqueProjectIds);
+      for (const proj of batchedProjects) {
+        if (proj?.id && proj.title) {
+          projectTitleMap.set(proj.id, proj.title);
+        }
+      }
+    } catch {
+      const projectEntities = await Promise.all(
+        uniqueProjectIds.map(id => projectRepository.getProjectById(id).catch(() => null))
+      );
+      for (let i = 0; i < uniqueProjectIds.length; i++) {
+        const pid = uniqueProjectIds[i]!;
+        const proj = projectEntities[i];
+        if (proj?.title) {
+          projectTitleMap.set(pid, proj.title);
+        }
       }
     }
 

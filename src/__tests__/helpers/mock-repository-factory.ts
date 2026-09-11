@@ -149,6 +149,7 @@ export function createMockProjectRepository(store: Map<string, any>) {
     createProject: base.create,
     getProjectById: base.findById,
     findProjectById: base.findById,
+    getProjectsByIds: jest.fn(async (ids: string[]) => ids.map(id => store.get(id)).filter(Boolean)),
     updateProject: base.update,
     getProjectsByEmployer: jest.fn(async (employerId: string) => {
       const items = Array.from(store.values()).filter(p => p.employer_id === employerId);

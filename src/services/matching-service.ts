@@ -244,8 +244,27 @@ export async function getFreelancerRecommendations(
   const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
 
   // 1. Fast preliminary scoring
+  // Fast in-memory candidate pre-filtering to prevent N+1 queries when hundreds of profiles exist
+  const poolSize = Math.max(limit * 3, 20);
+  let evaluatedEntities = freelancerEntities;
+
+  if (freelancerEntities.length > poolSize) {
+    const quickScored = freelancerEntities.map((freelancerEntity) => {
+      const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
+      const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
+      const maxPossibleScore = Math.round(
+        keywordResult.matchScore * SKILL_MATCH_WEIGHT +
+        100 * REPUTATION_WEIGHT
+      );
+      return { freelancerEntity, maxPossibleScore };
+    });
+
+    quickScored.sort((a, b) => b.maxPossibleScore - a.maxPossibleScore);
+    evaluatedEntities = quickScored.slice(0, poolSize).map((s) => s.freelancerEntity);
+  }
+
   const candidates = await Promise.all(
-    freelancerEntities.map((freelancerEntity) => scoreFreelancerCandidate(freelancerEntity, projectRequirements))
+    evaluatedEntities.map((freelancerEntity) => scoreFreelancerCandidate(freelancerEntity, projectRequirements))
   );
 
   candidates.sort((a, b) => b.combinedScore - a.combinedScore);
