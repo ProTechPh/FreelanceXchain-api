@@ -68,9 +68,9 @@ LABEL org.opencontainers.image.title="FreelanceXchain API" \
       org.opencontainers.image.version=$APP_VERSION \
       org.opencontainers.image.revision=$APP_REVISION
 
-# Run container as non-root user (CIS Docker Benchmark 4.1, CWE-250)
+# Run container as non-root user (CIS Docker Benchmark 4.1, CWE-250, Hadolint DL3066)
 RUN chown -R node:node /app
-USER node
+USER 1000:1000
 
 EXPOSE 7860
 
