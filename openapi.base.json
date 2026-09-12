@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Blockchain Freelance Marketplace API",
-    "version": "1.0.44",
+    "version": "1.0.45",
     "description": "A decentralized freelance marketplace with AI skill matching and blockchain payments",
     "contact": {
       "name": "API Support"
@@ -1747,7 +1747,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Skill document IDs, skill names, or a mix \u2014 accepted for both project and freelancer saved searches (case-insensitive)."
+                "description": "Skill document IDs, skill names, or a mix — accepted for both project and freelancer saved searches (case-insensitive)."
               }
             },
             "additionalProperties": true
@@ -1797,7 +1797,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Skill document IDs, skill names, or a mix \u2014 accepted for both project and freelancer saved searches (case-insensitive)."
+                "description": "Skill document IDs, skill names, or a mix — accepted for both project and freelancer saved searches (case-insensitive)."
               }
             },
             "additionalProperties": true
@@ -4449,11 +4449,11 @@
           "401": {
             "description": "Unauthorized - Invalid or missing token"
           },
-          "404": {
-            "description": "Freelancer profile not found"
-          },
           "403": {
             "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
+          "404": {
+            "description": "Freelancer profile not found"
           },
           "503": {
             "description": "Subscription status could not be verified"
@@ -4516,11 +4516,11 @@
           "401": {
             "description": "Unauthorized - Invalid or missing token"
           },
-          "404": {
-            "description": "Project not found"
-          },
           "403": {
             "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
+          "404": {
+            "description": "Project not found"
           },
           "503": {
             "description": "Subscription status could not be verified"
@@ -4605,11 +4605,11 @@
           "401": {
             "description": "Unauthorized - Invalid or missing token"
           },
-          "404": {
-            "description": "Freelancer profile not found"
-          },
           "403": {
             "description": "Pro subscription required (error code PLAN_UPGRADE_REQUIRED)"
+          },
+          "404": {
+            "description": "Freelancer profile not found"
           },
           "503": {
             "description": "Subscription status could not be verified"
