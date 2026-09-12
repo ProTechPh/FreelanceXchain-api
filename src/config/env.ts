@@ -128,6 +128,7 @@ export const config = {
     arbiterPrivateKey: getEnvVarOptional('PLATFORM_ARBITER_PRIVATE_KEY'),
   },
   redis: {
+    url: getEnvVarOptional('REDIS_URL'),
     host: getEnvVar('REDIS_HOST', 'localhost'),
     port: getEnvVarNumber('REDIS_PORT', 6379),
     password: getEnvVarOptional('REDIS_PASSWORD'),
