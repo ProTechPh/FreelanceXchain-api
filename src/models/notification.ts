@@ -20,7 +20,8 @@ export type NotificationType =
   | 'rush_upgrade_counter_offered'
   | 'message'
   | 'saved_search_match'
-  | 'project_match';
+  | 'project_match'
+  | 'subscription_payment_failed';
 
 export type Notification = {
   id: string;

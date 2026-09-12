@@ -31,6 +31,7 @@ describe('Collections Config', () => {
         'SAVED_SEARCHES',
         'EMAILS',
         'EMAIL_DELIVERY_FAILURES',
+        'SUBSCRIPTIONS',
       ];
       expect(Object.keys(COLLECTIONS).sort()).toEqual(expectedKeys.sort());
     });

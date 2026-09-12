@@ -43,6 +43,17 @@ function getBaseUrl(): string {
   return `http://localhost:${port}`;
 }
 
+function getDisableRateLimiter(): boolean {
+  const disabled = getEnvVarBoolean('DISABLE_RATE_LIMITER', false);
+  const nodeEnv = process.env['NODE_ENV'];
+  if (disabled && nodeEnv === 'production') {
+    // In production, rate limiting MUST NEVER be disabled regardless of environment variables
+    console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is prohibited in production and will be ignored.');
+    return false;
+  }
+  return disabled;
+}
+
 export const config = {
   server: {
     port: getEnvVarNumber('PORT', 3000),
@@ -52,7 +63,7 @@ export const config = {
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
     logLevel: getEnvVar('LOG_LEVEL', 'error'),
     verboseLogs: getEnvVarBoolean('VERBOSE_LOGS', false),
-    disableRateLimiter: getEnvVarBoolean('DISABLE_RATE_LIMITER', false),
+    disableRateLimiter: getDisableRateLimiter(),
     // Number of trusted reverse-proxy hops. Keeps req.ip (used by rate limiters and
     // audit logging) pointing at the real client instead of the proxy when deployed
     // behind nginx/Cloudflare/HF Spaces. Set 0 to disable and always use the socket
@@ -122,6 +133,28 @@ export const config = {
     password: getEnvVarOptional('REDIS_PASSWORD'),
     tls: getEnvVarBoolean('REDIS_TLS', false),
   },
+  stripe: {
+    // Stripe billing for the single "Pro" plan (the same product for freelancers
+    // and employers). The secret and webhook signing keys are read lazily at
+    // request time (getStripeSecretKey/getStripeWebhookSecret below) so the app
+    // boots — and every free feature keeps working — with billing unconfigured.
+    //
+    // One Product ("Pro") with up to two Prices on it: monthly and annual are
+    // billing variants of the same plan, not separate tiers.
+    monthlyPriceId: getEnvVarOptional('STRIPE_MONTHLY_PRICE_ID'),
+    annualPriceId: getEnvVarOptional('STRIPE_ANNUAL_PRICE_ID'),
+    // Client-side key. Not used by the hosted Checkout redirect this
+    // integration uses, but exposed here for a future Payment Element.
+    publishableKey: getEnvVarOptional('STRIPE_PUBLISHABLE_KEY'),
+    // Stripe API host. Only worth overriding to point at a proxy or a mock;
+    // the SDK talks to api.stripe.com by default.
+    baseUrl: getEnvVar('STRIPE_BASE_URL', 'https://api.stripe.com'),
+    // Dev-only escape hatch: when Stripe is unconfigured, treat every
+    // authenticated user as Pro so gated features are reachable without a
+    // Stripe account. Fatal at boot when NODE_ENV=production — a dev escape
+    // hatch that can reach production is not an escape hatch.
+    devGrantPro: getEnvVarBoolean('BILLING_DEV_GRANT_PRO', false),
+  },
 } as const;
 
 export type Config = typeof config;
@@ -153,4 +186,21 @@ export function getBlockchainWebhookSecret(): string | undefined {
 
 export function getEmailWebhookSecret(): string | undefined {
   return getEnvVarOptional('EMAIL_WEBHOOK_SECRET');
+}
+
+/**
+ * Stripe server-side key (prefer a restricted `rk_` key over a full `sk_` one).
+ *
+ * Read at call time so the client is only constructed when billing is actually
+ * configured, and so tests can swap credentials between cases without
+ * reloading the module. STRIPE_SECRET_KEY is accepted as an alias for
+ * STRIPE_API_KEY; the canonical name wins when both are set.
+ */
+export function getStripeSecretKey(): string | undefined {
+  return getEnvVarOptional('STRIPE_API_KEY') ?? getEnvVarOptional('STRIPE_SECRET_KEY');
+}
+
+/** Signing secret (whsec_...) for POST /api/webhooks/stripe. */
+export function getStripeWebhookSecret(): string | undefined {
+  return getEnvVarOptional('STRIPE_WEBHOOK_SECRET');
 }

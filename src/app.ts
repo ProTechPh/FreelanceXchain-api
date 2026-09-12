@@ -17,7 +17,9 @@ import {
   validateCorsOrigin
 } from './middleware/security-middleware.js';
 import { csrfProtection } from './middleware/csrf-middleware.js';
+import { assertBillingConfigSafe } from './services/subscription-service.js';
 import { config } from './config/env.js';
+import { logger } from './config/logger.js';
 import routes from './routes/index.js';
 import rootRoutes from './routes/root-routes.js';
 
@@ -81,7 +83,7 @@ function configureSwaggerDocs(app: Express, openApiSpec: Record<string, unknown>
     (_req: Request, res: Response, next: NextFunction) => {
       res.setHeader(
         'Content-Security-Policy',
-        "default-src 'self';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline';img-src 'self' data: https:;font-src 'self' https:;connect-src 'self';object-src 'none';frame-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'none'"
+        "default-src 'self';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline';img-src 'self' data: https://cdn.jsdelivr.net;font-src 'self' data: https://cdn.jsdelivr.net;connect-src 'self';object-src 'none';frame-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'none'"
       );
       res.setHeader('X-Content-Type-Options', 'nosniff');
       next();
@@ -103,6 +105,9 @@ function configureSwaggerDocs(app: Express, openApiSpec: Record<string, unknown>
 }
 
 export async function createApp(): Promise<Express> {
+  // Refuse to boot a production server that would hand Pro to every user.
+  assertBillingConfigSafe();
+
   const app = express();
 
   // Trust the configured number of reverse-proxy hops so req.ip reflects the real
@@ -155,6 +160,9 @@ export async function createApp(): Promise<Express> {
 
   const apiDocsEnabled = config.server.enableApiDocs;
   if (apiDocsEnabled) {
+    if (config.server.nodeEnv === 'production') {
+      logger.warn('[SECURITY WARNING] Swagger API documentation is active in production. Ensure sensitive schema details are not unintentionally exposed.');
+    }
     const openApiSpec = await loadOpenApiSpec();
     configureSwaggerDocs(app, openApiSpec);
   }

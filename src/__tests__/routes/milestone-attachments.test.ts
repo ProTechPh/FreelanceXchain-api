@@ -40,6 +40,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   sensitiveRateLimiter: (req: any, res: any, next: any) => next(),
   withdrawalRateLimiter: (req: any, res: any, next: any) => next(),
   mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  billingRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock file upload middleware - use multer to handle actual file uploads

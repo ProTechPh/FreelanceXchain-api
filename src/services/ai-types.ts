@@ -76,6 +76,8 @@ export type ProjectRecommendation = {
   matchedSkills: string[];
   missingSkills: string[];
   reasoning: string;
+  /** True when a Pro employer's project received the priority-matching boost. */
+  priority?: boolean;
 };
 
 export type FreelancerRecommendation = {
@@ -87,6 +89,8 @@ export type FreelancerRecommendation = {
   combinedScore: number;
   matchedSkills: string[];
   reasoning: string;
+  /** True when this freelancer received the Pro priority-matching boost. */
+  isPro?: boolean;
 };
 
 // Skill gap analysis types

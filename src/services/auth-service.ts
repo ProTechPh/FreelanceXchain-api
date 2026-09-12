@@ -835,6 +835,9 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
       createdAt: user.created_at,
       authProvider,
       emailVerification,
+      // Admins operate the platform and are never billed for it.
+      plan: 'pro',
+      planStatus: 'active',
     };
   }
 
@@ -844,6 +847,16 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
   const displayName: string = (kycVerification?.status === 'approved' || kycVerification?.status === 'completed') && kycFullName
     ? kycFullName
     : (user.name || user.email.split('@')[0] || 'User');
+
+  // Entitlement travels with the user object so the frontend can gate a widget
+  // synchronously at render instead of waterfalling a second request. A read
+  // failure degrades to 'free' rather than failing /auth/me outright — the
+  // server-side gate is the real enforcement point, this is only the hint the
+  // UI paints from.
+  const { getEntitlement } = await import('./subscription-service.js');
+  const entitlement = await getEntitlement(userId);
+  const plan = entitlement.success ? entitlement.data.plan : 'free';
+  const planStatus = entitlement.success ? entitlement.data.status : 'none';
 
   return {
     id: user.id,
@@ -855,6 +868,8 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     createdAt: user.created_at,
     authProvider,
     emailVerification,
+    plan,
+    planStatus,
   };
 }
 

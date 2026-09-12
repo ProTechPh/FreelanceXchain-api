@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { requirePro } from '../middleware/subscription-middleware.js';
 import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -150,7 +151,7 @@ const router = Router();
  *       404:
  *         description: Freelancer profile not found
  */
-router.get('/projects', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, apiRateLimiter, requirePro, asyncHandler(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = getRequestId(req);
   const userId = authReq.user.userId;
@@ -220,7 +221,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, asyncHandler(async (req:
  *       404:
  *         description: Project not found
  */
-router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['projectId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, requirePro, validateAppwriteDocumentId(['projectId']), asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const projectId = req.params['projectId'];
 
@@ -283,7 +284,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateAp
  *       401:
  *         description: Unauthorized - Invalid or missing token
  */
-router.post('/extract-skills', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/extract-skills', authMiddleware, apiRateLimiter, requirePro, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const { text } = req.body as { text?: string };
 
@@ -324,7 +325,7 @@ router.post('/extract-skills', authMiddleware, apiRateLimiter, asyncHandler(asyn
  *       404:
  *         description: Freelancer profile not found
  */
-router.get('/skill-gaps', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/skill-gaps', authMiddleware, apiRateLimiter, requirePro, asyncHandler(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = getRequestId(req);
   const userId = authReq.user.userId;
@@ -368,7 +369,7 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, asyncHandler(async (re
  *       404:
  *         description: Project not found
  */
-router.post('/generate-proposal/:projectId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['projectId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/generate-proposal/:projectId', authMiddleware, apiRateLimiter, requirePro, validateAppwriteDocumentId(['projectId']), asyncHandler(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = getRequestId(req);
   const userId = authReq.user.userId;

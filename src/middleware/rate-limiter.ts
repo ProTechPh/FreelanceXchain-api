@@ -44,7 +44,10 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
   const { windowMs, maxRequests, message, failOpen = true } = rateLimitConfig;
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    if (config.server.nodeEnv === 'test' || config.server.disableRateLimiter) {
+    if (
+      config.server.nodeEnv === 'test' ||
+      (config.server.disableRateLimiter && config.server.nodeEnv === 'development')
+    ) {
       next();
       return;
     }
@@ -125,6 +128,17 @@ export const sensitiveRateLimiter = rateLimiter('sensitive', {
   windowMs: 60 * 60 * 1000,
   maxRequests: 5,
   message: 'Too many attempts for this sensitive operation',
+  failOpen: false,
+});
+
+// Fail closed: these endpoints create billable objects in Stripe, so abuse
+// protection must survive a Redis outage. The hourly budget is generous enough
+// that a user re-opening the billing portal a few times never hits it — which
+// is why sensitiveRateLimiter (5/hour) is deliberately not reused here.
+export const billingRateLimiter = rateLimiter('billing', {
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 20,
+  message: 'Too many billing requests, please try again later',
   failOpen: false,
 });
 

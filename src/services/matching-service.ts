@@ -31,6 +31,7 @@ import { COLLECTIONS } from '../config/collections.js';
 import { safeJsonParse } from '../utils/index.js';
 import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
+import { getProUserIdSet } from './subscription-service.js';
 import { redis } from '../config/redis.js';
 import { LRUCache } from '../utils/cache.js';
 
@@ -41,6 +42,17 @@ const DEFAULT_RECOMMENDATION_LIMIT = 10;
 const REPUTATION_WEIGHT = 0.3;
 const SKILL_MATCH_WEIGHT = 0.7;
 const MATCHING_CACHE_TTL_SECONDS = 300; // 5 minutes
+/**
+ * Priority matching: the Pro perk, expressed on the same 0-100 scale as the
+ * match scores. Deliberately small — a Pro freelancer outranks an equally good
+ * Free one and edges past a marginally better one, but cannot displace a
+ * materially better match. Selling ranking, not outcomes.
+ *
+ * NOTE: results are cached for MATCHING_CACHE_TTL_SECONDS without the plan in
+ * the cache key, so a freshly-upgraded user can wait up to that long for the
+ * boost to appear. Accepted over key-scanning invalidation.
+ */
+const PRO_RANKING_BOOST = 5;
 const SKILL_GAPS_CACHE_TTL_SECONDS = 600; // 10 minutes
 const EXTRACT_SKILLS_CACHE_TTL_SECONDS = 3600; // 1 hour
 
@@ -137,7 +149,18 @@ export async function getProjectRecommendations(
     };
   });
 
-  preMatched.sort((a, b) => b.keywordResult.matchScore - a.keywordResult.matchScore);
+  // Priority matching: a Pro employer's project sorts higher. The boost is
+  // applied to the SORT KEY only — matchScore is shown to the freelancer, so
+  // inflating it would misreport how well they actually fit the project.
+  const proEmployerIds = await getProUserIdSet(
+    preMatched.map(({ projectEntity }) => projectEntity.employer_id)
+  );
+
+  const rankOf = (entry: typeof preMatched[number]): number =>
+    entry.keywordResult.matchScore +
+    (proEmployerIds.has(entry.projectEntity.employer_id) ? PRO_RANKING_BOOST : 0);
+
+  preMatched.sort((a, b) => rankOf(b) - rankOf(a));
 
   // 2. Take top items up to limit
   const topCandidates = preMatched.slice(0, limit);
@@ -169,6 +192,7 @@ export async function getProjectRecommendations(
         matchedSkills: matchResult.matchedSkills,
         missingSkills: matchResult.missingSkills,
         reasoning: matchResult.reasoning,
+        priority: proEmployerIds.has(projectEntity.employer_id),
       };
     })
   );
@@ -179,7 +203,8 @@ export async function getProjectRecommendations(
 
 async function scoreFreelancerCandidate(
   freelancerEntity: (typeof freelancerProfileRepository extends { getAvailableProfiles: () => Promise<(infer T)[]> } ? T : any),
-  projectRequirements: SkillInfo[]
+  projectRequirements: SkillInfo[],
+  isProFreelancer = false
 ) {
   const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
   const keywordResult = keywordMatchSkills(freelancerSkills, projectRequirements);
@@ -202,10 +227,10 @@ async function scoreFreelancerCandidate(
     // default
   }
 
-  const combinedScore = Math.round(
+  const combinedScore = Math.min(100, Math.round(
     keywordResult.matchScore * SKILL_MATCH_WEIGHT +
     rankingReputationScore * REPUTATION_WEIGHT
-  );
+  ) + (isProFreelancer ? PRO_RANKING_BOOST : 0));
 
   return {
     freelancerEntity,
@@ -216,6 +241,65 @@ async function scoreFreelancerCandidate(
     totalRatings,
     rankingReputationScore,
     combinedScore,
+    isProFreelancer,
+  };
+}
+
+/**
+ * Turn one scored candidate into a recommendation, optionally refining the
+ * skill match with the AI model. Extracted from getFreelancerRecommendations so
+ * that function stays within the repo's length limit.
+ */
+async function buildFreelancerRecommendation(
+  candidate: Awaited<ReturnType<typeof scoreFreelancerCandidate>>,
+  projectRequirements: SkillInfo[],
+  index: number
+): Promise<FreelancerRecommendation> {
+  const {
+    freelancerEntity,
+    freelancerSkills,
+    keywordResult,
+    reputationScore,
+    averageRating,
+    totalRatings,
+    rankingReputationScore,
+    isProFreelancer,
+  } = candidate;
+
+  let matchResult = keywordResult;
+
+  if (index < 3 && isAIAvailable()) {
+    try {
+      const aiResult = await analyzeSkillMatch({
+        freelancerSkills,
+        projectRequirements,
+        reputationScore: rankingReputationScore,
+      });
+      if (!isAIError(aiResult)) {
+        matchResult = aiResult;
+      }
+    } catch {
+      // fallback to keyword
+    }
+  }
+
+  // The Pro boost is re-applied here on purpose: this recomputes the score from
+  // scratch after AI enhancement and would otherwise silently drop it.
+  const finalCombinedScore = Math.min(100, Math.round(
+    matchResult.matchScore * SKILL_MATCH_WEIGHT +
+    rankingReputationScore * REPUTATION_WEIGHT
+  ) + (isProFreelancer ? PRO_RANKING_BOOST : 0));
+
+  return {
+    freelancerId: freelancerEntity.user_id,
+    matchScore: matchResult.matchScore,
+    reputationScore,
+    averageRating,
+    totalRatings,
+    combinedScore: finalCombinedScore,
+    matchedSkills: matchResult.matchedSkills,
+    reasoning: matchResult.reasoning,
+    isPro: isProFreelancer,
   };
 }
 
@@ -263,8 +347,20 @@ export async function getFreelancerRecommendations(
     evaluatedEntities = quickScored.slice(0, poolSize).map((s) => s.freelancerEntity);
   }
 
+  // Priority matching: resolved over the already-narrowed pool, so this is a
+  // bounded batch read rather than a scan of every profile.
+  const proFreelancerIds = await getProUserIdSet(
+    evaluatedEntities.map((freelancerEntity) => freelancerEntity.user_id)
+  );
+
   const candidates = await Promise.all(
-    evaluatedEntities.map((freelancerEntity) => scoreFreelancerCandidate(freelancerEntity, projectRequirements))
+    evaluatedEntities.map((freelancerEntity) =>
+      scoreFreelancerCandidate(
+        freelancerEntity,
+        projectRequirements,
+        proFreelancerIds.has(freelancerEntity.user_id)
+      )
+    )
   );
 
   candidates.sort((a, b) => b.combinedScore - a.combinedScore);
@@ -272,40 +368,9 @@ export async function getFreelancerRecommendations(
 
   // 2. Enhance top candidates only (capped at top 3 for optimal performance)
   const recommendations: FreelancerRecommendation[] = await Promise.all(
-    topCandidates.map(async ({ freelancerEntity, freelancerSkills, keywordResult, reputationScore, averageRating, totalRatings, rankingReputationScore }, index) => {
-      let matchResult = keywordResult;
-
-      if (index < 3 && isAIAvailable()) {
-        try {
-          const aiResult = await analyzeSkillMatch({
-            freelancerSkills,
-            projectRequirements,
-            reputationScore: rankingReputationScore,
-          });
-          if (!isAIError(aiResult)) {
-            matchResult = aiResult;
-          }
-        } catch {
-          // fallback to keyword
-        }
-      }
-
-      const finalCombinedScore = Math.round(
-        matchResult.matchScore * SKILL_MATCH_WEIGHT +
-        rankingReputationScore * REPUTATION_WEIGHT
-      );
-
-      return {
-        freelancerId: freelancerEntity.user_id,
-        matchScore: matchResult.matchScore,
-        reputationScore,
-        averageRating,
-        totalRatings,
-        combinedScore: finalCombinedScore,
-        matchedSkills: matchResult.matchedSkills,
-        reasoning: matchResult.reasoning,
-      };
-    })
+    topCandidates.map((candidate, index) =>
+      buildFreelancerRecommendation(candidate, projectRequirements, index)
+    )
   );
 
   recommendations.sort((a, b) => b.combinedScore - a.combinedScore);

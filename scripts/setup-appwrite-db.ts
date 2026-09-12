@@ -764,6 +764,37 @@ const COLLECTIONS = [
       { key: 'contract_id', type: DatabasesIndexType.Key, attributes: ['contract_id'] },
     ],
   },
+  {
+    id: 'subscriptions',
+    name: 'Subscriptions',
+    // Holds Stripe customer/subscription ids, so it must NOT inherit the
+    // world-readable default applied to every other collection below. See
+    // RESTRICTED_COLLECTIONS in createCollection().
+    attributes: [
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      { name: 'stripe_customer_id', type: 'string', size: 64, required: false },
+      { name: 'stripe_subscription_id', type: 'string', size: 64, required: false },
+      { name: 'stripe_price_id', type: 'string', size: 64, required: false },
+      // Entitlement tier, denormalized from the price id: 'free' | 'pro'.
+      { name: 'plan', type: 'string', size: 20, required: false, default: 'free' },
+      // Mirrors Stripe's subscription.status, plus 'none' for a user who has
+      // never subscribed.
+      { name: 'status', type: 'string', size: 24, required: false, default: 'none' },
+      { name: 'current_period_end', type: 'string', size: 30, required: false },
+      { name: 'cancel_at_period_end', type: 'boolean', required: false, default: false },
+      // Out-of-order guard: Stripe event.created (unix seconds) of the newest
+      // event already applied. Older events are skipped, not applied.
+      { name: 'last_event_created', type: 'integer', required: false, default: 0 },
+      { name: 'last_event_id', type: 'string', size: 64, required: false },
+      { name: 'last_event_type', type: 'string', size: 64, required: false },
+    ],
+    indexes: [
+      { key: 'user_id', type: DatabasesIndexType.Unique, attributes: ['user_id'] },
+      { key: 'stripe_customer_id', type: DatabasesIndexType.Key, attributes: ['stripe_customer_id'] },
+      { key: 'stripe_subscription_id', type: DatabasesIndexType.Key, attributes: ['stripe_subscription_id'] },
+      { key: 'status_currentPeriodEnd', type: DatabasesIndexType.Key, attributes: ['status', 'current_period_end'], orders: [OrderBy.Asc, OrderBy.Asc] },
+    ],
+  },
 ];
 
 // ─── Index Definitions ───────────────────────────────────────────────────────
@@ -834,24 +865,34 @@ async function ensureDatabase(): Promise<void> {
   }
 }
 
+/**
+ * Collections that must never be readable by `Role.any()`.
+ *
+ * The default permissions below are world-readable, which is wrong for billing
+ * records: they carry Stripe customer and subscription ids. These collections
+ * are reached only through the server's admin API key, so they get an empty
+ * permission set — no client-SDK role can touch them at all.
+ */
+const RESTRICTED_COLLECTIONS = new Set(['subscriptions']);
+
 async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
   try {
     await db.getCollection(DATABASE_ID, colDef.id);
     console.log(`  ✓ Collection "${colDef.name}" already exists`);
   } catch {
     console.log(`  Creating collection "${colDef.name}"...`);
-    await db.createCollection(
-      DATABASE_ID,
-      colDef.id,
-      colDef.name,
-      [
+    const permissions = RESTRICTED_COLLECTIONS.has(colDef.id)
+      ? []
+      : [
         Permission.read(Role.any()),
         Permission.create(Role.users()),
         Permission.update(Role.users()),
         Permission.delete(Role.users()),
-      ]
+      ];
+    await db.createCollection(DATABASE_ID, colDef.id, colDef.name, permissions);
+    console.log(
+      `  ✓ Collection "${colDef.name}" created${RESTRICTED_COLLECTIONS.has(colDef.id) ? ' (server-only)' : ''}`
     );
-    console.log(`  ✓ Collection "${colDef.name}" created`);
   }
 }
 

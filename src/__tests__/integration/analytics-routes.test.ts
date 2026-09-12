@@ -40,7 +40,8 @@ describe('Analytics Routes Integration Tests', () => {
         .get('/api/analytics/freelancer')
         .set('Authorization', `Bearer ${freelancerToken}`);
 
-      expect([200, 401]).toContain(response.status);
+      // 403 = PLAN_UPGRADE_REQUIRED: personal analytics are Pro-only.
+      expect([200, 401, 403]).toContain(response.status);
       
       if (response.status === 200) {
         expect(response.body).toHaveProperty('totalEarnings');
@@ -53,7 +54,7 @@ describe('Analytics Routes Integration Tests', () => {
         .get('/api/analytics/freelancer?startDate=2024-01-01&endDate=2024-12-31')
         .set('Authorization', `Bearer ${freelancerToken}`);
 
-      expect([200, 401]).toContain(response.status);
+      expect([200, 401, 403]).toContain(response.status);
     });
 
     it('should require authentication', async () => {
@@ -70,7 +71,7 @@ describe('Analytics Routes Integration Tests', () => {
         .get('/api/analytics/employer')
         .set('Authorization', `Bearer ${employerToken}`);
 
-      expect([200, 401]).toContain(response.status);
+      expect([200, 401, 403]).toContain(response.status);
       
       if (response.status === 200) {
         expect(response.body).toHaveProperty('totalSpent');
@@ -83,7 +84,7 @@ describe('Analytics Routes Integration Tests', () => {
         .get('/api/analytics/employer?startDate=2024-01-01&endDate=2024-12-31')
         .set('Authorization', `Bearer ${employerToken}`);
 
-      expect([200, 401]).toContain(response.status);
+      expect([200, 401, 403]).toContain(response.status);
     });
 
     it('should require authentication', async () => {
@@ -100,7 +101,7 @@ describe('Analytics Routes Integration Tests', () => {
         .get('/api/analytics/skill-trends')
         .set('Authorization', `Bearer ${freelancerToken}`);
 
-      expect([200, 401, 500]).toContain(response.status);
+      expect([200, 401, 403, 500]).toContain(response.status);
       
       if (response.status === 200) {
         expect(Array.isArray(response.body)).toBe(true);
