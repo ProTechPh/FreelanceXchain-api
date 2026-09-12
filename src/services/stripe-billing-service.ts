@@ -177,6 +177,8 @@ export async function createCheckoutSession(params: {
   const customerResult = await ensureStripeCustomer(params.userId);
   if (!customerResult.success) return customerResult;
 
+  const trialDays = config.stripe.trialPeriodDays;
+
   // Derived from STRIPE_BASE_URL (falling back to FRONTEND_URL) rather than
   // configured per-URL: three more env vars to keep in sync bought nothing.
   const successUrl = resolveRedirectUrl(
@@ -197,7 +199,12 @@ export async function createCheckoutSession(params: {
         // client_reference_id rides on the session, metadata on the subscription.
         client_reference_id: params.userId,
         line_items: [{ price: priceId, quantity: 1 }],
-        subscription_data: { metadata: { user_id: params.userId } },
+        subscription_data: {
+          metadata: { user_id: params.userId },
+          // Only sent when a trial is configured: passing trial_period_days: 0
+          // is rejected by Stripe.
+          ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
+        },
         metadata: { user_id: params.userId, billing_interval: interval },
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -252,6 +259,11 @@ export async function createPortalSession(params: {
     logger.error('Failed to create Stripe portal session', error as Error, { userId: params.userId });
     return mapStripeError(error, 'portal session creation');
   }
+}
+
+/** Days of free trial applied at checkout, or 0 when there is none. */
+export function getTrialPeriodDays(): number {
+  return config.stripe.trialPeriodDays;
 }
 
 export type PlanPrice = {

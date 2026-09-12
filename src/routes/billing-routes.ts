@@ -5,7 +5,7 @@ import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { isStripeConfigured } from '../config/stripe.js';
-import { createCheckoutSession, createPortalSession, getPlanPrices } from '../services/stripe-billing-service.js';
+import { createCheckoutSession, createPortalSession, getPlanPrices, getTrialPeriodDays } from '../services/stripe-billing-service.js';
 import { getEntitlement } from '../services/subscription-service.js';
 
 const router = Router();
@@ -54,6 +54,9 @@ router.get('/plans', apiRateLimiter, asyncHandler(async (_req: Request, res: Res
 
   res.status(200).json({
     billingEnabled: isStripeConfigured(),
+    // Surfaced so the pricing page advertises the trial that checkout will
+    // actually apply, rather than a figure typed into the markup.
+    trialPeriodDays: getTrialPeriodDays(),
     plans: [
       {
         id: 'free',

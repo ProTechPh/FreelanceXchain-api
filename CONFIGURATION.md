@@ -604,6 +604,7 @@ STRIPE_PUBLISHABLE_KEY=pk_test_...       # Client key (safe to expose)
 STRIPE_WEBHOOK_SECRET=whsec_...          # Signing secret for POST /api/webhooks/stripe
 STRIPE_MONTHLY_PRICE_ID=price_...        # Monthly Price on the Pro Product
 STRIPE_ANNUAL_PRICE_ID=price_...         # Annual Price on the SAME Product (optional)
+STRIPE_TRIAL_PERIOD_DAYS=7               # Free trial days at checkout (0 = none)
 BILLING_DEV_GRANT_PRO=false              # Dev-only; fatal at boot in production
 ```
 
@@ -621,7 +622,8 @@ separate redirect-URL variables to keep in sync.
 Configure the webhook endpoint at `POST /api/webhooks/stripe` with these events:
 `checkout.session.completed`, `customer.subscription.created`,
 `customer.subscription.updated`, `customer.subscription.deleted`,
-`invoice.paid`, `invoice.payment_failed`. Locally, `stripe listen --forward-to
+`invoice.paid`, `invoice.payment_failed`, and
+`customer.subscription.trial_will_end` if you run a trial. Locally, `stripe listen --forward-to
 localhost:3001/api/webhooks/stripe` forwards them and prints the signing secret.
 
 `BILLING_DEV_GRANT_PRO=true` treats every authenticated user as Pro, but only

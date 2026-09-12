@@ -11,6 +11,7 @@ const mockConfig = {
     annualPriceId: 'price_y',
     publishableKey: undefined,
     baseUrl: 'https://api.stripe.com',
+    trialPeriodDays: 0,
     devGrantPro: false,
   },
 };
@@ -63,6 +64,7 @@ describe('stripe-billing-service', () => {
     stripeClient = stripeApi;
     mockConfig.stripe.monthlyPriceId = 'price_m';
     mockConfig.stripe.annualPriceId = 'price_y';
+    mockConfig.stripe.trialPeriodDays = 0;
     svc.resetPlanPricesCache();
     mockGetByUserId.mockResolvedValue(null);
     mockGetUserById.mockResolvedValue({ id: 'u1', email: 'u1@example.com', name: 'User One' });
@@ -181,6 +183,44 @@ describe('stripe-billing-service', () => {
       expect(params.line_items[0].price).toBe('price_y');
     });
 
+    it('sends no trial when none is configured', async () => {
+      // Stripe rejects trial_period_days: 0, so the field must be absent.
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data).not.toHaveProperty('trial_period_days');
+    });
+
+    it('applies the configured trial at checkout', async () => {
+      // A trial set on the Price in the Dashboard is NOT inherited by the API
+      // (verified against Stripe), so passing it here is what actually grants it.
+      mockConfig.stripe.trialPeriodDays = 7;
+
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data.trial_period_days).toBe(7);
+    });
+
+    it('applies the trial to annual as well as monthly', async () => {
+      mockConfig.stripe.trialPeriodDays = 7;
+
+      await svc.createCheckoutSession({ ...base, interval: 'year' });
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.line_items[0].price).toBe('price_y');
+      expect(params.subscription_data.trial_period_days).toBe(7);
+    });
+
+    it('keeps the user id alongside the trial', async () => {
+      mockConfig.stripe.trialPeriodDays = 7;
+
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data.metadata.user_id).toBe('u1');
+    });
+
     it('refuses a second checkout for an already-active subscriber', async () => {
       mockGetByUserId.mockResolvedValue({ plan: 'pro', status: 'active', stripe_customer_id: 'cus_1' });
 
@@ -291,6 +331,17 @@ describe('stripe-billing-service', () => {
       stripeClient = null;
 
       expect(await svc.fetchSubscription('sub_1')).toBeNull();
+    });
+  });
+
+  describe('getTrialPeriodDays', () => {
+    it('reports no trial by default', () => {
+      expect(svc.getTrialPeriodDays()).toBe(0);
+    });
+
+    it('reports the configured length', () => {
+      mockConfig.stripe.trialPeriodDays = 7;
+      expect(svc.getTrialPeriodDays()).toBe(7);
     });
   });
 
