@@ -188,14 +188,23 @@ export async function createCheckoutSession(params: {
     );
   }
 
+  // Checked BEFORE a Stripe customer is created: a refused purchase should
+  // leave no trace in Stripe. Verification gates the purchase itself here, not
+  // just the trial — see getBillingEligibility.
+  const eligibility = await getBillingEligibility(params.userId);
+  if (!eligibility.canSubscribe) {
+    return errorResult(
+      'VERIFICATION_REQUIRED',
+      eligibility.subscribeBlockedReason === 'email_unverified'
+        ? 'Verify your email address before subscribing'
+        : 'Complete identity verification before subscribing',
+      [eligibility.subscribeBlockedReason ?? 'kyc_unverified']
+    );
+  }
+  const trialDays = eligibility.trialEligible ? eligibility.trialDays : 0;
+
   const customerResult = await ensureStripeCustomer(params.userId);
   if (!customerResult.success) return customerResult;
-
-  // Gated on verification and a once-per-account rule — see
-  // getTrialEligibility. An ineligible user still checks out, just without
-  // the free days.
-  const trial = await getTrialEligibility(params.userId);
-  const trialDays = trial.eligible ? trial.days : 0;
 
   // Derived from STRIPE_BASE_URL (falling back to FRONTEND_URL) rather than
   // configured per-URL: three more env vars to keep in sync bought nothing.
@@ -286,58 +295,89 @@ export async function createPortalSession(params: {
   }
 }
 
-/** Why a user cannot start a free trial right now. */
+/** Why a user cannot subscribe, or cannot get a trial, right now. */
+export type VerificationBlockedReason = 'email_unverified' | 'kyc_unverified';
 export type TrialIneligibleReason =
   | 'no_trial_offered'
-  | 'email_unverified'
-  | 'kyc_unverified'
-  | 'trial_already_used';
+  | 'trial_already_used'
+  | VerificationBlockedReason;
 
-export type TrialEligibility = {
-  eligible: boolean;
-  days: number;
-  reason: TrialIneligibleReason | null;
+export type BillingEligibility = {
+  /** Whether checkout may start at all. */
+  canSubscribe: boolean;
+  subscribeBlockedReason: VerificationBlockedReason | null;
+  /** Whether this checkout would include free days. */
+  trialEligible: boolean;
+  trialDays: number;
+  trialIneligibleReason: TrialIneligibleReason | null;
 };
 
 /**
- * Whether this user may start a free trial.
+ * Whether a user may subscribe, and whether they may do so on a free trial.
  *
- * A free week is worth having, which makes it worth farming: a throwaway email
- * is seconds of work, so the trial is gated on the two things that cost a real
- * person nothing and an abuser a lot — a verified email and approved identity
- * verification — plus a once-per-account rule.
+ * Subscribing requires a verified email and approved identity verification.
+ * This platform moves real money through escrow, and a paid account is a
+ * trust signal on a freelancer's profile — selling that to an unverified
+ * account undermines it, and a free week is worth farming with a throwaway
+ * address.
  *
- * Ineligibility does NOT block checkout. The user can still subscribe, they
- * simply pay from day one; refusing the sale outright would punish someone who
- * wants to pay us.
+ * The trial adds one further rule on top: once per account. Without it,
+ * cancel-and-resubscribe is an unlimited free plan.
+ *
+ * One function, one round of I/O, because the UI needs both answers together
+ * to explain itself.
  */
-export async function getTrialEligibility(userId: string): Promise<TrialEligibility> {
+export async function getBillingEligibility(userId: string): Promise<BillingEligibility> {
   const days = config.stripe.trialPeriodDays;
-  if (days <= 0) return { eligible: false, days: 0, reason: 'no_trial_offered' };
 
-  const existing = await subscriptionRepository.getByUserId(userId);
-
-  // One trial per account. Without this, cancel-and-resubscribe is an
-  // unlimited free plan.
-  if (existing?.trial_used) {
-    return { eligible: false, days, reason: 'trial_already_used' };
-  }
+  const blocked = (reason: VerificationBlockedReason): BillingEligibility => ({
+    canSubscribe: false,
+    subscribeBlockedReason: reason,
+    trialEligible: false,
+    trialDays: days,
+    trialIneligibleReason: reason,
+  });
 
   let emailVerified = false;
   try {
     const appwriteUser = await users.get(userId);
     emailVerified = appwriteUser.emailVerification ?? false;
   } catch (error) {
-    // Unknown verification state is not a free trial.
-    logger.warn('Could not read email verification for trial eligibility', { userId, error });
+    // An unknown verification state is not a verified one.
+    logger.warn('Could not read email verification for billing eligibility', { userId, error });
   }
 
-  if (!emailVerified) return { eligible: false, days, reason: 'email_unverified' };
+  if (!emailVerified) return blocked('email_unverified');
+  if (!(await isUserVerified(userId))) return blocked('kyc_unverified');
 
-  const kycVerified = await isUserVerified(userId);
-  if (!kycVerified) return { eligible: false, days, reason: 'kyc_unverified' };
+  if (days <= 0) {
+    return {
+      canSubscribe: true,
+      subscribeBlockedReason: null,
+      trialEligible: false,
+      trialDays: 0,
+      trialIneligibleReason: 'no_trial_offered',
+    };
+  }
 
-  return { eligible: true, days, reason: null };
+  const existing = await subscriptionRepository.getByUserId(userId);
+  if (existing?.trial_used) {
+    return {
+      canSubscribe: true,
+      subscribeBlockedReason: null,
+      trialEligible: false,
+      trialDays: days,
+      trialIneligibleReason: 'trial_already_used',
+    };
+  }
+
+  return {
+    canSubscribe: true,
+    subscribeBlockedReason: null,
+    trialEligible: true,
+    trialDays: days,
+    trialIneligibleReason: null,
+  };
 }
 
 /** Days of free trial applied at checkout, or 0 when there is none. */

@@ -10,7 +10,11 @@ const mockCreateCheckoutSession = jest.fn<any>();
 const mockCreatePortalSession = jest.fn<any>();
 const mockGetPlanPrices = jest.fn<any>();
 const mockGetTrialPeriodDays = jest.fn<any>(() => 0);
-const mockGetTrialEligibility = jest.fn<any>(async () => ({ eligible: false, days: 0, reason: 'no_trial_offered' }));
+const FREE_ELIGIBILITY = {
+  canSubscribe: true, subscribeBlockedReason: null,
+  trialEligible: false, trialDays: 0, trialIneligibleReason: 'no_trial_offered',
+};
+const mockGetBillingEligibility = jest.fn<any>(async () => FREE_ELIGIBILITY);
 const mockGetEntitlement = jest.fn<any>();
 const mockIsStripeConfigured = jest.fn<any>(() => true);
 
@@ -19,7 +23,7 @@ jest.unstable_mockModule(resolveModule('src/services/stripe-billing-service.ts')
   createPortalSession: mockCreatePortalSession,
   getPlanPrices: mockGetPlanPrices,
   getTrialPeriodDays: mockGetTrialPeriodDays,
-  getTrialEligibility: mockGetTrialEligibility,
+  getBillingEligibility: mockGetBillingEligibility,
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/subscription-service.ts'), () => ({
@@ -71,7 +75,7 @@ describe('Billing routes', () => {
     currentUser = { userId: 'user-1', role: 'freelancer' };
     mockIsStripeConfigured.mockReturnValue(true);
     mockGetTrialPeriodDays.mockReturnValue(0);
-    mockGetTrialEligibility.mockResolvedValue({ eligible: false, days: 0, reason: 'no_trial_offered' });
+    mockGetBillingEligibility.mockResolvedValue(FREE_ELIGIBILITY);
     app = makeApp();
   });
 
@@ -139,14 +143,18 @@ describe('Billing routes', () => {
       mockGetEntitlement.mockResolvedValue(
         ok({ plan: 'free', status: 'none', isPro: false, currentPeriodEnd: null, cancelAtPeriodEnd: false, manageable: false })
       );
-      mockGetTrialEligibility.mockResolvedValue({ eligible: false, days: 7, reason: 'kyc_unverified' });
+      mockGetBillingEligibility.mockResolvedValue({
+        canSubscribe: false, subscribeBlockedReason: 'kyc_unverified',
+        trialEligible: false, trialDays: 7, trialIneligibleReason: 'kyc_unverified',
+      });
 
       const res = await request(app).get('/api/billing/subscription');
 
       expect(res.body).toMatchObject({
+        canSubscribe: false,
+        subscribeBlockedReason: 'kyc_unverified',
         trialEligible: false,
         trialDays: 7,
-        trialIneligibleReason: 'kyc_unverified',
       });
     });
 
@@ -154,11 +162,14 @@ describe('Billing routes', () => {
       mockGetEntitlement.mockResolvedValue(
         ok({ plan: 'free', status: 'none', isPro: false, currentPeriodEnd: null, cancelAtPeriodEnd: false, manageable: false })
       );
-      mockGetTrialEligibility.mockResolvedValue({ eligible: true, days: 7, reason: null });
+      mockGetBillingEligibility.mockResolvedValue({
+        canSubscribe: true, subscribeBlockedReason: null,
+        trialEligible: true, trialDays: 7, trialIneligibleReason: null,
+      });
 
       const res = await request(app).get('/api/billing/subscription');
 
-      expect(res.body).toMatchObject({ trialEligible: true, trialDays: 7, trialIneligibleReason: null });
+      expect(res.body).toMatchObject({ canSubscribe: true, trialEligible: true, trialDays: 7 });
     });
 
     it('reports an admin as entitled by role, without reading a subscription', async () => {
@@ -231,6 +242,7 @@ describe('Billing routes', () => {
       ['STRIPE_PRICE_MISCONFIGURED', 400],
       ['INTERVAL_UNAVAILABLE', 400],
       ['STRIPE_AUTH_FAILED', 503],
+      ['VERIFICATION_REQUIRED', 403],
       ['USER_NOT_FOUND', 404],
       ['SOMETHING_ELSE', 400],
     ])('maps %s to HTTP %i', async (code, status) => {
