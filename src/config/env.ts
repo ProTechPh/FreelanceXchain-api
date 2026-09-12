@@ -54,30 +54,6 @@ function getDisableRateLimiter(): boolean {
   return disabled;
 }
 
-function getRedisConfig(): { host: string; port: number; password?: string; tls: boolean } {
-  const redisUrl = process.env['REDIS_URL'];
-  if (redisUrl) {
-    try {
-      const parsed = new URL(redisUrl);
-      return {
-        host: parsed.hostname || 'localhost',
-        port: parsed.port ? parseInt(parsed.port, 10) : 6379,
-        password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
-        tls: parsed.protocol === 'rediss:' || getEnvVarBoolean('REDIS_TLS', false),
-      };
-    } catch {
-      // Fall through to separate env vars if URL parsing fails
-    }
-  }
-
-  return {
-    host: getEnvVar('REDIS_HOST', 'localhost'),
-    port: getEnvVarNumber('REDIS_PORT', 6379),
-    password: getEnvVarOptional('REDIS_PASSWORD'),
-    tls: getEnvVarBoolean('REDIS_TLS', false),
-  };
-}
-
 export const config = {
   server: {
     port: getEnvVarNumber('PORT', 3000),
