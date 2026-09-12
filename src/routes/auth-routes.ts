@@ -32,6 +32,7 @@ import {
 } from '../services/auth-service.js';
 import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
+import { requireTurnstile } from '../middleware/turnstile-middleware.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
@@ -199,7 +200,7 @@ function extractBearerToken(req: Request, res: Response): string | null {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/register', registerRateLimiter, requireTurnstile('signup'), asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const validation = validateRegisterInput(req.body);
 
@@ -274,7 +275,7 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/login', authRateLimiter, requireTurnstile('login'), asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const validation = validateLoginInput(req.body);
 
@@ -1029,7 +1030,7 @@ router.post('/verify-email', passwordResetRateLimiter, asyncHandler(async (req: 
  *       400:
  *         description: Validation error
  */
-router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/forgot-password', passwordResetRateLimiter, requireTurnstile('password_reset'), asyncHandler(async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = getRequestId(req);
 

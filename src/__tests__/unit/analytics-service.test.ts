@@ -973,6 +973,47 @@ describe('Analytics Service - Extended Tests', () => {
         expect(result.error.code).toBe('INTERNAL_ERROR');
       }
     });
+
+    it('should calculate activeProSubscriptions and proConversionRate correctly', async () => {
+      const { getAdminAnalytics } = await importModule();
+
+      // 1st: users total = 10
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({ documents: [], total: 10 });
+      // 2nd: projects total = 5
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({ documents: [], total: 5 });
+      // 3rd: active contracts = 2
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({ documents: [], total: 2 });
+      // 4th: completed contracts
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({
+        documents: [{ total_amount: 1000, rush_fee: 100, employer_id: 'emp1' }],
+        total: 1,
+      });
+      // 5th: all users (growth)
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      // 6th: all projects (growth)
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      // 7th: subscriptions (pro plan)
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'u1', plan: 'pro', status: 'active' },
+          { $id: 'u2', plan: 'pro', status: 'trialing' },
+          { $id: 'u3', plan: 'pro', status: 'canceled' }, // not entitled
+        ],
+        total: 3,
+      });
+
+      const result = await getAdminAnalytics();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.activeProSubscriptions).toBe(2);
+        // 2 / 10 * 100 = 20%
+        expect(result.data.proConversionRate).toBe(20);
+        expect(result.data.projectedBenchmarkRevenue).toBe(50); // 1000 * 0.05
+        expect(result.data.rushFeeRevenue).toBe(10); // 100 * 0.10
+        expect(result.data.realizedRevenue).toBe(10);
+      }
+    });
   });
 
   describe('getPlatformMetrics - edge cases', () => {

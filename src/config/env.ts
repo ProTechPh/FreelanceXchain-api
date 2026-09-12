@@ -155,6 +155,10 @@ export const config = {
     // hatch that can reach production is not an escape hatch.
     devGrantPro: getEnvVarBoolean('BILLING_DEV_GRANT_PRO', false),
   },
+  turnstile: {
+    secret: getEnvVarOptional('TURNSTILE_SECRET'),
+    hostnames: getEnvVarOptional('TURNSTILE_HOSTNAMES') || 'freelancexchain.works,www.freelancexchain.works,localhost,127.0.0.1',
+  },
 } as const;
 
 export type Config = typeof config;
@@ -203,4 +207,13 @@ export function getStripeSecretKey(): string | undefined {
 /** Signing secret (whsec_...) for POST /api/webhooks/stripe. */
 export function getStripeWebhookSecret(): string | undefined {
   return getEnvVarOptional('STRIPE_WEBHOOK_SECRET');
+}
+
+/** Cloudflare Turnstile server-side secret key for siteverify. */
+export function getTurnstileSecret(): string | undefined {
+  return getEnvVarOptional('TURNSTILE_SECRET');
+}
+
+export function getTurnstileHostnames(): string {
+  return getEnvVarOptional('TURNSTILE_HOSTNAMES') || 'freelancexchain.works,www.freelancexchain.works,localhost,127.0.0.1';
 }

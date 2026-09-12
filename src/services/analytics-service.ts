@@ -13,6 +13,7 @@ import {
 } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+import { ENTITLED_STATUSES, type SubscriptionStatus } from '../models/subscription.js';
 
 /**
  * Fetch ALL documents matching the queries using cursor-based pagination (the
@@ -116,6 +117,9 @@ export interface AdminAnalytics {
   rushUpgradeAdoptionRate?: number;
   rushFeeRevenue?: number;
   realizedRevenue?: number;
+  projectedBenchmarkRevenue?: number;
+  activeProSubscriptions?: number;
+  proConversionRate?: number;
 }
 
 /**
@@ -428,10 +432,30 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
 
     const contractMetrics = computeAdminContractMetrics(completedContracts, activeContracts);
 
+    let activeProSubscriptions = 0;
+    try {
+      const proDocs = await fetchAllCollection(COLLECTIONS.SUBSCRIPTIONS, [
+        Query.equal('plan', 'pro'),
+      ]);
+      const entitledSubs = proDocs.filter(d =>
+        ENTITLED_STATUSES.has((d['status'] as SubscriptionStatus) || 'none')
+      );
+      activeProSubscriptions = entitledSubs.length;
+    } catch (subErr) {
+      logger.debug('Subscriptions collection read skipped or failed in getAdminAnalytics', { error: subErr });
+    }
+
+    const proConversionRate = totalUsers > 0
+      ? Math.round((activeProSubscriptions / totalUsers) * 1000) / 10
+      : 0;
+
+    const projectedBenchmarkRevenue = Math.round(totalRevenue * 100) / 100;
+
     const data: AdminAnalytics = {
       totalUsers,
       totalProjects,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
+      projectedBenchmarkRevenue,
       grossMarketplaceVolume: Math.round(grossMarketplaceVolume * 100) / 100,
       platformFeeRate: 0.05,
       activeContracts,
@@ -439,6 +463,8 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       projectGrowth,
       userGrowthData,
       projectActivityData,
+      activeProSubscriptions,
+      proConversionRate,
       ...contractMetrics,
     };
     adminAnalyticsCache.set('admin_analytics', data);
