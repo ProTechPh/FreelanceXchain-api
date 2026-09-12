@@ -11,6 +11,7 @@ minimumReleaseAgeExclude:
   - browserslist
   - electron-to-chromium
   - caniuse-lite
+  - adm-zip
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - semver@6.3.1
