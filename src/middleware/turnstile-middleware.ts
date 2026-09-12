@@ -14,44 +14,84 @@ import { getTurnstileSecret, getTurnstileHostnames, getNodeEnv } from '../config
 import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
+interface SiteverifyResult {
+  success: boolean;
+  action?: string;
+  hostname?: string;
+  'error-codes'?: string[];
+}
+
+function extractTurnstileToken(req: Request): string | undefined {
+  if (typeof req.body === 'object' && req.body !== null) {
+    const token = req.body['cf-turnstile-response'] || req.body['turnstileToken'];
+    if (typeof token === 'string' && token.length > 0) return token;
+  }
+  const header = req.headers['cf-turnstile-response'];
+  return typeof header === 'string' && header.length > 0 ? header : undefined;
+}
+
+function getClientIp(req: Request): string | undefined {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0]?.trim() || req.ip;
+  }
+  if (Array.isArray(forwarded)) {
+    return forwarded[0]?.trim() || req.ip;
+  }
+  return req.ip;
+}
+
+async function callSiteverify(secret: string, token: string, clientIp?: string): Promise<SiteverifyResult> {
+  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    signal: AbortSignal.timeout(10_000),
+    body: new URLSearchParams({
+      secret,
+      response: token,
+      ...(clientIp && { remoteip: clientIp }),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`siteverify returned HTTP ${response.status}`);
+  }
+
+  return response.json() as Promise<SiteverifyResult>;
+}
+
+function getExpectedHostnames(): Set<string> {
+  return new Set(
+    getTurnstileHostnames()
+      .split(',')
+      .map((hostname) => hostname.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function shouldBypassTurnstile(nodeEnv: string, secret?: string): boolean {
+  if (nodeEnv === 'test' && !secret) return true;
+  if (nodeEnv === 'development' && !secret) {
+    logger.debug('Turnstile secret not configured; bypassing verification in development');
+    return true;
+  }
+  return false;
+}
+
 export function requireTurnstile(expectedAction: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const requestId = getRequestId(req);
-    const nodeEnv = getNodeEnv();
     const secret = getTurnstileSecret();
 
-    // In test environment, bypass when TURNSTILE_SECRET is not configured
-    if (nodeEnv === 'test' && !secret) {
+    if (shouldBypassTurnstile(getNodeEnv(), secret)) {
       next();
       return;
     }
 
-    // In development environment, log a notice and bypass if unconfigured
-    if (nodeEnv === 'development' && !secret) {
-      logger.debug('Turnstile secret not configured; bypassing verification in development');
-      next();
-      return;
-    }
+    const token = extractTurnstileToken(req);
+    const expectedHostnames = getExpectedHostnames();
 
-    const token =
-      (typeof req.body === 'object' && req.body !== null
-        ? req.body['cf-turnstile-response'] || req.body['turnstileToken']
-        : undefined) ||
-      (req.headers['cf-turnstile-response'] as string | undefined);
-
-    const expectedHostnames = new Set(
-      getTurnstileHostnames()
-        .split(',')
-        .map((hostname) => hostname.trim().toLowerCase())
-        .filter(Boolean)
-    );
-
-    if (
-      typeof token !== 'string' ||
-      token.length === 0 ||
-      token.length > 2048 ||
-      expectedHostnames.size === 0
-    ) {
+    if (!token || token.length > 2048 || expectedHostnames.size === 0) {
       sendErrorResponse(
         res,
         403,
@@ -62,38 +102,9 @@ export function requireTurnstile(expectedAction: string) {
       return;
     }
 
-    // Determine client IP for verification
-    const forwarded = req.headers['x-forwarded-for'];
-    const clientIp = typeof forwarded === 'string'
-      ? forwarded.split(',')[0]?.trim() || req.ip
-      : Array.isArray(forwarded)
-      ? forwarded[0]?.trim() || req.ip
-      : req.ip;
-
-    let result: {
-      success: boolean;
-      action?: string;
-      hostname?: string;
-      'error-codes'?: string[];
-    };
-
+    let result: SiteverifyResult;
     try {
-      const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: AbortSignal.timeout(10_000),
-        body: new URLSearchParams({
-          secret: secret ?? '',
-          response: token,
-          ...(clientIp && { remoteip: clientIp }),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`siteverify returned HTTP ${response.status}`);
-      }
-
-      result = await response.json();
+      result = await callSiteverify(secret ?? '', token, getClientIp(req));
     } catch (error) {
       logger.error('Turnstile siteverify request failed', { error, requestId });
       sendErrorResponse(
@@ -107,7 +118,6 @@ export function requireTurnstile(expectedAction: string) {
     }
 
     const resultHostname = result.hostname ? result.hostname.trim().toLowerCase() : undefined;
-
     if (
       !result.success ||
       (result.action && result.action !== expectedAction) ||
