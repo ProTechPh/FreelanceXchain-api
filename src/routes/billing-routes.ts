@@ -5,7 +5,7 @@ import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { isStripeConfigured } from '../config/stripe.js';
-import { createCheckoutSession, createPortalSession, getPlanPrices, getTrialPeriodDays } from '../services/stripe-billing-service.js';
+import { createCheckoutSession, createPortalSession, getPlanPrices, getTrialPeriodDays, getTrialEligibility } from '../services/stripe-billing-service.js';
 import { getEntitlement } from '../services/subscription-service.js';
 
 const router = Router();
@@ -113,6 +113,9 @@ router.get('/subscription', authMiddleware, apiRateLimiter, asyncHandler(async (
       cancelAtPeriodEnd: false,
       manageable: false,
       reason: 'admin',
+      trialEligible: false,
+      trialDays: 0,
+      trialIneligibleReason: null,
     });
     return;
   }
@@ -124,7 +127,17 @@ router.get('/subscription', authMiddleware, apiRateLimiter, asyncHandler(async (
     return;
   }
 
-  res.status(200).json(result.data);
+  // Eligibility is per-user, so it belongs here rather than on the public
+  // /plans route. The UI needs it to say why a trial is unavailable instead of
+  // quietly charging someone who expected a free week.
+  const trial = await getTrialEligibility(userId);
+
+  res.status(200).json({
+    ...result.data,
+    trialEligible: trial.eligible,
+    trialDays: trial.days,
+    trialIneligibleReason: trial.reason,
+  });
 }));
 
 /**

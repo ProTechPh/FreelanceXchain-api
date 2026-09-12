@@ -10,6 +10,7 @@ const mockCreateCheckoutSession = jest.fn<any>();
 const mockCreatePortalSession = jest.fn<any>();
 const mockGetPlanPrices = jest.fn<any>();
 const mockGetTrialPeriodDays = jest.fn<any>(() => 0);
+const mockGetTrialEligibility = jest.fn<any>(async () => ({ eligible: false, days: 0, reason: 'no_trial_offered' }));
 const mockGetEntitlement = jest.fn<any>();
 const mockIsStripeConfigured = jest.fn<any>(() => true);
 
@@ -18,6 +19,7 @@ jest.unstable_mockModule(resolveModule('src/services/stripe-billing-service.ts')
   createPortalSession: mockCreatePortalSession,
   getPlanPrices: mockGetPlanPrices,
   getTrialPeriodDays: mockGetTrialPeriodDays,
+  getTrialEligibility: mockGetTrialEligibility,
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/subscription-service.ts'), () => ({
@@ -69,6 +71,7 @@ describe('Billing routes', () => {
     currentUser = { userId: 'user-1', role: 'freelancer' };
     mockIsStripeConfigured.mockReturnValue(true);
     mockGetTrialPeriodDays.mockReturnValue(0);
+    mockGetTrialEligibility.mockResolvedValue({ eligible: false, days: 0, reason: 'no_trial_offered' });
     app = makeApp();
   });
 
@@ -129,6 +132,33 @@ describe('Billing routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ plan: 'pro', isPro: true });
+    });
+
+    it('tells the client whether a trial is available, and why not', async () => {
+      // Without this the UI silently charges someone who came for a free week.
+      mockGetEntitlement.mockResolvedValue(
+        ok({ plan: 'free', status: 'none', isPro: false, currentPeriodEnd: null, cancelAtPeriodEnd: false, manageable: false })
+      );
+      mockGetTrialEligibility.mockResolvedValue({ eligible: false, days: 7, reason: 'kyc_unverified' });
+
+      const res = await request(app).get('/api/billing/subscription');
+
+      expect(res.body).toMatchObject({
+        trialEligible: false,
+        trialDays: 7,
+        trialIneligibleReason: 'kyc_unverified',
+      });
+    });
+
+    it('reports an eligible user as eligible', async () => {
+      mockGetEntitlement.mockResolvedValue(
+        ok({ plan: 'free', status: 'none', isPro: false, currentPeriodEnd: null, cancelAtPeriodEnd: false, manageable: false })
+      );
+      mockGetTrialEligibility.mockResolvedValue({ eligible: true, days: 7, reason: null });
+
+      const res = await request(app).get('/api/billing/subscription');
+
+      expect(res.body).toMatchObject({ trialEligible: true, trialDays: 7, trialIneligibleReason: null });
     });
 
     it('reports an admin as entitled by role, without reading a subscription', async () => {

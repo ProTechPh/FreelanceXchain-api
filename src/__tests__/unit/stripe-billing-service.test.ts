@@ -53,6 +53,17 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: { getUserById: mockGetUserById },
 }));
 
+const mockAppwriteUsersGet = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  users: { get: mockAppwriteUsersGet },
+  databases: {}, DATABASE_ID: 'db', Query: {}, ID: { unique: () => 'x' },
+}));
+
+const mockIsUserVerified = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () => ({
+  isUserVerified: mockIsUserVerified,
+}));
+
 const svc = await import('../../services/stripe-billing-service.js');
 
 const stripeError = (type: string, message = 'stripe says no') => Object.assign(new Error(message), { type, message });
@@ -65,6 +76,9 @@ describe('stripe-billing-service', () => {
     mockConfig.stripe.monthlyPriceId = 'price_m';
     mockConfig.stripe.annualPriceId = 'price_y';
     mockConfig.stripe.trialPeriodDays = 0;
+    // Default: a fully verified, first-time subscriber.
+    mockAppwriteUsersGet.mockResolvedValue({ emailVerification: true });
+    mockIsUserVerified.mockResolvedValue(true);
     svc.resetPlanPricesCache();
     mockGetByUserId.mockResolvedValue(null);
     mockGetUserById.mockResolvedValue({ id: 'u1', email: 'u1@example.com', name: 'User One' });
@@ -331,6 +345,109 @@ describe('stripe-billing-service', () => {
       stripeClient = null;
 
       expect(await svc.fetchSubscription('sub_1')).toBeNull();
+    });
+  });
+
+  describe('getTrialEligibility', () => {
+    beforeEach(() => { mockConfig.stripe.trialPeriodDays = 7; });
+
+    it('grants a trial to a verified, first-time subscriber', async () => {
+      const result = await svc.getTrialEligibility('u1');
+
+      expect(result).toEqual({ eligible: true, days: 7, reason: null });
+    });
+
+    it('refuses when no trial is offered at all', async () => {
+      mockConfig.stripe.trialPeriodDays = 0;
+
+      expect(await svc.getTrialEligibility('u1')).toEqual({
+        eligible: false, days: 0, reason: 'no_trial_offered',
+      });
+    });
+
+    it('refuses an unverified email — a throwaway address is seconds of work', async () => {
+      mockAppwriteUsersGet.mockResolvedValue({ emailVerification: false });
+
+      expect(await svc.getTrialEligibility('u1')).toMatchObject({
+        eligible: false, reason: 'email_unverified',
+      });
+    });
+
+    it('refuses when identity verification has not been approved', async () => {
+      mockIsUserVerified.mockResolvedValue(false);
+
+      expect(await svc.getTrialEligibility('u1')).toMatchObject({
+        eligible: false, reason: 'kyc_unverified',
+      });
+    });
+
+    it('refuses a second trial on the same account', async () => {
+      // Otherwise cancel-and-resubscribe is an unlimited free plan.
+      mockGetByUserId.mockResolvedValue({ trial_used: true });
+
+      expect(await svc.getTrialEligibility('u1')).toMatchObject({
+        eligible: false, reason: 'trial_already_used',
+      });
+    });
+
+    it('treats an unreadable verification state as ineligible, not eligible', async () => {
+      mockAppwriteUsersGet.mockRejectedValue(new Error('appwrite down'));
+
+      expect(await svc.getTrialEligibility('u1')).toMatchObject({
+        eligible: false, reason: 'email_unverified',
+      });
+    });
+
+    it('checks the trial flag before making any network call', async () => {
+      mockGetByUserId.mockResolvedValue({ trial_used: true });
+
+      await svc.getTrialEligibility('u1');
+
+      expect(mockAppwriteUsersGet).not.toHaveBeenCalled();
+      expect(mockIsUserVerified).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('trial gating at checkout', () => {
+    const base = { userId: 'u1', requestId: 'req-1' };
+
+    beforeEach(() => { mockConfig.stripe.trialPeriodDays = 7; });
+
+    it('gives a verified user the trial and marks it used', async () => {
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data.trial_period_days).toBe(7);
+      expect(mockUpsert).toHaveBeenCalledWith('u1', { trial_used: true });
+    });
+
+    it('still lets an unverified user subscribe, just without the free days', async () => {
+      // Refusing the sale outright would punish someone who wants to pay us.
+      mockAppwriteUsersGet.mockResolvedValue({ emailVerification: false });
+
+      const result = await svc.createCheckoutSession(base);
+
+      expect(result.success).toBe(true);
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data).not.toHaveProperty('trial_period_days');
+    });
+
+    it('does not consume the trial when none was granted', async () => {
+      mockIsUserVerified.mockResolvedValue(false);
+
+      await svc.createCheckoutSession(base);
+
+      expect(mockUpsert).not.toHaveBeenCalledWith('u1', { trial_used: true });
+    });
+
+    it('refuses a repeat trial but still allows the purchase', async () => {
+      mockGetByUserId.mockResolvedValue({ trial_used: true });
+
+      const result = await svc.createCheckoutSession(base);
+
+      expect(result.success).toBe(true);
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data).not.toHaveProperty('trial_period_days');
     });
   });
 
