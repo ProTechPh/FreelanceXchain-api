@@ -782,6 +782,8 @@ const COLLECTIONS = [
       { name: 'status', type: 'string', size: 24, required: false, default: 'none' },
       { name: 'current_period_end', type: 'string', size: 30, required: false },
       { name: 'cancel_at_period_end', type: 'boolean', required: false, default: false },
+      // One free trial per account; set when checkout starts with a trial.
+      { name: 'trial_used', type: 'boolean', required: false, default: false },
       // Out-of-order guard: Stripe event.created (unix seconds) of the newest
       // event already applied. Older events are skipped, not applied.
       { name: 'last_event_created', type: 'integer', required: false, default: 0 },

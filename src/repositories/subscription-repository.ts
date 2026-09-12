@@ -15,6 +15,12 @@ export type SubscriptionEntity = {
   current_period_end?: string | null;
   cancel_at_period_end: boolean;
   /**
+   * True once this account has started a free trial. One trial per
+   * account — without this, cancel-and-resubscribe is an unlimited free
+   * plan.
+   */
+  trial_used?: boolean;
+  /**
    * Stripe `event.created` (unix seconds) of the newest event already applied.
    * Webhooks are not ordered, so an event older than this watermark is skipped
    * rather than allowed to overwrite newer state.
@@ -71,6 +77,7 @@ export class SubscriptionRepository extends BaseRepository<SubscriptionEntity> {
         plan: 'free',
         status: 'none',
         cancel_at_period_end: false,
+        trial_used: false,
         last_event_created: 0,
         ...updates,
       } as Omit<SubscriptionEntity, 'created_at' | 'updated_at' | 'id'> & { id?: string });

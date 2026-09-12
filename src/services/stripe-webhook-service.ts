@@ -34,6 +34,7 @@ export const HANDLED_EVENTS = [
   'customer.subscription.deleted',
   'invoice.paid',
   'invoice.payment_failed',
+  'customer.subscription.trial_will_end',
 ] as const;
 
 export type StripeVerifyResult =
@@ -335,6 +336,47 @@ async function handleInvoiceEvent(event: Stripe.Event): Promise<void> {
 }
 
 /**
+ * customer.subscription.trial_will_end — fires ~3 days before the trial ends.
+ *
+ * Told in advance, a user can cancel before being charged. Told nothing, a
+ * surprise charge becomes a support ticket or a chargeback. Best-effort: a
+ * notification failure must not fail the webhook.
+ */
+async function handleTrialWillEnd(event: Stripe.Event): Promise<void> {
+  const embedded = event.data.object as Stripe.Subscription;
+  const userId = await resolveUserId({
+    metadataUserId: embedded.metadata?.['user_id'] ?? null,
+    customerId: customerIdOf(embedded.customer),
+  });
+
+  if (!userId) {
+    logger.error('Stripe trial_will_end could not be mapped to a user', undefined, {
+      eventId: event.id,
+      subscriptionId: embedded.id,
+    });
+    return;
+  }
+
+  const endsOn = typeof embedded.trial_end === 'number'
+    ? new Date(embedded.trial_end * 1000).toISOString().slice(0, 10)
+    : null;
+
+  try {
+    const { createNotification } = await import('./notification-service.js');
+    await createNotification({
+      userId,
+      type: 'subscription_trial_ending',
+      title: 'Your Pro trial ends soon',
+      message: endsOn
+        ? `Your free trial ends on ${endsOn} and your first payment will be taken then. Cancel any time in billing settings.`
+        : 'Your free trial ends soon and your first payment will be taken then. Cancel any time in billing settings.',
+    });
+  } catch (error) {
+    logger.warn('Failed to send trial-ending notification', { userId, error });
+  }
+}
+
+/**
  * Process one verified Stripe event.
  *
  * Throws on a processing failure so the route can answer non-2xx and let
@@ -355,6 +397,9 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     case 'invoice.paid':
     case 'invoice.payment_failed':
       return handleInvoiceEvent(event);
+
+    case 'customer.subscription.trial_will_end':
+      return handleTrialWillEnd(event);
 
     default:
       logger.info('Unhandled Stripe event type', { eventType: event.type, eventId: event.id });
