@@ -110,6 +110,7 @@ describe('stripe-webhook-service', () => {
       'checkout.session.completed',
       'customer.subscription.created',
       'customer.subscription.deleted',
+      'customer.subscription.trial_will_end',
       'customer.subscription.updated',
       'invoice.paid',
       'invoice.payment_failed',
@@ -299,6 +300,41 @@ describe('stripe-webhook-service', () => {
       await handleStripeEvent(evt('invoice.paid', { customer: null, metadata: {} }));
 
       expect(invalidateEntitlement).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('customer.subscription.trial_will_end', () => {
+    it('warns the user before the first charge lands', async () => {
+      // Unannounced first charges become support tickets and chargebacks.
+      await handleStripeEvent(evt('customer.subscription.trial_will_end',
+        subscription({ status: 'trialing', trial_end: 1791733643 })));
+
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', type: 'subscription_trial_ending' })
+      );
+      const [{ message }] = createNotification.mock.calls[0];
+      expect(message).toContain('2026-10-11');
+    });
+
+    it('still warns when no trial end is present', async () => {
+      await handleStripeEvent(evt('customer.subscription.trial_will_end',
+        subscription({ status: 'trialing', trial_end: null })));
+
+      expect(createNotification).toHaveBeenCalled();
+    });
+
+    it('does not fail the webhook when the notification cannot be sent', async () => {
+      createNotification.mockRejectedValue(new Error('notify down'));
+
+      await expect(handleStripeEvent(evt('customer.subscription.trial_will_end',
+        subscription({ status: 'trialing' })))).resolves.toBeUndefined();
+    });
+
+    it('gives up quietly when it maps to no user', async () => {
+      await handleStripeEvent(evt('customer.subscription.trial_will_end',
+        subscription({ metadata: {}, customer: null })));
+
+      expect(createNotification).not.toHaveBeenCalled();
     });
   });
 

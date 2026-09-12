@@ -12,6 +12,8 @@ import { getStripeClient, isStripeConfigured, INTEGRATION_IDENTIFIER } from '../
 import { logger } from '../config/logger.js';
 import { subscriptionRepository } from '../repositories/subscription-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { users } from '../config/appwrite.js';
+import { isUserVerified } from './didit-kyc-service.js';
 import { ENTITLED_STATUSES, type SubscriptionStatus } from '../models/subscription.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -125,25 +127,11 @@ export async function ensureStripeCustomer(userId: string): Promise<ServiceResul
   }
 }
 
-export type CheckoutSessionResult = { url: string; sessionId: string };
-
 /**
- * A hosted Checkout Session for the Pro plan.
- *
- * `idempotencyKey` is the request id, so a retried POST (ours or the client's)
- * can never create two sessions — and therefore never two subscriptions.
+ * The Price id for an interval, with the two failure modes that actually happen
+ * in setup told apart from each other.
  */
-export async function createCheckoutSession(params: {
-  userId: string;
-  requestId: string;
-  interval?: BillingInterval | undefined;
-  successUrl?: string | undefined;
-  cancelUrl?: string | undefined;
-}): Promise<ServiceResult<CheckoutSessionResult>> {
-  const stripe = getStripeClient();
-  if (!stripe || !isStripeConfigured()) return NOT_CONFIGURED;
-
-  const interval = params.interval ?? 'month';
+function resolvePriceForInterval(interval: BillingInterval): ServiceResult<string> {
   const priceId = priceIdForInterval(interval);
 
   // A Product id where a Price id belongs is by far the most common setup
@@ -166,6 +154,32 @@ export async function createCheckoutSession(params: {
       : NOT_CONFIGURED;
   }
 
+  return successResult(priceId);
+}
+
+export type CheckoutSessionResult = { url: string; sessionId: string };
+
+/**
+ * A hosted Checkout Session for the Pro plan.
+ *
+ * `idempotencyKey` is the request id, so a retried POST (ours or the client's)
+ * can never create two sessions — and therefore never two subscriptions.
+ */
+export async function createCheckoutSession(params: {
+  userId: string;
+  requestId: string;
+  interval?: BillingInterval | undefined;
+  successUrl?: string | undefined;
+  cancelUrl?: string | undefined;
+}): Promise<ServiceResult<CheckoutSessionResult>> {
+  const stripe = getStripeClient();
+  if (!stripe || !isStripeConfigured()) return NOT_CONFIGURED;
+
+  const interval = params.interval ?? 'month';
+  const resolved = resolvePriceForInterval(interval);
+  if (!resolved.success) return resolved;
+  const priceId = resolved.data;
+
   const existing = await subscriptionRepository.getByUserId(params.userId);
   if (existing && ENTITLED_STATUSES.has(existing.status as SubscriptionStatus) && existing.plan === 'pro') {
     return errorResult(
@@ -173,6 +187,21 @@ export async function createCheckoutSession(params: {
       'You already have an active Pro subscription. Use billing settings to manage it.'
     );
   }
+
+  // Checked BEFORE a Stripe customer is created: a refused purchase should
+  // leave no trace in Stripe. Verification gates the purchase itself here, not
+  // just the trial — see getBillingEligibility.
+  const eligibility = await getBillingEligibility(params.userId);
+  if (!eligibility.canSubscribe) {
+    return errorResult(
+      'VERIFICATION_REQUIRED',
+      eligibility.subscribeBlockedReason === 'email_unverified'
+        ? 'Verify your email address before subscribing'
+        : 'Complete identity verification before subscribing',
+      [eligibility.subscribeBlockedReason ?? 'kyc_unverified']
+    );
+  }
+  const trialDays = eligibility.trialEligible ? eligibility.trialDays : 0;
 
   const customerResult = await ensureStripeCustomer(params.userId);
   if (!customerResult.success) return customerResult;
@@ -197,7 +226,12 @@ export async function createCheckoutSession(params: {
         // client_reference_id rides on the session, metadata on the subscription.
         client_reference_id: params.userId,
         line_items: [{ price: priceId, quantity: 1 }],
-        subscription_data: { metadata: { user_id: params.userId } },
+        subscription_data: {
+          metadata: { user_id: params.userId },
+          // Only sent when a trial is configured: passing trial_period_days: 0
+          // is rejected by Stripe.
+          ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
+        },
         metadata: { user_id: params.userId, billing_interval: interval },
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -212,6 +246,13 @@ export async function createCheckoutSession(params: {
       } as Stripe.Checkout.SessionCreateParams,
       { idempotencyKey: `checkout:${params.requestId}` }
     );
+
+    if (trialDays > 0) {
+      // Marked at checkout rather than on the webhook: a user who starts
+      // checkout with a trial has consumed their one shot, whether or not they
+      // complete it. Otherwise abandoning checkout repeatedly resets it.
+      await subscriptionRepository.upsertForUser(params.userId, { trial_used: true });
+    }
 
     if (!session.url) {
       return errorResult('STRIPE_UNAVAILABLE', 'Stripe did not return a checkout URL');
@@ -252,6 +293,96 @@ export async function createPortalSession(params: {
     logger.error('Failed to create Stripe portal session', error as Error, { userId: params.userId });
     return mapStripeError(error, 'portal session creation');
   }
+}
+
+/** Why a user cannot subscribe, or cannot get a trial, right now. */
+export type VerificationBlockedReason = 'email_unverified' | 'kyc_unverified';
+export type TrialIneligibleReason =
+  | 'no_trial_offered'
+  | 'trial_already_used'
+  | VerificationBlockedReason;
+
+export type BillingEligibility = {
+  /** Whether checkout may start at all. */
+  canSubscribe: boolean;
+  subscribeBlockedReason: VerificationBlockedReason | null;
+  /** Whether this checkout would include free days. */
+  trialEligible: boolean;
+  trialDays: number;
+  trialIneligibleReason: TrialIneligibleReason | null;
+};
+
+/**
+ * Whether a user may subscribe, and whether they may do so on a free trial.
+ *
+ * Subscribing requires a verified email and approved identity verification.
+ * This platform moves real money through escrow, and a paid account is a
+ * trust signal on a freelancer's profile — selling that to an unverified
+ * account undermines it, and a free week is worth farming with a throwaway
+ * address.
+ *
+ * The trial adds one further rule on top: once per account. Without it,
+ * cancel-and-resubscribe is an unlimited free plan.
+ *
+ * One function, one round of I/O, because the UI needs both answers together
+ * to explain itself.
+ */
+export async function getBillingEligibility(userId: string): Promise<BillingEligibility> {
+  const days = config.stripe.trialPeriodDays;
+
+  const blocked = (reason: VerificationBlockedReason): BillingEligibility => ({
+    canSubscribe: false,
+    subscribeBlockedReason: reason,
+    trialEligible: false,
+    trialDays: days,
+    trialIneligibleReason: reason,
+  });
+
+  let emailVerified = false;
+  try {
+    const appwriteUser = await users.get(userId);
+    emailVerified = appwriteUser.emailVerification ?? false;
+  } catch (error) {
+    // An unknown verification state is not a verified one.
+    logger.warn('Could not read email verification for billing eligibility', { userId, error });
+  }
+
+  if (!emailVerified) return blocked('email_unverified');
+  if (!(await isUserVerified(userId))) return blocked('kyc_unverified');
+
+  if (days <= 0) {
+    return {
+      canSubscribe: true,
+      subscribeBlockedReason: null,
+      trialEligible: false,
+      trialDays: 0,
+      trialIneligibleReason: 'no_trial_offered',
+    };
+  }
+
+  const existing = await subscriptionRepository.getByUserId(userId);
+  if (existing?.trial_used) {
+    return {
+      canSubscribe: true,
+      subscribeBlockedReason: null,
+      trialEligible: false,
+      trialDays: days,
+      trialIneligibleReason: 'trial_already_used',
+    };
+  }
+
+  return {
+    canSubscribe: true,
+    subscribeBlockedReason: null,
+    trialEligible: true,
+    trialDays: days,
+    trialIneligibleReason: null,
+  };
+}
+
+/** Days of free trial applied at checkout, or 0 when there is none. */
+export function getTrialPeriodDays(): number {
+  return config.stripe.trialPeriodDays;
 }
 
 export type PlanPrice = {

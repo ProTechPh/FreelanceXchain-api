@@ -11,6 +11,7 @@ const mockConfig = {
     annualPriceId: 'price_y',
     publishableKey: undefined,
     baseUrl: 'https://api.stripe.com',
+    trialPeriodDays: 0,
     devGrantPro: false,
   },
 };
@@ -52,6 +53,17 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: { getUserById: mockGetUserById },
 }));
 
+const mockAppwriteUsersGet = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  users: { get: mockAppwriteUsersGet },
+  databases: {}, DATABASE_ID: 'db', Query: {}, ID: { unique: () => 'x' },
+}));
+
+const mockIsUserVerified = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () => ({
+  isUserVerified: mockIsUserVerified,
+}));
+
 const svc = await import('../../services/stripe-billing-service.js');
 
 const stripeError = (type: string, message = 'stripe says no') => Object.assign(new Error(message), { type, message });
@@ -63,6 +75,10 @@ describe('stripe-billing-service', () => {
     stripeClient = stripeApi;
     mockConfig.stripe.monthlyPriceId = 'price_m';
     mockConfig.stripe.annualPriceId = 'price_y';
+    mockConfig.stripe.trialPeriodDays = 0;
+    // Default: a fully verified, first-time subscriber.
+    mockAppwriteUsersGet.mockResolvedValue({ emailVerification: true });
+    mockIsUserVerified.mockResolvedValue(true);
     svc.resetPlanPricesCache();
     mockGetByUserId.mockResolvedValue(null);
     mockGetUserById.mockResolvedValue({ id: 'u1', email: 'u1@example.com', name: 'User One' });
@@ -181,6 +197,44 @@ describe('stripe-billing-service', () => {
       expect(params.line_items[0].price).toBe('price_y');
     });
 
+    it('sends no trial when none is configured', async () => {
+      // Stripe rejects trial_period_days: 0, so the field must be absent.
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data).not.toHaveProperty('trial_period_days');
+    });
+
+    it('applies the configured trial at checkout', async () => {
+      // A trial set on the Price in the Dashboard is NOT inherited by the API
+      // (verified against Stripe), so passing it here is what actually grants it.
+      mockConfig.stripe.trialPeriodDays = 7;
+
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data.trial_period_days).toBe(7);
+    });
+
+    it('applies the trial to annual as well as monthly', async () => {
+      mockConfig.stripe.trialPeriodDays = 7;
+
+      await svc.createCheckoutSession({ ...base, interval: 'year' });
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.line_items[0].price).toBe('price_y');
+      expect(params.subscription_data.trial_period_days).toBe(7);
+    });
+
+    it('keeps the user id alongside the trial', async () => {
+      mockConfig.stripe.trialPeriodDays = 7;
+
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data.metadata.user_id).toBe('u1');
+    });
+
     it('refuses a second checkout for an already-active subscriber', async () => {
       mockGetByUserId.mockResolvedValue({ plan: 'pro', status: 'active', stripe_customer_id: 'cus_1' });
 
@@ -291,6 +345,150 @@ describe('stripe-billing-service', () => {
       stripeClient = null;
 
       expect(await svc.fetchSubscription('sub_1')).toBeNull();
+    });
+  });
+
+  describe('getBillingEligibility', () => {
+    beforeEach(() => { mockConfig.stripe.trialPeriodDays = 7; });
+
+    it('allows a verified, first-time subscriber to subscribe with a trial', async () => {
+      expect(await svc.getBillingEligibility('u1')).toEqual({
+        canSubscribe: true,
+        subscribeBlockedReason: null,
+        trialEligible: true,
+        trialDays: 7,
+        trialIneligibleReason: null,
+      });
+    });
+
+    it('blocks subscribing entirely on an unverified email', async () => {
+      mockAppwriteUsersGet.mockResolvedValue({ emailVerification: false });
+
+      expect(await svc.getBillingEligibility('u1')).toMatchObject({
+        canSubscribe: false,
+        subscribeBlockedReason: 'email_unverified',
+        trialEligible: false,
+      });
+    });
+
+    it('blocks subscribing entirely without approved identity verification', async () => {
+      mockIsUserVerified.mockResolvedValue(false);
+
+      expect(await svc.getBillingEligibility('u1')).toMatchObject({
+        canSubscribe: false,
+        subscribeBlockedReason: 'kyc_unverified',
+      });
+    });
+
+    it('treats an unreadable verification state as unverified, not verified', async () => {
+      mockAppwriteUsersGet.mockRejectedValue(new Error('appwrite down'));
+
+      expect(await svc.getBillingEligibility('u1')).toMatchObject({
+        canSubscribe: false,
+        subscribeBlockedReason: 'email_unverified',
+      });
+    });
+
+    it('lets a verified user re-subscribe, but without a second trial', async () => {
+      // Otherwise cancel-and-resubscribe is an unlimited free plan.
+      mockGetByUserId.mockResolvedValue({ trial_used: true });
+
+      expect(await svc.getBillingEligibility('u1')).toMatchObject({
+        canSubscribe: true,
+        trialEligible: false,
+        trialIneligibleReason: 'trial_already_used',
+      });
+    });
+
+    it('allows subscribing when no trial is on offer', async () => {
+      mockConfig.stripe.trialPeriodDays = 0;
+
+      expect(await svc.getBillingEligibility('u1')).toMatchObject({
+        canSubscribe: true,
+        trialEligible: false,
+        trialIneligibleReason: 'no_trial_offered',
+      });
+    });
+
+    it('does not read the subscription row when verification already failed', async () => {
+      mockIsUserVerified.mockResolvedValue(false);
+
+      await svc.getBillingEligibility('u1');
+
+      expect(mockGetByUserId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verification gating at checkout', () => {
+    const base = { userId: 'u1', requestId: 'req-1' };
+
+    beforeEach(() => { mockConfig.stripe.trialPeriodDays = 7; });
+
+    it('gives a verified user the trial and marks it used', async () => {
+      await svc.createCheckoutSession(base);
+
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data.trial_period_days).toBe(7);
+      expect(mockUpsert).toHaveBeenCalledWith('u1', { trial_used: true });
+    });
+
+    it('refuses checkout outright for an unverified email', async () => {
+      mockAppwriteUsersGet.mockResolvedValue({ emailVerification: false });
+
+      const result = await svc.createCheckoutSession(base);
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VERIFICATION_REQUIRED');
+      expect(result.error.details).toContain('email_unverified');
+      expect(stripeApi.checkout.sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses checkout outright without identity verification', async () => {
+      mockIsUserVerified.mockResolvedValue(false);
+
+      const result = await svc.createCheckoutSession(base);
+
+      expect(result.error.code).toBe('VERIFICATION_REQUIRED');
+      expect(result.error.details).toContain('kyc_unverified');
+      expect(stripeApi.checkout.sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('never creates a Stripe customer for an unverified user', async () => {
+      // A refused purchase should leave no trace in Stripe.
+      mockIsUserVerified.mockResolvedValue(false);
+
+      await svc.createCheckoutSession(base);
+
+      expect(stripeApi.customers.create).not.toHaveBeenCalled();
+    });
+
+    it('lets a verified repeat subscriber buy, without a second trial', async () => {
+      mockGetByUserId.mockResolvedValue({ trial_used: true, stripe_customer_id: 'cus_1' });
+
+      const result = await svc.createCheckoutSession(base);
+
+      expect(result.success).toBe(true);
+      const [params] = stripeApi.checkout.sessions.create.mock.calls[0];
+      expect(params.subscription_data).not.toHaveProperty('trial_period_days');
+    });
+
+    it('does not consume the trial when none was granted', async () => {
+      mockConfig.stripe.trialPeriodDays = 0;
+
+      await svc.createCheckoutSession(base);
+
+      expect(mockUpsert).not.toHaveBeenCalledWith('u1', { trial_used: true });
+    });
+  });
+
+  describe('getTrialPeriodDays', () => {
+    it('reports no trial by default', () => {
+      expect(svc.getTrialPeriodDays()).toBe(0);
+    });
+
+    it('reports the configured length', () => {
+      mockConfig.stripe.trialPeriodDays = 7;
+      expect(svc.getTrialPeriodDays()).toBe(7);
     });
   });
 

@@ -128,6 +128,7 @@ export const config = {
     arbiterPrivateKey: getEnvVarOptional('PLATFORM_ARBITER_PRIVATE_KEY'),
   },
   redis: {
+    url: getEnvVarOptional('REDIS_URL'),
     host: getEnvVar('REDIS_HOST', 'localhost'),
     port: getEnvVarNumber('REDIS_PORT', 6379),
     password: getEnvVarOptional('REDIS_PASSWORD'),
@@ -143,6 +144,14 @@ export const config = {
     // billing variants of the same plan, not separate tiers.
     monthlyPriceId: getEnvVarOptional('STRIPE_MONTHLY_PRICE_ID'),
     annualPriceId: getEnvVarOptional('STRIPE_ANNUAL_PRICE_ID'),
+    // Free trial length in days, applied to both billing intervals. 0 (the
+    // default) means no trial.
+    //
+    // NOTE: a trial set on the Price in the Stripe Dashboard is NOT inherited
+    // by the API — Stripe treats it only as a default for the Dashboard's own
+    // subscription form. Checkout applies a trial only when the session asks
+    // for one, which is why this exists.
+    trialPeriodDays: getEnvVarNumber('STRIPE_TRIAL_PERIOD_DAYS', 0),
     // Client-side key. Not used by the hosted Checkout redirect this
     // integration uses, but exposed here for a future Payment Element.
     publishableKey: getEnvVarOptional('STRIPE_PUBLISHABLE_KEY'),

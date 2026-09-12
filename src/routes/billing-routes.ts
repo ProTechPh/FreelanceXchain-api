@@ -5,7 +5,7 @@ import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { isStripeConfigured } from '../config/stripe.js';
-import { createCheckoutSession, createPortalSession, getPlanPrices } from '../services/stripe-billing-service.js';
+import { createCheckoutSession, createPortalSession, getPlanPrices, getTrialPeriodDays, getBillingEligibility } from '../services/stripe-billing-service.js';
 import { getEntitlement } from '../services/subscription-service.js';
 
 const router = Router();
@@ -26,6 +26,8 @@ function statusForBillingError(code: string): number {
       return 400;
     case 'STRIPE_AUTH_FAILED':
       return 503;
+    case 'VERIFICATION_REQUIRED':
+      return 403;
     case 'USER_NOT_FOUND':
       return 404;
     case 'STRIPE_UNAVAILABLE':
@@ -54,6 +56,9 @@ router.get('/plans', apiRateLimiter, asyncHandler(async (_req: Request, res: Res
 
   res.status(200).json({
     billingEnabled: isStripeConfigured(),
+    // Surfaced so the pricing page advertises the trial that checkout will
+    // actually apply, rather than a figure typed into the markup.
+    trialPeriodDays: getTrialPeriodDays(),
     plans: [
       {
         id: 'free',
@@ -110,6 +115,11 @@ router.get('/subscription', authMiddleware, apiRateLimiter, asyncHandler(async (
       cancelAtPeriodEnd: false,
       manageable: false,
       reason: 'admin',
+      canSubscribe: false,
+      subscribeBlockedReason: null,
+      trialEligible: false,
+      trialDays: 0,
+      trialIneligibleReason: null,
     });
     return;
   }
@@ -121,7 +131,12 @@ router.get('/subscription', authMiddleware, apiRateLimiter, asyncHandler(async (
     return;
   }
 
-  res.status(200).json(result.data);
+  // Eligibility is per-user, so it belongs here rather than on the public
+  // /plans route. The UI needs it to say why a trial is unavailable instead of
+  // quietly charging someone who expected a free week.
+  const eligibility = await getBillingEligibility(userId);
+
+  res.status(200).json({ ...result.data, ...eligibility });
 }));
 
 /**
