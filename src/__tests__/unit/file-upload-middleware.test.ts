@@ -83,6 +83,33 @@ describe('File Upload Middleware', () => {
     });
   });
 
+  describe('sanitizeCsvBuffer', () => {
+    it('should neutralize formula injection prefixes (=, +, -, @, pipe)', async () => {
+      const { sanitizeCsvBuffer } = await importModule();
+      const dangerousCsv = 'name,amount,formula\nAlice,100,=cmd|calc\nBob,200,+1+1\nCharlie,300,-100\nDave,400,@SUM(A1:A10)\nEve,500,|calc';
+      const sanitized = sanitizeCsvBuffer(Buffer.from(dangerousCsv)).toString('utf8');
+      expect(sanitized).toContain("'=cmd|calc");
+      expect(sanitized).toContain("'+1+1");
+      expect(sanitized).toContain("'-100");
+      expect(sanitized).toContain("'@SUM(A1:A10)");
+      expect(sanitized).toContain("'|calc");
+    });
+
+    it('should neutralize quoted formula injection cells', async () => {
+      const { sanitizeCsvBuffer } = await importModule();
+      const dangerousCsv = 'header1,header2\n"safe","=SUM(A1:A10)"';
+      const sanitized = sanitizeCsvBuffer(Buffer.from(dangerousCsv)).toString('utf8');
+      expect(sanitized).toContain("\"'=SUM(A1:A10)\"");
+    });
+
+    it('should leave clean CSV rows untouched', async () => {
+      const { sanitizeCsvBuffer } = await importModule();
+      const cleanCsv = 'id,name,role\n1,Alice,Developer\n2,Bob,Designer';
+      const sanitized = sanitizeCsvBuffer(Buffer.from(cleanCsv)).toString('utf8');
+      expect(sanitized).toBe(cleanCsv);
+    });
+  });
+
   describe('scanFileForViruses', () => {
     it('should detect EICAR signature', async () => {
       const { scanFileForViruses } = await importModule();

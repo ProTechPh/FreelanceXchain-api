@@ -7,6 +7,11 @@ import { logger } from './logger.js';
 // rate-limiter call) can arrive.  With enableOfflineQueue:false a lazyConnect
 // client that hasn't connected yet throws "Stream isn't writeable", which is
 // the startup-race we observed in production.
+const isRemoteHost = config?.redis?.host && !['localhost', '127.0.0.1', '::1'].includes(config.redis.host);
+if (isRemoteHost && !config?.redis?.tls && config?.server?.nodeEnv === 'production') {
+  logger.warn('[SECURITY WARNING] Connecting to remote Redis host without TLS in production. Set REDIS_TLS=true to encrypt traffic in transit (PCI-DSS 4.1, CWE-319).');
+}
+
 export const redis = new Redis({
   host: config?.redis?.host || '127.0.0.1',
   port: config?.redis?.port || 6379,

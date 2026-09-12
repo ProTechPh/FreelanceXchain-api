@@ -44,7 +44,10 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
   const { windowMs, maxRequests, message, failOpen = true } = rateLimitConfig;
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    if (config.server.nodeEnv === 'test' || config.server.disableRateLimiter) {
+    if (
+      config.server.nodeEnv === 'test' ||
+      (config.server.disableRateLimiter && config.server.nodeEnv === 'development')
+    ) {
       next();
       return;
     }

@@ -66,6 +66,30 @@ export function sanitizeFilename(filename: string): string {
   return sanitized || 'unnamed_file';
 }
 
+/**
+ * Sanitize CSV content to neutralize spreadsheet formula injection attacks (CWE-1236, OWASP ASVS 5.2).
+ * Prepends a single quote to prevent spreadsheet software from evaluating dangerous commands.
+ */
+export function sanitizeCsvBuffer(buffer: Buffer): Buffer {
+  const content = buffer.toString('utf8');
+  const lines = content.split(/\r?\n/);
+  const sanitizedLines = lines.map((line) => {
+    if (!line.trim()) return line;
+    const cells = line.split(',');
+    const sanitizedCells = cells.map((cell) => {
+      const trimmed = cell.trim();
+      const isQuoted = (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"));
+      const inner = isQuoted ? trimmed.slice(1, -1) : trimmed;
+      if (/^[=+\-@\t\r|]/.test(inner)) {
+        return isQuoted ? `"'${inner}"` : `'${trimmed}`;
+      }
+      return cell;
+    });
+    return sanitizedCells.join(',');
+  });
+  return Buffer.from(sanitizedLines.join('\n'), 'utf8');
+}
+
 function hasValidExtension(filename: string): boolean {
   const lowerFilename = filename.toLowerCase();
   return ALLOWED_EXTENSIONS.some(ext => lowerFilename.endsWith(ext));
@@ -76,14 +100,19 @@ function hasValidExtension(filename: string): boolean {
  */
 async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{ valid: boolean; detectedType?: string; error?: string }> {
   try {
-    // Special handling for text and markdown files (no magic number)
+    // Special handling for text, markdown, and CSV files (no magic number)
     const lower = filename.toLowerCase();
-    if (lower.endsWith('.txt') || lower.endsWith('.md')) {
+    if (lower.endsWith('.txt') || lower.endsWith('.md') || lower.endsWith('.csv')) {
       const isText = buffer.slice(0, 1024).every(byte =>
         (byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13 || byte >= 128
       );
       if (isText) {
-        return { valid: true, detectedType: lower.endsWith('.md') ? 'text/markdown' : 'text/plain' };
+        const detectedType = lower.endsWith('.md')
+          ? 'text/markdown'
+          : lower.endsWith('.csv')
+            ? 'text/csv'
+            : 'text/plain';
+        return { valid: true, detectedType };
       }
     }
 
@@ -212,6 +241,11 @@ async function validateAndScanFile(
   }
 
   (file as Express.Multer.File & { detectedMimeType?: string | undefined }).detectedMimeType = validation.detectedType;
+
+  if (validation.detectedType === 'text/csv' || file.originalname.toLowerCase().endsWith('.csv')) {
+    file.buffer = sanitizeCsvBuffer(file.buffer);
+    file.size = file.buffer.length;
+  }
 
   const scanResult = await scanFileForViruses(file.buffer, file.originalname);
   if (!scanResult.clean) {

@@ -68,9 +68,14 @@ LABEL org.opencontainers.image.title="FreelanceXchain API" \
       org.opencontainers.image.version=$APP_VERSION \
       org.opencontainers.image.revision=$APP_REVISION
 
+# Run container as non-root user (CIS Docker Benchmark 4.1, CWE-250)
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 7860
 
 # Start the application via npm so `npm_package_version` is set from the
 # image's package.json — otherwise GET / and /api/health always fall back
 # to the hardcoded 1.0.0 base version.
 CMD ["npm", "run", "start"]
+

@@ -43,6 +43,17 @@ function getBaseUrl(): string {
   return `http://localhost:${port}`;
 }
 
+function getDisableRateLimiter(): boolean {
+  const disabled = getEnvVarBoolean('DISABLE_RATE_LIMITER', false);
+  const nodeEnv = process.env['NODE_ENV'];
+  if (disabled && nodeEnv === 'production') {
+    // In production, rate limiting MUST NEVER be disabled regardless of environment variables
+    console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is prohibited in production and will be ignored.');
+    return false;
+  }
+  return disabled;
+}
+
 export const config = {
   server: {
     port: getEnvVarNumber('PORT', 3000),
@@ -52,7 +63,7 @@ export const config = {
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
     logLevel: getEnvVar('LOG_LEVEL', 'error'),
     verboseLogs: getEnvVarBoolean('VERBOSE_LOGS', false),
-    disableRateLimiter: getEnvVarBoolean('DISABLE_RATE_LIMITER', false),
+    disableRateLimiter: getDisableRateLimiter(),
     // Number of trusted reverse-proxy hops. Keeps req.ip (used by rate limiters and
     // audit logging) pointing at the real client instead of the proxy when deployed
     // behind nginx/Cloudflare/HF Spaces. Set 0 to disable and always use the socket
