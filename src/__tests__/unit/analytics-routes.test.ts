@@ -13,6 +13,11 @@ const mockGetAdminAnalytics = jest.fn<any>();
 const mockGetSkillTrends = jest.fn<any>();
 const mockGetMarketplaceLiquidityReport = jest.fn<any>();
 const mockGetFunnelMetrics = jest.fn<any>();
+const mockGetCohortRetentionReport = jest.fn<any>();
+const mockGetChurnRiskReport = jest.fn<any>();
+const mockGetMarketplaceVelocityReport = jest.fn<any>();
+const mockGetAllUserExperiments = jest.fn<any>();
+const mockGetRegisteredExperiments = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
   getFreelancerAnalytics: mockGetFreelancerAnalytics,
@@ -22,6 +27,14 @@ jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () 
   getSkillTrends: mockGetSkillTrends,
   getMarketplaceLiquidityReport: mockGetMarketplaceLiquidityReport,
   getFunnelMetrics: mockGetFunnelMetrics,
+  getCohortRetentionReport: mockGetCohortRetentionReport,
+  getChurnRiskReport: mockGetChurnRiskReport,
+  getMarketplaceVelocityReport: mockGetMarketplaceVelocityReport,
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/experiment-service.ts'), () => ({
+  getAllUserExperiments: mockGetAllUserExperiments,
+  getRegisteredExperiments: mockGetRegisteredExperiments,
 }));
 
 const mockAuthMiddleware = jest.fn((req: any, _res: any, next: any) => {
@@ -205,6 +218,149 @@ describe('Analytics Routes', () => {
       });
       const res = await request(app).get('/api/analytics/funnel');
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /cohorts', () => {
+    it('should return cohort retention report', async () => {
+      mockGetCohortRetentionReport.mockResolvedValue({
+        success: true,
+        data: {
+          cohorts: [
+            {
+              cohortMonth: '2026-08',
+              totalUsers: 50,
+              metrics: [{ monthIndex: 0, activeUsers: 50, retentionRate: 100, cumulativeGmv: 5000 }],
+            },
+          ],
+          averageMonth1Retention: 45,
+          averageMonth3Retention: 30,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+      const res = await request(app).get('/api/analytics/cohorts');
+      expect(res.status).toBe(200);
+      expect(res.body.cohorts.length).toBe(1);
+      expect(res.body.averageMonth1Retention).toBe(45);
+    });
+
+    it('should return 400 on service failure', async () => {
+      mockGetCohortRetentionReport.mockResolvedValue({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to compute cohorts' },
+      });
+      const res = await request(app).get('/api/analytics/cohorts');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /churn-risk', () => {
+    it('should return churn risk report', async () => {
+      mockGetChurnRiskReport.mockResolvedValue({
+        success: true,
+        data: {
+          totalEvaluated: 100,
+          riskDistribution: { low: 70, medium: 20, high: 10 },
+          highRiskUsers: [
+            {
+              userId: 'user-99',
+              role: 'freelancer',
+              email: 'test@example.com',
+              riskScore: 0.85,
+              riskLevel: 'high',
+              signals: ['inactive_30d', 'proposal_rejections'],
+              daysSinceLastActive: 45,
+              recommendedPlaybook: 'AI proposal copywriter coaching',
+            },
+          ],
+          generatedAt: new Date().toISOString(),
+        },
+      });
+      const res = await request(app).get('/api/analytics/churn-risk');
+      expect(res.status).toBe(200);
+      expect(res.body.totalEvaluated).toBe(100);
+      expect(res.body.riskDistribution.high).toBe(10);
+      expect(res.body.highRiskUsers[0].userId).toBe('user-99');
+    });
+
+    it('should return 400 on service failure', async () => {
+      mockGetChurnRiskReport.mockResolvedValue({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to compute churn risk' },
+      });
+      const res = await request(app).get('/api/analytics/churn-risk');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /velocity', () => {
+    it('should return marketplace velocity report', async () => {
+      mockGetMarketplaceVelocityReport.mockResolvedValue({
+        success: true,
+        data: {
+          medianTimeToFirstProposalHours: 3.5,
+          medianTimeToHireDays: 2.1,
+          medianMilestoneTurnaroundDays: 1.2,
+          averageContractDurationDays: 14.5,
+          repeatEmployerRate: 35.5,
+          repeatFreelancerRate: 42.0,
+          totalCompletedContracts: 80,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+      const res = await request(app).get('/api/analytics/velocity');
+      expect(res.status).toBe(200);
+      expect(res.body.medianTimeToFirstProposalHours).toBe(3.5);
+      expect(res.body.repeatEmployerRate).toBe(35.5);
+    });
+
+    it('should return 400 on service failure', async () => {
+      mockGetMarketplaceVelocityReport.mockResolvedValue({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to compute velocity' },
+      });
+      const res = await request(app).get('/api/analytics/velocity');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /experiments', () => {
+    it('should return active experiment assignments for user', async () => {
+      mockGetAllUserExperiments.mockReturnValue({
+        success: true,
+        data: [
+          { experimentId: 'AB-001', variantId: 'control_immediate_paywall', variantName: 'Immediate Paywall on 1st Match' },
+          { experimentId: 'AB-003', variantId: 'variant_25_percent', variantName: '25% Rush Surcharge Default' },
+        ],
+      });
+      const res = await request(app).get('/api/analytics/experiments');
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBe(2);
+      expect(res.body[0].experimentId).toBe('AB-001');
+    });
+
+    it('should return 401 when not authenticated', async () => {
+      mockAuthMiddleware.mockImplementationOnce((req: any, _res: any, next: any) => {
+        req.user = undefined;
+        next();
+      });
+      const res = await request(app).get('/api/analytics/experiments');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('GET /experiments/catalog', () => {
+    it('should return registered experiments catalog', async () => {
+      mockGetRegisteredExperiments.mockReturnValue({
+        success: true,
+        data: [
+          { id: 'AB-001', name: 'Pro Paywall Placement', status: 'running' },
+        ],
+      });
+      const res = await request(app).get('/api/analytics/experiments/catalog');
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBe(1);
+      expect(res.body[0].id).toBe('AB-001');
     });
   });
 });

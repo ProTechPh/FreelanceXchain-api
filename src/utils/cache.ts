@@ -98,6 +98,9 @@ export const employerAnalyticsCache = new LRUCache<any>(500, 60_000);
 export const adminAnalyticsCache = new LRUCache<any>(10, 60_000);
 export const marketplaceLiquidityCache = new LRUCache<any>(10, 60_000);
 export const funnelMetricsCache = new LRUCache<any>(10, 60_000);
+export const cohortRetentionCache = new LRUCache<any>(10, 60_000);
+export const churnRiskCache = new LRUCache<any>(10, 60_000);
+export const marketplaceVelocityCache = new LRUCache<any>(10, 60_000);
 
 const allCaches: LRUCache<any>[] = [
   skillCache,
@@ -109,6 +112,9 @@ const allCaches: LRUCache<any>[] = [
   adminAnalyticsCache,
   marketplaceLiquidityCache,
   funnelMetricsCache,
+  cohortRetentionCache,
+  churnRiskCache,
+  marketplaceVelocityCache,
 ];
 
 export function startAllCacheCleanups(intervalMs: number = 60_000): void {

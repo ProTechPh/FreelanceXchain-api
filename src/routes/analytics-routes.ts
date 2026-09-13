@@ -11,7 +11,14 @@ import {
   getSkillTrends,
   getMarketplaceLiquidityReport,
   getFunnelMetrics,
+  getCohortRetentionReport,
+  getChurnRiskReport,
+  getMarketplaceVelocityReport,
 } from '../services/analytics-service.js';
+import {
+  getAllUserExperiments,
+  getRegisteredExperiments,
+} from '../services/experiment-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
@@ -103,6 +110,73 @@ router.get('/liquidity', authMiddleware, apiRateLimiter, asyncHandler(async (req
 router.get('/funnel', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const result = await getFunnelMetrics();
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/cohorts', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const result = await getCohortRetentionReport();
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/churn-risk', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const result = await getChurnRiskReport();
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/velocity', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const result = await getMarketplaceVelocityReport();
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/experiments', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+  const requestId = getRequestId(req);
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = getAllUserExperiments(userId, userRole);
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+router.get('/experiments/catalog', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const result = getRegisteredExperiments();
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
