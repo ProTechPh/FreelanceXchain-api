@@ -10,6 +10,9 @@ import {
   adminAnalyticsCache,
   marketplaceLiquidityCache,
   funnelMetricsCache,
+  cohortRetentionCache,
+  churnRiskCache,
+  marketplaceVelocityCache,
 } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -120,6 +123,60 @@ export interface AdminAnalytics {
   projectedBenchmarkRevenue?: number;
   activeProSubscriptions?: number;
   proConversionRate?: number;
+}
+
+export interface CohortMonthMetric {
+  monthIndex: number;
+  activeUsers: number;
+  retentionRate: number;
+  cumulativeGmv: number;
+}
+
+export interface CohortData {
+  cohortMonth: string;
+  totalUsers: number;
+  metrics: CohortMonthMetric[];
+}
+
+export interface CohortRetentionReport {
+  cohorts: CohortData[];
+  averageMonth1Retention: number;
+  averageMonth3Retention: number;
+  generatedAt: string;
+}
+
+export interface UserChurnRisk {
+  userId: string;
+  role: string;
+  email: string;
+  name?: string;
+  riskScore: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  signals: string[];
+  daysSinceLastActive: number;
+  recommendedPlaybook: string;
+}
+
+export interface ChurnRiskReport {
+  totalEvaluated: number;
+  riskDistribution: {
+    low: number;
+    medium: number;
+    high: number;
+  };
+  highRiskUsers: UserChurnRisk[];
+  generatedAt: string;
+}
+
+export interface MarketplaceVelocityReport {
+  medianTimeToFirstProposalHours: number;
+  medianTimeToHireDays: number;
+  medianMilestoneTurnaroundDays: number;
+  averageContractDurationDays: number;
+  repeatEmployerRate: number;
+  repeatFreelancerRate: number;
+  totalCompletedContracts: number;
+  generatedAt: string;
 }
 
 /**
@@ -952,6 +1009,626 @@ export async function getFunnelMetrics(): Promise<ServiceResult<FunnelMetricsRep
     return successResult(report);
   } catch (error) {
     logger.error('Failed to get funnel metrics', { error });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
+function parseDocDate(doc: any): Date {
+  const d = doc?.created_at || doc?.$createdAt;
+  if (!d) return new Date();
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function getYearMonthKey(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function calculateDiffInMonths(startKey: string, targetKey: string): number {
+  const sParts = startKey.split('-');
+  const tParts = targetKey.split('-');
+  const sy = parseInt(sParts[0] ?? '0', 10);
+  const sm = parseInt(sParts[1] ?? '0', 10);
+  const ty = parseInt(tParts[0] ?? '0', 10);
+  const tm = parseInt(tParts[1] ?? '0', 10);
+  if (isNaN(sy) || isNaN(sm) || isNaN(ty) || isNaN(tm)) return 0;
+  return (ty - sy) * 12 + (tm - sm);
+}
+
+function calculateMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const midVal = sorted[mid] ?? 0;
+  if (sorted.length % 2 !== 0) {
+    return Math.round(midVal * 10) / 10;
+  }
+  const prevVal = sorted[mid - 1] ?? 0;
+  return Math.round(((prevVal + midVal) / 2) * 10) / 10;
+}
+
+function extractProjectMilestones(proj: any): any[] {
+  if (Array.isArray(proj.milestones)) return proj.milestones;
+  if (typeof proj.milestones === 'string') {
+    try {
+      const parsed = JSON.parse(proj.milestones);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+interface CohortRawMaps {
+  userCohortMap: Map<string, string>;
+  userActivityMonths: Map<string, Set<string>>;
+  completedContractGmvByMonth: Map<string, { [userCohortMonth: string]: number }>;
+}
+
+function buildUserCohortMaps(
+  allUsers: Models.DefaultDocument[],
+  allContracts: Models.DefaultDocument[],
+  allProjects: Models.DefaultDocument[],
+  allProposals: Models.DefaultDocument[]
+): CohortRawMaps {
+  const userCohortMap = new Map<string, string>();
+  const userActivityMonths = new Map<string, Set<string>>();
+  const completedContractGmvByMonth = new Map<string, { [userCohortMonth: string]: number }>();
+
+  for (const u of allUsers) {
+    const regDate = parseDocDate(u);
+    const cohort = getYearMonthKey(regDate);
+    userCohortMap.set(u.$id, cohort);
+    const actSet = new Set<string>();
+    actSet.add(cohort);
+    userActivityMonths.set(u.$id, actSet);
+  }
+
+  for (const p of allProjects) {
+    if (p['employer_id'] && userActivityMonths.has(p['employer_id'])) {
+      userActivityMonths.get(p['employer_id'])!.add(getYearMonthKey(parseDocDate(p)));
+    }
+  }
+
+  for (const pr of allProposals) {
+    if (pr['freelancer_id'] && userActivityMonths.has(pr['freelancer_id'])) {
+      userActivityMonths.get(pr['freelancer_id'])!.add(getYearMonthKey(parseDocDate(pr)));
+    }
+  }
+
+  for (const c of allContracts) {
+    const cDateKey = getYearMonthKey(parseDocDate(c));
+    if (c['employer_id'] && userActivityMonths.has(c['employer_id'])) {
+      userActivityMonths.get(c['employer_id'])!.add(cDateKey);
+    }
+    if (c['freelancer_id'] && userActivityMonths.has(c['freelancer_id'])) {
+      userActivityMonths.get(c['freelancer_id'])!.add(cDateKey);
+    }
+
+    if (c['status'] === 'completed') {
+      const amt = Number(c['total_amount'] || 0);
+      const empCohort = userCohortMap.get(c['employer_id']);
+      if (empCohort) {
+        if (!completedContractGmvByMonth.has(cDateKey)) {
+          completedContractGmvByMonth.set(cDateKey, {});
+        }
+        const monthMap = completedContractGmvByMonth.get(cDateKey)!;
+        monthMap[empCohort] = (monthMap[empCohort] || 0) + amt;
+      }
+    }
+  }
+
+  return { userCohortMap, userActivityMonths, completedContractGmvByMonth };
+}
+
+function computeCohortMonthMetrics(
+  cohortMonth: string,
+  userIds: string[],
+  currentMonthKey: string,
+  maps: Pick<CohortRawMaps, 'userActivityMonths' | 'completedContractGmvByMonth'>
+): CohortMonthMetric[] {
+  const { userActivityMonths, completedContractGmvByMonth } = maps;
+  const totalUsers = userIds.length;
+  const maxOffset = Math.min(12, Math.max(0, calculateDiffInMonths(cohortMonth, currentMonthKey)));
+  const metrics: CohortMonthMetric[] = [];
+  let runningGmv = 0;
+
+  for (let i = 0; i <= maxOffset; i++) {
+    const cParts = cohortMonth.split('-');
+    const cy = parseInt(cParts[0] ?? '2026', 10);
+    const cm = parseInt(cParts[1] ?? '1', 10);
+    const targetDate = new Date(Date.UTC(cy, cm - 1 + i, 1));
+    const targetMonthKey = getYearMonthKey(targetDate);
+
+    let activeUsers = 0;
+    if (i === 0) {
+      activeUsers = totalUsers;
+    } else {
+      for (const uid of userIds) {
+        const acts = userActivityMonths.get(uid);
+        if (acts && acts.has(targetMonthKey)) {
+          activeUsers++;
+        }
+      }
+    }
+
+    const retentionRate = totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 1000) / 10 : 0;
+    const gmvInMonth = completedContractGmvByMonth.get(targetMonthKey)?.[cohortMonth] || 0;
+    runningGmv += gmvInMonth;
+
+    metrics.push({
+      monthIndex: i,
+      activeUsers,
+      retentionRate,
+      cumulativeGmv: Math.round(runningGmv * 100) / 100,
+    });
+  }
+
+  return metrics;
+}
+
+/**
+ * Get monthly cohort retention and cumulative GMV metrics.
+ *
+ * Tracks user engagement and GMV retention by registration cohort across months.
+ * Cached for 60s.
+ */
+export async function getCohortRetentionReport(): Promise<ServiceResult<CohortRetentionReport>> {
+  const cached = cohortRetentionCache.get('cohort_retention');
+  if (cached) {
+    return successResult(cached);
+  }
+
+  try {
+    const [allUsers, allContracts, allProjects, allProposals] = await Promise.all([
+      fetchAllCollection(COLLECTIONS.USERS, []),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
+      fetchAllCollection(COLLECTIONS.PROJECTS, []),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
+    ]);
+
+    const { userCohortMap, userActivityMonths, completedContractGmvByMonth } = buildUserCohortMaps(
+      allUsers,
+      allContracts,
+      allProjects,
+      allProposals
+    );
+
+    const cohortGroups = new Map<string, string[]>();
+    for (const [userId, cohort] of userCohortMap.entries()) {
+      if (!cohortGroups.has(cohort)) {
+        cohortGroups.set(cohort, []);
+      }
+      cohortGroups.get(cohort)!.push(userId);
+    }
+
+    const currentMonthKey = getYearMonthKey(new Date());
+    const sortedCohorts = Array.from(cohortGroups.keys()).sort();
+
+    const cohorts: CohortData[] = [];
+    const month1Rates: number[] = [];
+    const month3Rates: number[] = [];
+
+    for (const cohortMonth of sortedCohorts) {
+      const userIds = cohortGroups.get(cohortMonth) || [];
+      if (userIds.length === 0) continue;
+
+      const metrics = computeCohortMonthMetrics(
+        cohortMonth,
+        userIds,
+        currentMonthKey,
+        { userActivityMonths, completedContractGmvByMonth }
+      );
+
+      const m1 = metrics.find(m => m.monthIndex === 1);
+      if (m1) month1Rates.push(m1.retentionRate);
+      const m3 = metrics.find(m => m.monthIndex === 3);
+      if (m3) month3Rates.push(m3.retentionRate);
+
+      cohorts.push({
+        cohortMonth,
+        totalUsers: userIds.length,
+        metrics,
+      });
+    }
+
+    const averageMonth1Retention = month1Rates.length > 0
+      ? Math.round((month1Rates.reduce((a, b) => a + b, 0) / month1Rates.length) * 10) / 10
+      : 0;
+
+    const averageMonth3Retention = month3Rates.length > 0
+      ? Math.round((month3Rates.reduce((a, b) => a + b, 0) / month3Rates.length) * 10) / 10
+      : 0;
+
+    const report: CohortRetentionReport = {
+      cohorts,
+      averageMonth1Retention,
+      averageMonth3Retention,
+      generatedAt: new Date().toISOString(),
+    };
+
+    cohortRetentionCache.set('cohort_retention', report);
+    return successResult(report);
+  } catch (error) {
+    logger.error('Failed to get cohort retention report', { error });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
+interface ChurnContext {
+  now: number;
+  profileByUserId: Map<string, Models.DefaultDocument>;
+  reviewsByReviewee: Map<string, number[]>;
+  proposalsByUser: Map<string, Models.DefaultDocument[]>;
+  contractsByUser: Map<string, Models.DefaultDocument[]>;
+  userWithDisputes: Set<string>;
+}
+
+function getChurnPlaybook(signals: string[]): string {
+  if (signals.includes('dispute_involvement')) {
+    return 'Mediation concierge outreach and contract satisfaction review';
+  }
+  if (signals.includes('proposal_rejections')) {
+    return 'AI proposal copywriter coaching & skill gap diagnostic';
+  }
+  if (signals.includes('inactive_30d')) {
+    return '30-day reactivation campaign with personalized high-match projects';
+  }
+  if (signals.includes('unlinked_wallet')) {
+    return 'Tiered-KYC & Polygon wallet linking walkthrough';
+  }
+  if (signals.includes('incomplete_profile')) {
+    return 'Profile completion nudge with priority search badge incentive';
+  }
+  return 'Maintain standard engagement & weekly product updates';
+}
+
+function evaluateUserChurnRisk(u: Models.DefaultDocument, ctx: ChurnContext): UserChurnRisk {
+  let latestActivity = parseDocDate(u).getTime();
+
+  const userProps = ctx.proposalsByUser.get(u.$id) || [];
+  for (const pr of userProps) {
+    const t = parseDocDate(pr).getTime();
+    if (t > latestActivity) latestActivity = t;
+  }
+
+  const userConts = ctx.contractsByUser.get(u.$id) || [];
+  for (const c of userConts) {
+    const t = parseDocDate(c).getTime();
+    if (t > latestActivity) latestActivity = t;
+  }
+
+  const daysSinceLastActive = Math.max(0, Math.floor((ctx.now - latestActivity) / (1000 * 3600 * 24)));
+  const signals: string[] = [];
+  let score = 0;
+
+  if (daysSinceLastActive >= 30) {
+    signals.push('inactive_30d');
+    score += 0.35;
+  } else if (daysSinceLastActive >= 14) {
+    signals.push('inactive_14d');
+    score += 0.15;
+  }
+
+  if (u['role'] === 'freelancer' && userProps.length >= 3) {
+    const accepted = userProps.filter(p => p['status'] === 'accepted').length;
+    if (accepted === 0) {
+      signals.push('proposal_rejections');
+      score += 0.25;
+    }
+  }
+
+  if (ctx.userWithDisputes.has(u.$id)) {
+    signals.push('dispute_involvement');
+    score += 0.20;
+  }
+
+  const ratings = ctx.reviewsByReviewee.get(u.$id);
+  if (ratings && ratings.length >= 2) {
+    const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+    if (avgRating < 3.5) {
+      signals.push('low_rating');
+      score += 0.20;
+    }
+  }
+
+  if (!u['wallet_address'] || String(u['wallet_address']).trim() === '') {
+    signals.push('unlinked_wallet');
+    score += 0.10;
+  }
+
+  if (u['role'] === 'freelancer') {
+    const prof = ctx.profileByUserId.get(u.$id);
+    if (!prof || !prof['skills'] || prof['skills'] === '[]' || !prof['bio']) {
+      signals.push('incomplete_profile');
+      score += 0.15;
+    }
+  }
+
+  const riskScore = Math.min(1.0, Math.round(score * 100) / 100);
+  const riskLevel: 'low' | 'medium' | 'high' = riskScore >= 0.6 ? 'high' : riskScore >= 0.3 ? 'medium' : 'low';
+  const recommendedPlaybook = getChurnPlaybook(signals);
+
+  return {
+    userId: u.$id,
+    role: u['role'] || 'freelancer',
+    email: u['email'] || '',
+    name: u['name'] || 'User',
+    riskScore,
+    riskLevel,
+    signals,
+    daysSinceLastActive,
+    recommendedPlaybook,
+  };
+}
+
+interface ChurnRawCollections {
+  allProfiles: Models.DefaultDocument[];
+  allReviews: Models.DefaultDocument[];
+  allProposals: Models.DefaultDocument[];
+  allContracts: Models.DefaultDocument[];
+  allDisputes: Models.DefaultDocument[];
+}
+
+function buildChurnContext(data: ChurnRawCollections): ChurnContext {
+  const { allProfiles, allReviews, allProposals, allContracts, allDisputes } = data;
+  const now = Date.now();
+  const profileByUserId = new Map<string, Models.DefaultDocument>();
+  for (const p of allProfiles) {
+    if (p['user_id']) profileByUserId.set(p['user_id'], p);
+  }
+
+  const reviewsByReviewee = new Map<string, number[]>();
+  for (const r of allReviews) {
+    if (r['reviewee_id'] && typeof r['rating'] === 'number') {
+      if (!reviewsByReviewee.has(r['reviewee_id'])) reviewsByReviewee.set(r['reviewee_id'], []);
+      reviewsByReviewee.get(r['reviewee_id'])!.push(r['rating']);
+    }
+  }
+
+  const proposalsByUser = new Map<string, Models.DefaultDocument[]>();
+  for (const pr of allProposals) {
+    if (pr['freelancer_id']) {
+      if (!proposalsByUser.has(pr['freelancer_id'])) proposalsByUser.set(pr['freelancer_id'], []);
+      proposalsByUser.get(pr['freelancer_id'])!.push(pr);
+    }
+  }
+
+  const contractsByUser = new Map<string, Models.DefaultDocument[]>();
+  for (const c of allContracts) {
+    if (c['freelancer_id']) {
+      if (!contractsByUser.has(c['freelancer_id'])) contractsByUser.set(c['freelancer_id'], []);
+      contractsByUser.get(c['freelancer_id'])!.push(c);
+    }
+    if (c['employer_id']) {
+      if (!contractsByUser.has(c['employer_id'])) contractsByUser.set(c['employer_id'], []);
+      contractsByUser.get(c['employer_id'])!.push(c);
+    }
+  }
+
+  const userWithDisputes = new Set<string>();
+  for (const d of allDisputes) {
+    if (d['initiator_id']) userWithDisputes.add(d['initiator_id']);
+  }
+
+  return { now, profileByUserId, reviewsByReviewee, proposalsByUser, contractsByUser, userWithDisputes };
+}
+
+/**
+ * Analyze churn risk across users using engagement, ratings, disputes, and proposal activity.
+ *
+ * Provides actionable early-warning alerts and targeted retention playbooks.
+ * Cached for 60s.
+ */
+export async function getChurnRiskReport(): Promise<ServiceResult<ChurnRiskReport>> {
+  const cached = churnRiskCache.get('churn_risk');
+  if (cached) {
+    return successResult(cached);
+  }
+
+  try {
+    const [allUsers, allProfiles, allProposals, allContracts, allReviews, allDisputes] = await Promise.all([
+      fetchAllCollection(COLLECTIONS.USERS, []),
+      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
+      fetchAllCollection(COLLECTIONS.REVIEWS, []),
+      fetchAllCollection(COLLECTIONS.DISPUTES, []),
+    ]);
+
+    const ctx = buildChurnContext({ allProfiles, allReviews, allProposals, allContracts, allDisputes });
+
+    let lowCount = 0;
+    let mediumCount = 0;
+    let highCount = 0;
+    const evaluatedUsers: UserChurnRisk[] = [];
+
+    for (const u of allUsers) {
+      const evaluation = evaluateUserChurnRisk(u, ctx);
+      if (evaluation.riskLevel === 'high') highCount++;
+      else if (evaluation.riskLevel === 'medium') mediumCount++;
+      else lowCount++;
+      evaluatedUsers.push(evaluation);
+    }
+
+    const highRiskUsers = evaluatedUsers
+      .filter(u => u.riskLevel === 'high')
+      .sort((a, b) => b.riskScore - a.riskScore)
+      .slice(0, 50);
+
+    const report: ChurnRiskReport = {
+      totalEvaluated: evaluatedUsers.length,
+      riskDistribution: {
+        low: lowCount,
+        medium: mediumCount,
+        high: highCount,
+      },
+      highRiskUsers,
+      generatedAt: new Date().toISOString(),
+    };
+
+    churnRiskCache.set('churn_risk', report);
+    return successResult(report);
+  } catch (error) {
+    logger.error('Failed to get churn risk report', { error });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
+function computeProposalAndHiringTimes(
+  allProjects: Models.DefaultDocument[],
+  allProposals: Models.DefaultDocument[],
+  allContracts: Models.DefaultDocument[]
+): {
+  timeToFirstProposalHoursList: number[];
+  timeToHireDaysList: number[];
+  completedContractDurationsList: number[];
+  completedContractCount: number;
+} {
+  const proposalsByProjectId = new Map<string, number[]>();
+  for (const pr of allProposals) {
+    if (pr['project_id']) {
+      if (!proposalsByProjectId.has(pr['project_id'])) proposalsByProjectId.set(pr['project_id'], []);
+      proposalsByProjectId.get(pr['project_id'])!.push(parseDocDate(pr).getTime());
+    }
+  }
+
+  const timeToFirstProposalHoursList: number[] = [];
+  for (const proj of allProjects) {
+    const projCreated = parseDocDate(proj).getTime();
+    const propTimes = proposalsByProjectId.get(proj.$id);
+    if (propTimes && propTimes.length > 0) {
+      const earliest = Math.min(...propTimes);
+      const diffHours = Math.max(0, (earliest - projCreated) / (1000 * 3600));
+      timeToFirstProposalHoursList.push(diffHours);
+    }
+  }
+
+  const projectCreatedAtMap = new Map<string, number>();
+  for (const proj of allProjects) {
+    projectCreatedAtMap.set(proj.$id, parseDocDate(proj).getTime());
+  }
+
+  const timeToHireDaysList: number[] = [];
+  const completedContractDurationsList: number[] = [];
+  let completedContractCount = 0;
+
+  for (const c of allContracts) {
+    if (c['project_id'] && projectCreatedAtMap.has(c['project_id'])) {
+      const projTime = projectCreatedAtMap.get(c['project_id'])!;
+      const contractTime = parseDocDate(c).getTime();
+      const diffDays = Math.max(0, (contractTime - projTime) / (1000 * 3600 * 24));
+      timeToHireDaysList.push(diffDays);
+    }
+
+    if (c['status'] === 'completed') {
+      completedContractCount++;
+      const startTime = parseDocDate(c).getTime();
+      const rawEnd = c['updated_at'] || (c as any).$updatedAt;
+      const endTime = rawEnd ? new Date(rawEnd).getTime() : startTime;
+      const durDays = Math.max(0, (endTime - startTime) / (1000 * 3600 * 24));
+      completedContractDurationsList.push(durDays);
+    }
+  }
+
+  return { timeToFirstProposalHoursList, timeToHireDaysList, completedContractDurationsList, completedContractCount };
+}
+
+function computeTurnaroundAndRepeatRates(
+  allMilestones: any[],
+  allContracts: Models.DefaultDocument[]
+): { milestoneTurnaroundDaysList: number[]; repeatEmployerRate: number; repeatFreelancerRate: number } {
+  const milestoneTurnaroundDaysList: number[] = [];
+  for (const m of allMilestones) {
+    if (m['submitted_at'] && (m['approved_at'] || m['completed_at'])) {
+      const sub = new Date(m['submitted_at']).getTime();
+      const app = new Date(m['approved_at'] || m['completed_at']).getTime();
+      if (!isNaN(sub) && !isNaN(app) && app >= sub) {
+        milestoneTurnaroundDaysList.push((app - sub) / (1000 * 3600 * 24));
+      }
+    }
+  }
+
+  const employerContractCounts = new Map<string, number>();
+  const freelancerContractCounts = new Map<string, number>();
+  for (const c of allContracts) {
+    if (c['employer_id']) {
+      employerContractCounts.set(c['employer_id'], (employerContractCounts.get(c['employer_id']) || 0) + 1);
+    }
+    if (c['freelancer_id']) {
+      freelancerContractCounts.set(c['freelancer_id'], (freelancerContractCounts.get(c['freelancer_id']) || 0) + 1);
+    }
+  }
+
+  const totalEmployers = employerContractCounts.size;
+  const repeatEmployers = Array.from(employerContractCounts.values()).filter(cnt => cnt >= 2).length;
+  const repeatEmployerRate = totalEmployers > 0 ? Math.round((repeatEmployers / totalEmployers) * 1000) / 10 : 0;
+
+  const totalFreelancers = freelancerContractCounts.size;
+  const repeatFreelancers = Array.from(freelancerContractCounts.values()).filter(cnt => cnt >= 2).length;
+  const repeatFreelancerRate = totalFreelancers > 0 ? Math.round((repeatFreelancers / totalFreelancers) * 1000) / 10 : 0;
+
+  return { milestoneTurnaroundDaysList, repeatEmployerRate, repeatFreelancerRate };
+}
+
+/**
+ * Get marketplace speed and hiring velocity metrics (time-to-first-proposal, time-to-hire, turnaround).
+ *
+ * Cached for 60s.
+ */
+export async function getMarketplaceVelocityReport(): Promise<ServiceResult<MarketplaceVelocityReport>> {
+  const cached = marketplaceVelocityCache.get('marketplace_velocity');
+  if (cached) {
+    return successResult(cached);
+  }
+
+  try {
+    const [allProjects, allProposals, allContracts] = await Promise.all([
+      fetchAllCollection(COLLECTIONS.PROJECTS, []),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
+    ]);
+
+    const allMilestones: any[] = [];
+    for (const proj of allProjects) {
+      allMilestones.push(...extractProjectMilestones(proj));
+    }
+
+    const {
+      timeToFirstProposalHoursList,
+      timeToHireDaysList,
+      completedContractDurationsList,
+      completedContractCount,
+    } = computeProposalAndHiringTimes(allProjects, allProposals, allContracts);
+
+    const {
+      milestoneTurnaroundDaysList,
+      repeatEmployerRate,
+      repeatFreelancerRate,
+    } = computeTurnaroundAndRepeatRates(allMilestones, allContracts);
+
+    const avgContractDurationDays = completedContractDurationsList.length > 0
+      ? Math.round((completedContractDurationsList.reduce((a, b) => a + b, 0) / completedContractDurationsList.length) * 10) / 10
+      : 0;
+
+    const report: MarketplaceVelocityReport = {
+      medianTimeToFirstProposalHours: calculateMedian(timeToFirstProposalHoursList),
+      medianTimeToHireDays: calculateMedian(timeToHireDaysList),
+      medianMilestoneTurnaroundDays: calculateMedian(milestoneTurnaroundDaysList),
+      averageContractDurationDays: avgContractDurationDays,
+      repeatEmployerRate,
+      repeatFreelancerRate,
+      totalCompletedContracts: completedContractCount,
+      generatedAt: new Date().toISOString(),
+    };
+
+    marketplaceVelocityCache.set('marketplace_velocity', report);
+    return successResult(report);
+  } catch (error) {
+    logger.error('Failed to get marketplace velocity report', { error });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }

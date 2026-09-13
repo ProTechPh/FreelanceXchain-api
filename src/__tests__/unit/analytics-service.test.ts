@@ -8,10 +8,20 @@ const mockDatabases = (globalThis as any).__mockDatabases;
 // The 60s analytics caches persist across tests in this file; clear them before
 // every test so each one exercises the miss path (cache-hit tests set their own).
 beforeEach(async () => {
-  const { freelancerAnalyticsCache, employerAnalyticsCache, adminAnalyticsCache } = await import('../../utils/cache.js');
+  const { 
+    freelancerAnalyticsCache, 
+    employerAnalyticsCache, 
+    adminAnalyticsCache,
+    cohortRetentionCache,
+    churnRiskCache,
+    marketplaceVelocityCache,
+  } = await import('../../utils/cache.js');
   freelancerAnalyticsCache.clear();
   employerAnalyticsCache.clear();
   adminAnalyticsCache.clear();
+  cohortRetentionCache.clear();
+  churnRiskCache.clear();
+  marketplaceVelocityCache.clear();
 });
 
 describe('Analytics Service', () => {
@@ -1670,6 +1680,257 @@ describe('Analytics Service - Additional Branch Coverage', () => {
       if (!result.success) {
         expect(result.error.code).toBe('INTERNAL_ERROR');
       }
+    });
+
+    describe('getCohortRetentionReport', () => {
+      it('should compute cohort retention across multiple registration cohorts and months', async () => {
+        const { getCohortRetentionReport } = await import(resolveModule('src/services/analytics-service.ts'));
+
+        // Mock users: 2 in 2026-08, 1 in 2026-09
+        const mockUsers = [
+          { $id: 'u1', role: 'employer', $createdAt: '2026-08-01T00:00:00.000Z' },
+          { $id: 'u2', role: 'freelancer', $createdAt: '2026-08-15T00:00:00.000Z' },
+          { $id: 'u3', role: 'freelancer', $createdAt: '2026-09-01T00:00:00.000Z' },
+        ];
+
+        // Contracts: u1 and u2 in 2026-09
+        const mockContracts = [
+          {
+            $id: 'c1',
+            employer_id: 'u1',
+            freelancer_id: 'u2',
+            status: 'completed',
+            total_amount: 500,
+            $createdAt: '2026-09-05T00:00:00.000Z',
+          },
+        ];
+
+        mockDatabases.listDocuments
+          .mockResolvedValueOnce({ documents: mockUsers, total: mockUsers.length }) // users
+          .mockResolvedValueOnce({ documents: mockContracts, total: mockContracts.length }) // contracts
+          .mockResolvedValueOnce({ documents: [], total: 0 }) // projects
+          .mockResolvedValueOnce({ documents: [], total: 0 }); // proposals
+
+        const result = await getCohortRetentionReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.cohorts.length).toBeGreaterThanOrEqual(1);
+          const augCohort = result.data.cohorts.find(c => c.cohortMonth === '2026-08');
+          expect(augCohort).toBeDefined();
+          expect(augCohort?.totalUsers).toBe(2);
+        }
+      });
+
+      it('should serve cached cohort retention report on cache hit', async () => {
+        const { getCohortRetentionReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { cohortRetentionCache } = await import('../../utils/cache.js');
+
+        const cachedReport: any = {
+          cohorts: [],
+          averageMonth1Retention: 50,
+          averageMonth3Retention: 25,
+          generatedAt: new Date().toISOString(),
+        };
+        cohortRetentionCache.set('cohort_retention', cachedReport);
+
+        const result = await getCohortRetentionReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.averageMonth1Retention).toBe(50);
+        }
+      });
+
+      it('should handle errors gracefully in getCohortRetentionReport', async () => {
+        const { getCohortRetentionReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { cohortRetentionCache } = await import('../../utils/cache.js');
+        cohortRetentionCache.delete('cohort_retention');
+
+        mockDatabases.listDocuments.mockImplementationOnce(() => {
+          throw new Error('Database error in cohorts');
+        });
+
+        const result = await getCohortRetentionReport();
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.code).toBe('INTERNAL_ERROR');
+        }
+      });
+    });
+
+    describe('getChurnRiskReport', () => {
+      it('should evaluate churn signals and categorize risk levels', async () => {
+        const { getChurnRiskReport } = await import(resolveModule('src/services/analytics-service.ts'));
+
+        // Old date: 45 days ago
+        const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString();
+
+        const mockUsers = [
+          { $id: 'u1', role: 'freelancer', email: 'u1@test.com', wallet_address: '', $createdAt: fortyFiveDaysAgo },
+          { $id: 'u2', role: 'employer', email: 'u2@test.com', wallet_address: '0x123', $createdAt: new Date().toISOString() },
+        ];
+
+        const mockProfiles = [
+          { user_id: 'u1', skills: '[]', bio: '' },
+        ];
+
+        const mockProposals = [
+          { freelancer_id: 'u1', status: 'rejected', $createdAt: fortyFiveDaysAgo },
+          { freelancer_id: 'u1', status: 'rejected', $createdAt: fortyFiveDaysAgo },
+          { freelancer_id: 'u1', status: 'rejected', $createdAt: fortyFiveDaysAgo },
+        ];
+
+        const mockDisputes = [
+          { initiator_id: 'u1' },
+        ];
+
+        mockDatabases.listDocuments
+          .mockResolvedValueOnce({ documents: mockUsers, total: mockUsers.length }) // users
+          .mockResolvedValueOnce({ documents: mockProfiles, total: mockProfiles.length }) // profiles
+          .mockResolvedValueOnce({ documents: mockProposals, total: mockProposals.length }) // proposals
+          .mockResolvedValueOnce({ documents: [], total: 0 }) // contracts
+          .mockResolvedValueOnce({ documents: [], total: 0 }) // reviews
+          .mockResolvedValueOnce({ documents: mockDisputes, total: mockDisputes.length }); // disputes
+
+        const result = await getChurnRiskReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.totalEvaluated).toBe(2);
+          const atRiskUser = result.data.highRiskUsers.find(u => u.userId === 'u1');
+          expect(atRiskUser).toBeDefined();
+          expect(atRiskUser?.riskLevel).toBe('high');
+          expect(atRiskUser?.signals).toContain('inactive_30d');
+          expect(atRiskUser?.signals).toContain('proposal_rejections');
+          expect(atRiskUser?.signals).toContain('dispute_involvement');
+        }
+      });
+
+      it('should serve cached churn risk report on cache hit', async () => {
+        const { getChurnRiskReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { churnRiskCache } = await import('../../utils/cache.js');
+
+        const cachedReport: any = {
+          totalEvaluated: 10,
+          riskDistribution: { low: 8, medium: 2, high: 0 },
+          highRiskUsers: [],
+          generatedAt: new Date().toISOString(),
+        };
+        churnRiskCache.set('churn_risk', cachedReport);
+
+        const result = await getChurnRiskReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.totalEvaluated).toBe(10);
+        }
+      });
+
+      it('should handle errors gracefully in getChurnRiskReport', async () => {
+        const { getChurnRiskReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { churnRiskCache } = await import('../../utils/cache.js');
+        churnRiskCache.delete('churn_risk');
+
+        mockDatabases.listDocuments.mockImplementationOnce(() => {
+          throw new Error('Database error in churn risk');
+        });
+
+        const result = await getChurnRiskReport();
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.code).toBe('INTERNAL_ERROR');
+        }
+      });
+    });
+
+    describe('getMarketplaceVelocityReport', () => {
+      it('should compute time-to-first-proposal, time-to-hire, and turnaround velocity', async () => {
+        const { getMarketplaceVelocityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+
+        const projCreated = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+        const propCreated = new Date(Date.now() - 44 * 3600 * 1000).toISOString(); // 4 hours later
+        const contractCreated = new Date(Date.now() - 24 * 3600 * 1000).toISOString(); // 1 day later
+
+        const mockProjects = [
+          {
+            $id: 'p1',
+            $createdAt: projCreated,
+            milestones: [
+              {
+                id: 'm1',
+                submitted_at: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
+                approved_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+                status: 'approved',
+              },
+            ],
+          },
+        ];
+
+        const mockProposals = [
+          { $id: 'pr1', project_id: 'p1', freelancer_id: 'f1', $createdAt: propCreated },
+        ];
+
+        const mockContracts = [
+          {
+            $id: 'c1',
+            project_id: 'p1',
+            employer_id: 'e1',
+            freelancer_id: 'f1',
+            status: 'completed',
+            $createdAt: contractCreated,
+            updated_at: new Date().toISOString(),
+          },
+        ];
+
+        mockDatabases.listDocuments
+          .mockResolvedValueOnce({ documents: mockProjects, total: mockProjects.length }) // projects
+          .mockResolvedValueOnce({ documents: mockProposals, total: mockProposals.length }) // proposals
+          .mockResolvedValueOnce({ documents: mockContracts, total: mockContracts.length }); // contracts
+
+        const result = await getMarketplaceVelocityReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.medianTimeToFirstProposalHours).toBeCloseTo(4, 0);
+          expect(result.data.totalCompletedContracts).toBe(1);
+          expect(result.data.repeatEmployerRate).toBe(0);
+        }
+      });
+
+      it('should serve cached velocity report on cache hit', async () => {
+        const { getMarketplaceVelocityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { marketplaceVelocityCache } = await import('../../utils/cache.js');
+
+        const cachedReport: any = {
+          medianTimeToFirstProposalHours: 2.5,
+          medianTimeToHireDays: 1.5,
+          medianMilestoneTurnaroundDays: 0.8,
+          averageContractDurationDays: 10,
+          repeatEmployerRate: 20,
+          repeatFreelancerRate: 30,
+          totalCompletedContracts: 15,
+          generatedAt: new Date().toISOString(),
+        };
+        marketplaceVelocityCache.set('marketplace_velocity', cachedReport);
+
+        const result = await getMarketplaceVelocityReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.medianTimeToFirstProposalHours).toBe(2.5);
+        }
+      });
+
+      it('should handle errors gracefully in getMarketplaceVelocityReport', async () => {
+        const { getMarketplaceVelocityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { marketplaceVelocityCache } = await import('../../utils/cache.js');
+        marketplaceVelocityCache.delete('marketplace_velocity');
+
+        mockDatabases.listDocuments.mockImplementationOnce(() => {
+          throw new Error('Database error in velocity');
+        });
+
+        const result = await getMarketplaceVelocityReport();
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.code).toBe('INTERNAL_ERROR');
+        }
+      });
     });
   });
 });
