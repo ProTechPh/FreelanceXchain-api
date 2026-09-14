@@ -120,26 +120,22 @@ export async function createRefundRequest(
   // BLF-3.1: Serialize refund creation per contract to prevent duplicate pending requests
   return withLock(`refund-create:${input.contractId}`, async () => {
     try {
-      // Synchronize with approveMilestone by acquiring all milestone locks for the project
-      const contractForLock = await contractRepository.getContractById(input.contractId);
+      const validated = await validateRefundRequestCreation(input);
+      if ('error' in validated) return validated.error;
+
+      const { contract, requestedAmount, isPartial } = validated;
+
       let milestoneLockIds: string[] = [];
-      if (contractForLock?.project_id) {
-        try {
-          const project = await projectRepository.findProjectById(contractForLock.project_id);
-          milestoneLockIds = (project?.milestones ?? [])
-            .map(m => m.id)
-            .filter((id): id is string => typeof id === 'string' && id.length > 0);
-        } catch {
-          // Fall through; validation will report error if project/contract missing
-        }
+      try {
+        const project = await projectRepository.findProjectById(contract.project_id);
+        milestoneLockIds = (project?.milestones ?? [])
+          .map(m => m.id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      } catch {
+        // Fall back gracefully if project milestones cannot be retrieved
       }
 
       return await withMilestoneLocks(milestoneLockIds, async () => {
-        const validated = await validateRefundRequestCreation(input);
-        if ('error' in validated) return validated.error;
-
-        const { contract, requestedAmount, isPartial } = validated;
-
         const refund = await refundRequestRepository.create({
           id: '',
           contract_id: input.contractId,
