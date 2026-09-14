@@ -29,7 +29,7 @@ export default {
   // freelancexchain-email-worker is a separate Cloudflare Worker package with
   // its own `node --test` runner (see its package.json) — keep it out of the
   // API suite.
-  testPathIgnorePatterns: ['/node_modules/', '/.kilo/', '/freelancexchain-email-worker/'],
+  testPathIgnorePatterns: ['node_modules', '\\.kilo', 'freelancexchain-email-worker'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

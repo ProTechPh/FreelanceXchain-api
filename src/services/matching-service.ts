@@ -181,8 +181,8 @@ export async function getProjectRecommendations(
           if (!isAIError(aiResult)) {
             matchResult = aiResult;
           }
-        } catch {
-          // fallback to keywordResult
+        } catch (error) {
+          logger.warn('AI skill match failed during project recommendations, falling back to keyword match', { error });
         }
       }
 
@@ -223,8 +223,11 @@ async function scoreFreelancerCandidate(
       actualReputationScore = Math.min(100, Math.max(0, Math.round((averageRating / 5) * 100)));
       rankingReputationScore = actualReputationScore;
     }
-  } catch {
-    // default
+  } catch (error) {
+    logger.warn('Failed to fetch reputation for candidate ranking, defaulting to neutral baseline', {
+      freelancerId: freelancerEntity.user_id,
+      error,
+    });
   }
 
   const combinedScore = Math.min(100, Math.round(
@@ -278,8 +281,11 @@ async function buildFreelancerRecommendation(
       if (!isAIError(aiResult)) {
         matchResult = aiResult;
       }
-    } catch {
-      // fallback to keyword
+    } catch (error) {
+      logger.warn('AI candidate skill match failed, falling back to keyword match', {
+        freelancerId: freelancerEntity.user_id,
+        error,
+      });
     }
   }
 

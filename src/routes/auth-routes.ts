@@ -507,78 +507,74 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
  *       401:
  *         description: Authentication failed
  */
-router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { code, error, error_description, userId, secret } = req.query;
-  const requestId = getRequestId(req);
-
-  if (error) {
-    sendErrorResponse(res, 400, 'OAUTH_ERROR', String(error_description || error), { requestId, success: false });
+async function handleTokenCallback(
+  res: Response,
+  userId: string,
+  secret: string,
+  requestId: string
+): Promise<void> {
+  const result = await verifyAuthToken(userId, secret);
+  if (isAuthError(result)) {
+    if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+      sendSuccessResponse(res, 202, {
+        success: true,
+        status: 'registration_required',
+        message: 'User does not exist. Please register with a role.',
+        access_token: (result as { accessToken?: string }).accessToken || secret,
+      }, requestId);
+      return;
+    }
+    sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, { requestId, success: false });
     return;
   }
 
-  if (userId && secret && typeof userId === 'string' && typeof secret === 'string') {
-    const result = await verifyAuthToken(userId, secret);
-    if (isAuthError(result)) {
-      if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
-        sendSuccessResponse(res, 202, {
-          success: true,
-          status: 'registration_required',
-          message: 'User does not exist. Please register with a role.',
-          access_token: (result as { accessToken?: string }).accessToken || secret,
-        }, requestId);
-        return;
-      }
-      sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, { requestId, success: false });
-      return;
-    }
+  sendSuccessResponse(res, 200, {
+    success: true,
+    access_token: result.accessToken,
+    refresh_token: result.refreshToken,
+    user: result.user,
+  }, requestId);
+}
 
-    sendSuccessResponse(res, 200, {
-      success: true,
-      access_token: result.accessToken,
-      refresh_token: result.refreshToken,
-      user: result.user,
-    }, requestId);
+async function handleCodeCallback(
+  res: Response,
+  code: string,
+  requestId: string
+): Promise<void> {
+  const sessionResult = await exchangeCodeForSession(code);
+
+  if ('code' in sessionResult) {
+    sendErrorResponse(res, 401, 'AUTH_EXCHANGE_FAILED', sessionResult.message, { requestId, success: false });
     return;
   }
 
-  if (code && typeof code === 'string') {
-    const sessionResult = await exchangeCodeForSession(code);
+  const result = await loginWithAppwrite(sessionResult.accessToken);
 
-    if ('code' in sessionResult) {
-      sendErrorResponse(res, 401, 'AUTH_EXCHANGE_FAILED', sessionResult.message, { requestId, success: false });
+  if (isAuthError(result)) {
+    if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+      sendSuccessResponse(res, 202, {
+        success: true,
+        status: 'registration_required',
+        message: 'User does not exist. Please register with a role.',
+        access_token: sessionResult.accessToken,
+      }, requestId);
       return;
     }
 
-    const result = await loginWithAppwrite(sessionResult.accessToken);
-
-    if (isAuthError(result)) {
-      if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
-        sendSuccessResponse(res, 202, {
-          success: true,
-          status: 'registration_required',
-          message: 'User does not exist. Please register with a role.',
-          access_token: sessionResult.accessToken, // pass this to frontend so they can call /oauth/register
-        }, requestId);
-        return;
-      }
-
-      sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, { requestId, success: false });
-      return;
-    }
-
-    sendSuccessResponse(res, 200, {
-      success: true,
-      access_token: result.accessToken,
-      refresh_token: result.refreshToken,
-      user: result.user,
-    }, requestId);
+    sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, { requestId, success: false });
     return;
   }
 
-  // Implicit flow: serve HTML to extract tokens from URL fragment and POST to callback
-  // Uses textContent (not document.write) to prevent XSS via untrusted fragment data
-  /* istanbul ignore next */
-  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+  sendSuccessResponse(res, 200, {
+    success: true,
+    access_token: result.accessToken,
+    refresh_token: result.refreshToken,
+    user: result.user,
+  }, requestId);
+}
+
+function renderImplicitFlowHtml(): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
 <pre id="result">Processing OAuth callback...</pre>
 <script>
 (function(){
@@ -593,7 +589,32 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
       .catch(function(e){el.textContent=JSON.stringify({success:false,error:e.message},null,2);});
   }catch(e){el.textContent=JSON.stringify({success:false,error:'Failed to process OAuth callback'},null,2);}
 })();
-</script></body></html>`);
+</script></body></html>`;
+}
+
+router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { code, error, error_description, userId, secret } = req.query;
+  const requestId = getRequestId(req);
+
+  if (error) {
+    sendErrorResponse(res, 400, 'OAUTH_ERROR', String(error_description || error), { requestId, success: false });
+    return;
+  }
+
+  if (userId && secret && typeof userId === 'string' && typeof secret === 'string') {
+    await handleTokenCallback(res, userId, secret, requestId);
+    return;
+  }
+
+  if (code && typeof code === 'string') {
+    await handleCodeCallback(res, code, requestId);
+    return;
+  }
+
+  // Implicit flow: serve HTML to extract tokens from URL fragment and POST to callback
+  // Uses textContent (not document.write) to prevent XSS via untrusted fragment data
+  /* istanbul ignore next */
+  res.send(renderImplicitFlowHtml());
 }));
 
 /**
