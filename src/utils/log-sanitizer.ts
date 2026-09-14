@@ -266,6 +266,7 @@ export function containsSensitiveData(input: string): boolean {
     SENSITIVE_PATTERNS.password.test(input) ||
     SENSITIVE_PATTERNS.creditCard.test(input) ||
     SENSITIVE_PATTERNS.email.test(input) ||
+    SENSITIVE_PATTERNS.phone.test(input) ||
     SENSITIVE_PATTERNS.ssn.test(input) ||
     SENSITIVE_PATTERNS.authHeader.test(input) ||
     SENSITIVE_PATTERNS.privateKey.test(input)

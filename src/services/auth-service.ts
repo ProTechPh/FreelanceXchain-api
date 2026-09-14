@@ -158,7 +158,7 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
     userId,
     wasJwt,
     secretLen: secret.length,
-    rawSecretPrefix: rawSecret.substring(0, 10),
+    hasSecret: Boolean(rawSecret),
   });
 
   // In unit tests, use mocked adminAccount

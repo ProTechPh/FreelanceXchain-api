@@ -15,15 +15,17 @@ import { createNotification } from './notification-service.js';
 import { generateId } from '../utils/id.js';
 import { deleteFileFromStorage, extractFileIdFromUrl } from '../utils/storage-uploader.js';
 import { BUCKETS } from '../config/appwrite.js';
+import { withLock } from '../utils/async-lock.js';
 
 export async function submitEvidence(
   input: SubmitEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
-  try {
-    const disputeEntity = await disputeRepository.getDisputeById(input.disputeId);
-    if (!disputeEntity) {
-      return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
-    }
+  return withLock(`dispute-evidence:${input.disputeId}`, async () => {
+    try {
+      const disputeEntity = await disputeRepository.getDisputeById(input.disputeId);
+      if (!disputeEntity) {
+        return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
+      }
 
     const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
     if (!contractEntity) {
@@ -110,6 +112,7 @@ export async function submitEvidence(
     logger.error('Failed to submit evidence:', error);
     return errorResult('SUBMIT_FAILED', error instanceof Error ? error.message : 'Failed to submit evidence');
   }
+  });
 }
 
 export async function getDisputeEvidence(

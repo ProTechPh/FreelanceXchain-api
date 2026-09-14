@@ -18,6 +18,7 @@ import {
 import { initializeContractEscrow } from '../services/payment-service.js';
 import { getProjectById } from '../services/project-service.js';
 import { getDisputesByContract } from '../services/dispute-service.js';
+import { withLock } from '../utils/async-lock.js';
 import type { Contract } from '../utils/entity-mapper.js';
 
 const router = Router();
@@ -354,83 +355,85 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
-  const contractResult = await getContractById(contractId);
-  if (!contractResult.success) {
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
-    return;
-  }
-
-  const contract = contractResult.data;
-
-  // Only employer can fund
-  if (contract.employerId !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can fund the escrow', { requestId });
-    return;
-  }
-
-  // Must be pending
-  if (contract.status === 'active' && contract.escrowAddress) {
-    sendSuccessResponse(res, 200, {
-      message: 'Contract already funded and active',
-      escrowAddress: contract.escrowAddress,
-      contractStatus: 'active',
-    }, requestId);
-    return;
-  }
-
-  if (contract.status !== 'pending') {
-    sendErrorResponse(res, 400, 'INVALID_STATUS', `Contract is already '${contract.status}', cannot fund`, { requestId });
-    return;
-  }
-
-  const clientEscrowAddress = typeof req.body?.['escrowAddress'] === 'string' && req.body['escrowAddress'] ? req.body['escrowAddress'] : undefined;
-  const clientTxHash = typeof req.body?.['transactionHash'] === 'string' && req.body['transactionHash'] ? req.body['transactionHash'] : undefined;
-
-  let escrowAddress = contract.escrowAddress;
-
-  if (clientEscrowAddress) {
-    const address = await handleClientEscrowFunding({ clientEscrowAddress, clientTxHash, contract, requestId, res });
-    if (!address) return;
-    escrowAddress = address;
-  } else if (!escrowAddress) {
-    // No escrow yet — deploy server-side fallback
-    const escrowResult = await ensureContractEscrow(contract);
-    if ('error' in escrowResult) {
-      sendErrorResponse(res, escrowResult.error.statusCode, escrowResult.error.code, escrowResult.error.message, { requestId });
+  await withLock(`contract-fund:${contractId}`, async () => {
+    const contractResult = await getContractById(contractId);
+    if (!contractResult.success) {
+      sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
       return;
     }
-    escrowAddress = escrowResult.escrowAddress;
-  }
 
-  const { contractRepository } = await import('../repositories/contract-repository.js');
-  await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
+    const contract = contractResult.data;
 
-  // BLF-12.1: Pass userId and role to enforce authorization
-  // Non-null assertions are safe here: authMiddleware guarantees req.user is populated,
-  // and the guard above already returned 401 if userId was missing.
-  const statusResult = await updateContractStatus(contractId, 'active', req.user!.userId, req.user!.role);
-  if (!statusResult.success) {
-    if (statusResult.error.code === 'INVALID_STATUS_TRANSITION') {
-      const latestContractResult = await getContractById(contractId);
-      if (latestContractResult.success && latestContractResult.data.status === 'active' && latestContractResult.data.escrowAddress) {
-        sendSuccessResponse(res, 200, {
-          message: 'Contract already funded and active',
-          escrowAddress: latestContractResult.data.escrowAddress,
-          contractStatus: 'active',
-        }, requestId);
-        return;
-      }
+    // Only employer can fund
+    if (contract.employerId !== userId) {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can fund the escrow', { requestId });
+      return;
     }
 
-    sendErrorResponse(res, 500, 'ACTIVATION_FAILED', 'Escrow funded but contract activation failed', { requestId });
-    return;
-  }
+    // Must be pending
+    if (contract.status === 'active' && contract.escrowAddress) {
+      sendSuccessResponse(res, 200, {
+        message: 'Contract already funded and active',
+        escrowAddress: contract.escrowAddress,
+        contractStatus: 'active',
+      }, requestId);
+      return;
+    }
 
-  sendSuccessResponse(res, 200, {
-    message: 'Contract funded and activated',
-    escrowAddress,
-    contractStatus: 'active',
-  }, requestId);
+    if (contract.status !== 'pending') {
+      sendErrorResponse(res, 400, 'INVALID_STATUS', `Contract is already '${contract.status}', cannot fund`, { requestId });
+      return;
+    }
+
+    const clientEscrowAddress = typeof req.body?.['escrowAddress'] === 'string' && req.body['escrowAddress'] ? req.body['escrowAddress'] : undefined;
+    const clientTxHash = typeof req.body?.['transactionHash'] === 'string' && req.body['transactionHash'] ? req.body['transactionHash'] : undefined;
+
+    let escrowAddress = contract.escrowAddress;
+
+    if (clientEscrowAddress) {
+      const address = await handleClientEscrowFunding({ clientEscrowAddress, clientTxHash, contract, requestId, res });
+      if (!address) return;
+      escrowAddress = address;
+    } else if (!escrowAddress) {
+      // No escrow yet — deploy server-side fallback
+      const escrowResult = await ensureContractEscrow(contract);
+      if ('error' in escrowResult) {
+        sendErrorResponse(res, escrowResult.error.statusCode, escrowResult.error.code, escrowResult.error.message, { requestId });
+        return;
+      }
+      escrowAddress = escrowResult.escrowAddress;
+    }
+
+    const { contractRepository } = await import('../repositories/contract-repository.js');
+    await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
+
+    // BLF-12.1: Pass userId and role to enforce authorization
+    // Non-null assertions are safe here: authMiddleware guarantees req.user is populated,
+    // and the guard above already returned 401 if userId was missing.
+    const statusResult = await updateContractStatus(contractId, 'active', req.user!.userId, req.user!.role);
+    if (!statusResult.success) {
+      if (statusResult.error.code === 'INVALID_STATUS_TRANSITION') {
+        const latestContractResult = await getContractById(contractId);
+        if (latestContractResult.success && latestContractResult.data.status === 'active' && latestContractResult.data.escrowAddress) {
+          sendSuccessResponse(res, 200, {
+            message: 'Contract already funded and active',
+            escrowAddress: latestContractResult.data.escrowAddress,
+            contractStatus: 'active',
+          }, requestId);
+          return;
+        }
+      }
+
+      sendErrorResponse(res, 500, 'ACTIVATION_FAILED', 'Escrow funded but contract activation failed', { requestId });
+      return;
+    }
+
+    sendSuccessResponse(res, 200, {
+      message: 'Contract funded and activated',
+      escrowAddress,
+      contractStatus: 'active',
+    }, requestId);
+  });
 }));
 
 // Get contract funding info (for frontend MetaMask deployment)

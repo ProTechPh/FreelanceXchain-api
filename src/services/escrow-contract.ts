@@ -373,10 +373,45 @@ export async function releaseMilestone(
  * Refund milestone payment to employer
  * Called when dispute is resolved in employer's favor
  */
+function validateDisputeSplit(
+  escrow: EscrowState,
+  milestoneId: string,
+  freelancerBps: number,
+  resolverAddress: string
+): EscrowMilestone {
+  // Authorization: only employer or designated resolver can trigger resolution
+  if (resolverAddress !== escrow.employerAddress) {
+    throw new Error('Only the employer or authorized resolver can resolve a milestone');
+  }
+
+  if (freelancerBps <= 0 || freelancerBps >= 10000) {
+    throw new Error('freelancerBps must be between 1 and 9999 for a split resolution');
+  }
+
+  const milestone = escrow.milestones.find(m => m.id === milestoneId);
+  if (!milestone) {
+    throw new Error('Milestone not found');
+  }
+
+  if (milestone.status === 'released') {
+    throw new Error('Milestone already released');
+  }
+
+  if (milestone.status === 'refunded') {
+    throw new Error('Milestone already refunded');
+  }
+
+  if (escrow.balance < milestone.amount) {
+    throw new Error('Insufficient escrow balance');
+  }
+
+  return milestone;
+}
+
 /**
- * Resolve a disputed milestone with a split payout (arbiter resolution).
+ * Resolve a disputed milestone by splitting funds between freelancer and employer.
  *
- * Releases freelancerBps/10000 of the milestone amount to the freelancer and
+ * Releases freelancerBps / 10000 of the milestone amount to the freelancer, and
  * refunds the remainder to the employer, mirroring the on-chain FreelanceEscrow
  * resolveDispute(freelancerBps) pull-payment semantics in the simulated ledger.
  * The milestone is marked 'released' (on-chain maps it to Approved) and the full
@@ -397,31 +432,7 @@ export async function resolveDisputeSplit(
       throw new Error('Escrow contract not found');
     }
 
-    // Authorization: only employer or designated resolver can trigger resolution
-    if (resolverAddress !== escrow.employerAddress) {
-      throw new Error('Only the employer or authorized resolver can resolve a milestone');
-    }
-
-    if (freelancerBps <= 0 || freelancerBps >= 10000) {
-      throw new Error('freelancerBps must be between 1 and 9999 for a split resolution');
-    }
-
-    const milestone = escrow.milestones.find(m => m.id === milestoneId);
-    if (!milestone) {
-      throw new Error('Milestone not found');
-    }
-
-    if (milestone.status === 'released') {
-      throw new Error('Milestone already released');
-    }
-
-    if (milestone.status === 'refunded') {
-      throw new Error('Milestone already refunded');
-    }
-
-    if (escrow.balance < milestone.amount) {
-      throw new Error('Insufficient escrow balance');
-    }
+    const milestone = validateDisputeSplit(escrow, milestoneId, freelancerBps, resolverAddress);
 
     const freelancerAmt = (milestone.amount * BigInt(freelancerBps)) / BigInt(10000);
     const employerAmt = milestone.amount - freelancerAmt;
@@ -444,22 +455,32 @@ export async function resolveDisputeSplit(
       throw new Error('Failed to confirm release transaction');
     }
 
-    const refundTx = await submitTransaction({
-      type: 'refund',
-      from: escrowAddress,
-      to: escrow.employerAddress,
-      amount: employerAmt,
-      data: {
-        contractId: escrow.contractId,
-        milestoneId,
-        split: true,
-        freelancerBps,
-      },
-    });
+    let refundConfirmed;
+    try {
+      const refundTx = await submitTransaction({
+        type: 'refund',
+        from: escrowAddress,
+        to: escrow.employerAddress,
+        amount: employerAmt,
+        data: {
+          contractId: escrow.contractId,
+          milestoneId,
+          split: true,
+          freelancerBps,
+        },
+      });
 
-    const refundConfirmed = await confirmTransaction(refundTx.id);
-    if (!refundConfirmed) {
-      throw new Error('Failed to confirm refund transaction');
+      refundConfirmed = await confirmTransaction(refundTx.id);
+      if (!refundConfirmed) {
+        throw new Error('Failed to confirm refund transaction');
+      }
+    } catch (refundError) {
+      // Release already succeeded. Deduct the released freelancerAmt from the escrow
+      // and milestone so a subsequent attempt cannot release the same funds again (double-spend).
+      escrow.balance -= freelancerAmt;
+      milestone.amount -= freelancerAmt;
+      await saveEscrow(escrow);
+      throw refundError;
     }
 
     // Update escrow state in Appwrite: milestone settled, full amount leaves escrow

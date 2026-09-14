@@ -566,7 +566,10 @@ async function releaseEscrowPaymentWithSaga(
   let transactionHash: string | undefined;
   try {
     const releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet });
-    if ('error' in releaseResult) return releaseResult;
+    if ('error' in releaseResult) {
+      await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
+      return releaseResult;
+    }
     transactionHash = releaseResult.transactionHash;
 
     const recordedAmount = await readEscrowRecordedAmount(contractId, milestoneId, milestoneAmount);

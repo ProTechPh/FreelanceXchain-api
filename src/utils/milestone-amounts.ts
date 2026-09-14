@@ -25,6 +25,10 @@ export function rescaleMilestoneAmounts(
   const newTotal = baseAmount + rushFee;
   const result = [...amounts];
 
+  if (baseAmount <= 0) {
+    return result.map((_, i) => (i === result.length - 1 ? Math.round(newTotal * 100) / 100 : 0));
+  }
+
   let allocated = 0;
   for (let i = 0; i < result.length - 1; i++) {
     const newAmount = Math.round((result[i]! * newTotal) / baseAmount * 100) / 100;

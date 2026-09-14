@@ -479,14 +479,19 @@ export async function acceptProposal(
         due_date: m.dueDate,
         amount: scaledAmounts[i] ?? m.amount,
       }));
-      await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
+      // Only mutate the project's milestones if it is a single-freelancer project.
+      // For multi-freelancer projects, the project document serves as a shared template
+      // and must not be mutated, avoiding template corruption for other proposals.
+      if ((project.freelancerLimit ?? 1) <= 1) {
+        await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
+      }
       rushProject = { ...project, milestones: scaledMilestones };
     }
 
     const created = await createContractFromProposal({
       proposalId,
       proposalEntity: validatedProposal,
-      project,
+      project: rushProject,
       employerId,
       proposalRate,
       rushFee,

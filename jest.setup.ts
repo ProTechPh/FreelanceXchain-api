@@ -14,6 +14,7 @@ dotenv.config({ path: '.env.test' });
 
 // Ensure test environment is set
 process.env.NODE_ENV = 'test';
+delete process.env.TURNSTILE_SECRET;
 
 beforeAll(startStableSupertestServer);
 afterAll(async () => {
