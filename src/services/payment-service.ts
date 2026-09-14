@@ -32,6 +32,7 @@ import { getBlockchainMode } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { rescaleMilestoneAmounts } from '../utils/milestone-amounts.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
+import { SagaOrchestrator } from '../utils/saga-orchestrator.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
@@ -558,38 +559,68 @@ async function releaseEscrowPaymentWithSaga(
 > {
   const { contract, project, milestoneId, milestoneIndex, milestoneAmount, employerId, employerWallet, contractId, releasingBaseEntity } = input;
 
-  const releasingMilestones = releasingBaseEntity.milestones.map((m, i) =>
-    i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
-  );
-  await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
-
-  let transactionHash: string | undefined;
-  try {
-    const releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet });
-    if ('error' in releaseResult) {
-      await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
-      return releaseResult;
-    }
-    transactionHash = releaseResult.transactionHash;
-
-    const recordedAmount = await readEscrowRecordedAmount(contractId, milestoneId, milestoneAmount);
-
-    await createPaymentRecord({
-      contractId,
-      milestoneId,
-      payerId: employerId,
-      payeeId: contract.freelancerId,
-      amount: recordedAmount,
-      paymentType: 'milestone_release',
-      txHash: transactionHash,
-      status: 'completed',
-    });
-  } catch (error) {
-    await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
-    return { error: errorResult('PAYMENT_RELEASE_FAILED', error instanceof Error ? error.message : 'Failed to release escrow payment') };
+  interface MilestonePaymentSagaContext {
+    transactionHash?: string;
+    errorResult?: ServiceResult<MilestoneApprovalResult>;
   }
 
-  return { transactionHash: transactionHash! };
+  const saga = new SagaOrchestrator<MilestonePaymentSagaContext>('MilestoneApprovalRelease');
+
+  saga
+    .addStep({
+      name: 'mark-releasing-in-db',
+      execute: async () => {
+        const releasingMilestones = releasingBaseEntity.milestones.map((m, i) =>
+          i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
+        );
+        await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
+      },
+      compensate: async () => {
+        await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
+      },
+    })
+    .addStep({
+      name: 'release-on-blockchain',
+      execute: async (ctx) => {
+        const releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet });
+        if ('error' in releaseResult) {
+          ctx.errorResult = releaseResult.error;
+          throw new Error('On-chain release returned error');
+        }
+        ctx.transactionHash = releaseResult.transactionHash;
+      },
+    })
+    .addStep({
+      name: 'record-payment-in-db',
+      execute: async (ctx) => {
+        const recordedAmount = await readEscrowRecordedAmount(contractId, milestoneId, milestoneAmount);
+        await createPaymentRecord({
+          contractId,
+          milestoneId,
+          payerId: employerId,
+          payeeId: contract.freelancerId,
+          amount: recordedAmount,
+          paymentType: 'milestone_release',
+          txHash: ctx.transactionHash ?? null,
+          status: 'completed',
+        });
+      },
+    });
+
+  const sagaResult = await saga.execute({});
+  if (!sagaResult.success) {
+    if (sagaResult.context.errorResult) {
+      return { error: sagaResult.context.errorResult };
+    }
+    return {
+      error: errorResult(
+        'PAYMENT_RELEASE_FAILED',
+        sagaResult.error instanceof Error ? sagaResult.error.message : 'Failed to release escrow payment'
+      ),
+    };
+  }
+
+  return { transactionHash: sagaResult.context.transactionHash! };
 }
 
 /**
@@ -639,8 +670,8 @@ async function completeContractIfAllMilestonesDone(input: CompleteContractInput)
           try {
             const { signAgreement } = await import('./agreement-contract.js');
             await signAgreement(contractId, freelancer.wallet_address);
-          } catch {
-            // Safe if already signed or agreement not found
+          } catch (signErr) {
+            logger.debug('signAgreement skipped or already signed during contract completion', { error: signErr });
           }
         }
       }

@@ -1,6 +1,7 @@
 import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { parseField, getErrorMessageOr } from '../utils/index.js';
+import { logger } from '../config/logger.js';
 import type { MilestoneStatus, FileAttachment } from '../models/milestone.js';
 export type { MilestoneStatus } from '../models/milestone.js';
 
@@ -250,7 +251,8 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   private async fetchAllOpenProjects(): Promise<ProjectEntity[]> {
     try {
       return await this.fetchAll([Query.equal('status', 'open')]);
-    } catch {
+    } catch (error) {
+      logger.error('Failed to fetch all open projects in project-repository', { error });
       return [];
     }
   }

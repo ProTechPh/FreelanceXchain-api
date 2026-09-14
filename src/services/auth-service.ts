@@ -300,8 +300,8 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
         authProvider = 'oauth';
       }
     }
-  } catch {
-    // Best-effort check
+  } catch (error) {
+    logger.warn('Failed to fetch Appwrite user details during token generation', { userId: user.id, error });
   }
 
   return {
@@ -464,8 +464,8 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
     if (!isEmailVerified && publicUser.role !== 'admin') {
       try {
         await authenticatedAccount.deleteSession({ sessionId: 'current' });
-      } catch {
-        // Best-effort cleanup
+      } catch (sessionError) {
+        logger.warn('Failed to delete unverified email session', { error: sessionError });
       }
       return {
         code: 'EMAIL_NOT_VERIFIED',
@@ -742,11 +742,12 @@ export async function changePassword(
     // Invalidate sessions so user is logged out and must sign in again
     try {
       await account.deleteSessions();
-    } catch {
+    } catch (sessionErr) {
+      logger.debug('deleteSessions failed during password reset, trying single session deletion', { error: sessionErr });
       try {
         await account.deleteSession({ sessionId: 'current' });
-      } catch {
-        // Non-critical cleanup
+      } catch (currentErr) {
+        logger.debug('Current session deletion failed during password reset', { error: currentErr });
       }
     }
 
@@ -819,8 +820,8 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
         authProvider = 'oauth';
       }
     }
-  } catch {
-    // Best-effort check
+  } catch (error) {
+    logger.warn('Failed to retrieve Appwrite user metadata for current user', { userId, error });
   }
 
   // Admins are automatically considered KYC approved
@@ -1014,8 +1015,8 @@ export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email
       try {
         const codes = await account.createMfaRecoveryCodes();
         recoveryCodes = codes.recoveryCodes;
-      } catch {
-        // Recovery codes may already exist — that's okay
+      } catch (recoveryErr) {
+        logger.info('MFA recovery codes could not be created (may already exist)', { error: recoveryErr });
       }
 
       return { 
