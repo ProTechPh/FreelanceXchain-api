@@ -40,4 +40,10 @@ describe('rescaleMilestoneAmounts', () => {
     expect(input).toEqual([600, 400]);
     expect(result).not.toBe(input);
   });
+
+  it('handles baseAmount of 0 gracefully without NaN', () => {
+    const result = rescaleMilestoneAmounts([0, 0], 0, 100);
+    expect(result).toEqual([0, 100]);
+    expect(result.some(n => Number.isNaN(n))).toBe(false);
+  });
 });

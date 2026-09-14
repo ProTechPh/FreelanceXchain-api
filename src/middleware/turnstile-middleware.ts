@@ -70,7 +70,7 @@ function getExpectedHostnames(): Set<string> {
 }
 
 function shouldBypassTurnstile(nodeEnv: string, secret?: string): boolean {
-  if (nodeEnv === 'test' && !secret) return true;
+  if (nodeEnv === 'test' && (!secret || process.env['ENFORCE_TURNSTILE_TEST'] !== 'true')) return true;
   if (nodeEnv === 'development' && !secret) {
     logger.debug('Turnstile secret not configured; bypassing verification in development');
     return true;
@@ -120,8 +120,10 @@ export function requireTurnstile(expectedAction: string) {
     const resultHostname = result.hostname ? result.hostname.trim().toLowerCase() : undefined;
     if (
       !result.success ||
-      (result.action && result.action !== expectedAction) ||
-      (resultHostname && !expectedHostnames.has(resultHostname))
+      !result.action ||
+      result.action !== expectedAction ||
+      !resultHostname ||
+      !expectedHostnames.has(resultHostname)
     ) {
       logger.warn('Turnstile verification failed', {
         success: result.success,

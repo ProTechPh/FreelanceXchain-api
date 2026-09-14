@@ -66,6 +66,26 @@ export function sanitizeFilename(filename: string): string {
   return sanitized || 'unnamed_file';
 }
 
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      current += char;
+    } else if (char === ',' && !inQuotes) {
+      cells.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
 /**
  * Sanitize CSV content to neutralize spreadsheet formula injection attacks (CWE-1236, OWASP ASVS 5.2).
  * Prepends a single quote to prevent spreadsheet software from evaluating dangerous commands.
@@ -75,7 +95,7 @@ export function sanitizeCsvBuffer(buffer: Buffer): Buffer {
   const lines = content.split(/\r?\n/);
   const sanitizedLines = lines.map((line) => {
     if (!line.trim()) return line;
-    const cells = line.split(',');
+    const cells = splitCsvLine(line);
     const sanitizedCells = cells.map((cell) => {
       const trimmed = cell.trim();
       const isQuoted = (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"));

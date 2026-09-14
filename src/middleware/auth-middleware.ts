@@ -9,7 +9,7 @@ import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 import { extractTokenFromRequest } from '../utils/auth-cookie-helpers.js';
 
 function isTokenError(result: ValidatedUser | AuthError): result is AuthError {
-  return 'code' in result;
+  return 'code' in result && !('userId' in result);
 }
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {

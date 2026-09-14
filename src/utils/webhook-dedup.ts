@@ -12,6 +12,8 @@
  * replica must be harmless at the data layer, not just skipped here.
  */
 
+import { redis } from '../config/redis.js';
+
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_KEYS = 1000;
 
@@ -40,12 +42,32 @@ export class WebhookDeduper {
     return this.seen.has(key);
   }
 
-  /** Record a successfully-processed event key. */
+  /** Check across distributed Redis cache if available, falling back to local memory. */
+  async hasAsync(key: string): Promise<boolean> {
+    if (this.has(key)) return true;
+    if (redis && redis.status === 'ready') {
+      try {
+        const found = await redis.get(`webhook:dedup:${key}`);
+        if (found) {
+          this.seen.set(key, Date.now());
+          return true;
+        }
+      } catch {
+        // Fall back to local seen set on Redis failure
+      }
+    }
+    return false;
+  }
+
+  /** Record a successfully-processed event key locally and in Redis when available. */
   markProcessed(key: string): void {
     this.prune();
     this.seen.set(key, Date.now());
     if (this.seen.size > this.maxKeys) {
       this.prune();
+    }
+    if (redis && redis.status === 'ready') {
+      redis.set(`webhook:dedup:${key}`, '1', 'PX', this.ttlMs).catch(() => {});
     }
   }
 

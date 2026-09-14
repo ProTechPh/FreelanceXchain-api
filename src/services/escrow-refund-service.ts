@@ -94,53 +94,89 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
   return { contract, requestedAmount, isPartial };
 }
 
+/**
+ * Acquire the shared milestone-approve locks for multiple milestones in sorted
+ * order (deadlock-free: every flow that locks several milestone keys uses the
+ * same ordering) and run `fn` only once all are held. With an empty set, `fn`
+ * runs immediately. Locks are released automatically when `fn` settles.
+ */
+async function withMilestoneLocks<T>(
+  milestoneIds: string[],
+  fn: () => Promise<T>
+): Promise<T> {
+  const uniqueSortedIds = [...new Set(milestoneIds)].sort();
+  let run = fn;
+  for (let i = uniqueSortedIds.length - 1; i >= 0; i--) {
+    const id = uniqueSortedIds[i]!;
+    const next = run;
+    run = () => withLock(milestoneLockKey(id), next);
+  }
+  return run();
+}
+
 export async function createRefundRequest(
   input: CreateRefundRequestInput
 ): Promise<ServiceResult<RefundRequest>> {
   // BLF-3.1: Serialize refund creation per contract to prevent duplicate pending requests
   return withLock(`refund-create:${input.contractId}`, async () => {
     try {
-      const validated = await validateRefundRequestCreation(input);
-      if ('error' in validated) return validated.error;
-
-      const { contract, requestedAmount, isPartial } = validated;
-
-      const refund = await refundRequestRepository.create({
-        id: '',
-        contract_id: input.contractId,
-        requested_by: input.requestedBy,
-        amount: requestedAmount,
-        is_partial: isPartial,
-        reason: input.reason,
-        status: 'pending',
-      });
-
-      if (!refund) {
-        throw new Error('Failed to create refund request');
+      // Synchronize with approveMilestone by acquiring all milestone locks for the project
+      const contractForLock = await contractRepository.getContractById(input.contractId);
+      let milestoneLockIds: string[] = [];
+      if (contractForLock?.project_id) {
+        try {
+          const project = await projectRepository.findProjectById(contractForLock.project_id);
+          milestoneLockIds = (project?.milestones ?? [])
+            .map(m => m.id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0);
+        } catch {
+          // Fall through; validation will report error if project/contract missing
+        }
       }
 
-      const otherPartyId = contract.freelancer_id === input.requestedBy
-        ? contract.employer_id
-        : contract.freelancer_id;
+      return await withMilestoneLocks(milestoneLockIds, async () => {
+        const validated = await validateRefundRequestCreation(input);
+        if ('error' in validated) return validated.error;
 
-      const notificationResult = await createNotification({
-        userId: otherPartyId,
-        type: 'refund_requested',
-        title: 'Refund Requested',
-        message: `A refund has been requested for contract. Reason: ${input.reason}`,
-        data: {
-          relatedId: input.contractId,
-          relatedType: 'contract',
-        },
+        const { contract, requestedAmount, isPartial } = validated;
+
+        const refund = await refundRequestRepository.create({
+          id: '',
+          contract_id: input.contractId,
+          requested_by: input.requestedBy,
+          amount: requestedAmount,
+          is_partial: isPartial,
+          reason: input.reason,
+          status: 'pending',
+        });
+
+        if (!refund) {
+          throw new Error('Failed to create refund request');
+        }
+
+        const otherPartyId = contract.freelancer_id === input.requestedBy
+          ? contract.employer_id
+          : contract.freelancer_id;
+
+        const notificationResult = await createNotification({
+          userId: otherPartyId,
+          type: 'refund_requested',
+          title: 'Refund Requested',
+          message: `A refund has been requested for contract. Reason: ${input.reason}`,
+          data: {
+            relatedId: input.contractId,
+            relatedType: 'contract',
+          },
+        });
+
+        if (notificationResult.success) {
+          await sendNotificationToUser(otherPartyId, notificationResult.data);
+        }
+
+        logger.info(`Refund request created for contract ${input.contractId}`);
+
+        return successResult(refund as unknown as RefundRequest);
       });
-
-      if (notificationResult.success) {
-        await sendNotificationToUser(otherPartyId, notificationResult.data);
-      }
-
-      logger.info(`Refund request created for contract ${input.contractId}`);
-
-      return successResult(refund as unknown as RefundRequest);
     } catch (error) {
       logger.error('Failed to create refund request:', error);
       return errorResult('CREATE_FAILED', error instanceof Error ? error.message : 'Failed to create refund request');
@@ -189,25 +225,6 @@ async function validateRefundApproval(input: ApproveRefundInput): Promise<
   return { refund: refundData, contract: refundData.contract };
 }
 
-/**
- * Acquire the shared milestone-approve locks for multiple milestones in sorted
- * order (deadlock-free: every flow that locks several milestone keys uses the
- * same ordering) and run `fn` only once all are held. With an empty set, `fn`
- * runs immediately. Locks are released automatically when `fn` settles.
- */
-async function withMilestoneLocks<T>(
-  milestoneIds: string[],
-  fn: () => Promise<T>
-): Promise<T> {
-  const uniqueSortedIds = [...new Set(milestoneIds)].sort();
-  let run = fn;
-  for (let i = uniqueSortedIds.length - 1; i >= 0; i--) {
-    const id = uniqueSortedIds[i]!;
-    const next = run;
-    run = () => withLock(milestoneLockKey(id), next);
-  }
-  return run();
-}
 
 /* eslint-disable max-lines-per-function -- milestone-granular refund flow (BLF-3.x); refactor follow-up */
 export async function approveRefund(

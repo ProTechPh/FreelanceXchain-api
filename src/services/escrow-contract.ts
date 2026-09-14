@@ -444,22 +444,32 @@ export async function resolveDisputeSplit(
       throw new Error('Failed to confirm release transaction');
     }
 
-    const refundTx = await submitTransaction({
-      type: 'refund',
-      from: escrowAddress,
-      to: escrow.employerAddress,
-      amount: employerAmt,
-      data: {
-        contractId: escrow.contractId,
-        milestoneId,
-        split: true,
-        freelancerBps,
-      },
-    });
+    let refundConfirmed;
+    try {
+      const refundTx = await submitTransaction({
+        type: 'refund',
+        from: escrowAddress,
+        to: escrow.employerAddress,
+        amount: employerAmt,
+        data: {
+          contractId: escrow.contractId,
+          milestoneId,
+          split: true,
+          freelancerBps,
+        },
+      });
 
-    const refundConfirmed = await confirmTransaction(refundTx.id);
-    if (!refundConfirmed) {
-      throw new Error('Failed to confirm refund transaction');
+      refundConfirmed = await confirmTransaction(refundTx.id);
+      if (!refundConfirmed) {
+        throw new Error('Failed to confirm refund transaction');
+      }
+    } catch (refundError) {
+      // Release already succeeded. Deduct the released freelancerAmt from the escrow
+      // and milestone so a subsequent attempt cannot release the same funds again (double-spend).
+      escrow.balance -= freelancerAmt;
+      milestone.amount -= freelancerAmt;
+      await saveEscrow(escrow);
+      throw refundError;
     }
 
     // Update escrow state in Appwrite: milestone settled, full amount leaves escrow

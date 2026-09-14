@@ -248,6 +248,10 @@ describe('log-sanitizer', () => {
       expect(containsSensitiveData('4532 1234 5678 9010')).toBe(true);
     });
 
+    it('should return true for phone numbers', () => {
+      expect(containsSensitiveData('+1 234 567 8900')).toBe(true);
+    });
+
     it('should return false for non-sensitive strings', () => {
       expect(containsSensitiveData('hello world')).toBe(false);
     });

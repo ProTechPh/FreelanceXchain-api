@@ -111,7 +111,7 @@ export const oauthRateLimiter = rateLimiter('oauth', {
   windowMs: 15 * 60 * 1000,
   maxRequests: 60,
   message: 'Too many OAuth attempts, please try again later',
-  failOpen: true,
+  failOpen: false,
 });
 
 export const authRateLimiter = loginRateLimiter;

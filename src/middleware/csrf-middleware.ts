@@ -5,6 +5,7 @@ import { logger } from '../config/logger.js';
 import { getCsrfSecret, getNodeEnv } from '../config/env.js';
 import { getErrorMessage } from '../utils/index.js';
 import { getRequestId, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { extractTokenFromRequest } from '../utils/auth-cookie-helpers.js';
 
 const csrfSecret = getCsrfSecret() ?? randomBytes(32).toString('hex');
 if (!getCsrfSecret()) {
@@ -38,6 +39,10 @@ const {
   size: 64,
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
   getSessionIdentifier: (req: Request) => {
+    const userId = req.user?.userId;
+    if (userId) return `user-${userId}`;
+    const token = extractTokenFromRequest(req);
+    if (token) return `token-${token.slice(-16)}`;
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
     return `${ip}-${userAgent}`;
