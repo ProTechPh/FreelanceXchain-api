@@ -44,6 +44,14 @@ export class LRUCache<T> {
     return this.cache.delete(key);
   }
 
+  deleteMatching(predicate: (key: string) => boolean): void {
+    for (const key of Array.from(this.cache.keys())) {
+      if (predicate(key)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
   clear(): void {
     this.cache.clear();
   }

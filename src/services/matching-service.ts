@@ -34,6 +34,7 @@ import { getReputation } from './reputation-service.js';
 import { getProUserIdSet } from './subscription-service.js';
 import { redis } from '../config/redis.js';
 import { LRUCache } from '../utils/cache.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
 
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -436,22 +437,93 @@ export async function extractSkillsFromText(
   return successResult(mappedSkills);
 }
 
-export async function analyzeSkillGaps(
-  freelancerId: string
-): Promise<ServiceResult<SkillGapAnalysis>> {
+export async function invalidateFreelancerMatchingCache(freelancerId: string): Promise<void> {
   const cacheKey = `matching:skill-gaps:${freelancerId}`;
-  const cached = await getCached<SkillGapAnalysis>(cacheKey, localSkillGapsCache);
-  if (cached) {
-    logger.debug('Returning cached skill gaps', { freelancerId });
-    return successResult(cached);
-  }
+  localSkillGapsCache.delete(cacheKey);
+  localProjectRecCache.deleteMatching(key => key.startsWith(`matching:projects:${freelancerId}:`));
 
+  try {
+    if (redis && redis.status === 'ready') {
+      await redis.del(cacheKey);
+      const projectKeys = await redis.keys(`matching:projects:${freelancerId}:*`);
+      if (projectKeys && projectKeys.length > 0) {
+        await redis.del(...projectKeys);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Redis del failed for matching cache of ${freelancerId}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function invalidateProjectMatchingCache(projectId: string): Promise<void> {
+  localFreelancerRecCache.deleteMatching(key => key.startsWith(`matching:freelancers:${projectId}:`));
+  localProjectRecCache.clear();
+
+  try {
+    if (redis && redis.status === 'ready') {
+      const freelancerKeys = await redis.keys(`matching:freelancers:${projectId}:*`);
+      if (freelancerKeys && freelancerKeys.length > 0) {
+        await redis.del(...freelancerKeys);
+      }
+      const projectRecKeys = await redis.keys('matching:projects:*');
+      if (projectRecKeys && projectRecKeys.length > 0) {
+        await redis.del(...projectRecKeys);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Redis del failed for project matching cache of ${projectId}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function analyzeSkillGaps(
+  freelancerId: string,
+  options?: { forceRefresh?: boolean }
+): Promise<ServiceResult<SkillGapAnalysis>> {
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
-  const currentSkills = profileEntity.skills.map(s => s.name);
+  const currentSkills = (profileEntity.skills || [])
+    .filter(s => s && s.name && s.name.trim().length > 0)
+    .map(s => s.name.trim());
+
+  const cacheKey = `matching:skill-gaps:${freelancerId}`;
+
+  if (!options?.forceRefresh) {
+    const cached = await getCached<SkillGapAnalysis>(cacheKey, localSkillGapsCache);
+    if (cached) {
+      // Validate that cached skills match current profile skills
+      const currentNorm = currentSkills.map(s => normalizeSkillName(s)).sort();
+      const cachedNorm = (cached.currentSkills || []).map(s => normalizeSkillName(s)).sort();
+      const isConsistent = currentNorm.length === cachedNorm.length &&
+        currentNorm.every((s, i) => s === cachedNorm[i]);
+
+      if (isConsistent) {
+        logger.debug('Returning cached skill gaps', { freelancerId });
+        return successResult(cached);
+      }
+      logger.info('Cached skill gaps are stale compared to profile skills; re-analyzing', {
+        freelancerId,
+        cachedSkills: cached.currentSkills,
+        profileSkills: currentSkills,
+      });
+      await invalidateFreelancerMatchingCache(freelancerId);
+    }
+  }
+
+  if (currentSkills.length === 0) {
+    return successResult({
+      currentSkills: [],
+      recommendedSkills: [],
+      marketDemand: [],
+      reasoning: 'No skills found on your profile. Add skills to your profile so our AI can analyze your skill gaps and market demand.',
+    });
+  }
 
   if (!isAIAvailable()) {
     return successResult({

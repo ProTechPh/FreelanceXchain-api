@@ -2,6 +2,7 @@ import { logger } from '../config/logger.js';
 import { paymentRepository, type PaymentType } from '../repositories/payment-repository.js';
 import { transactionRepository } from '../repositories/transaction-repository.js';
 import { generateId } from './id.js';
+import { paymentSummaryCache, freelancerAnalyticsCache, employerAnalyticsCache } from './cache.js';
 
 /**
  * Persist a durable payment record for a ledger money movement (escrow deposit,
@@ -56,6 +57,12 @@ export async function createPaymentRecord(params: {
     } catch (txErr) {
       logger.warn('Failed to mirror payment record to transaction repository', { error: txErr, paymentId });
     }
+
+    // Invalidate cached payment summaries and analytics for both parties
+    paymentSummaryCache.delete(params.payerId);
+    paymentSummaryCache.delete(params.payeeId);
+    freelancerAnalyticsCache.deleteMatching((key) => key.startsWith(`freelancer:${params.payeeId}:`));
+    employerAnalyticsCache.deleteMatching((key) => key.startsWith(`employer:${params.payerId}:`));
   } catch (error) {
     logger.error('Failed to create payment record', { error });
     throw error;
