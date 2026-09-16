@@ -66,6 +66,14 @@ function validateDateRange(startDate: string, endDate: string | null | undefined
   return { valid: true };
 }
 
+async function invalidateMatchingCache(userId: string): Promise<void> {
+  try {
+    const { invalidateFreelancerMatchingCache } = await import('./matching-service.js');
+    await invalidateFreelancerMatchingCache(userId);
+  } catch {
+    // Non-fatal if matching service is not initialized or in isolated test mock
+  }
+}
 
 export async function createProfile(
   userId: string,
@@ -89,6 +97,7 @@ export async function createProfile(
   };
 
   const createdEntity = await freelancerProfileRepository.createProfile(profileEntity);
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(createdEntity));
 }
 
@@ -132,6 +141,7 @@ export async function createProfileFromKyc(
   };
 
   const createdEntity = await freelancerProfileRepository.createProfile(profileEntity);
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(createdEntity));
 }
 
@@ -162,6 +172,7 @@ export async function updateProfile(
     return errorResult('UPDATE_FAILED', 'Failed to update profile');
   }
 
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
@@ -219,6 +230,7 @@ export async function addSkillsToProfile(
     return errorResult('UPDATE_FAILED', 'Failed to add skills to profile');
   }
 
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
@@ -245,6 +257,7 @@ export async function removeSkillFromProfile(
     return errorResult('UPDATE_FAILED', 'Failed to remove skill from profile');
   }
 
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
@@ -284,6 +297,7 @@ export async function addExperience(
     return errorResult('UPDATE_FAILED', 'Failed to add experience');
   }
 
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
@@ -336,6 +350,7 @@ export async function updateExperience(
     return errorResult('UPDATE_FAILED', 'Failed to update experience');
   }
 
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
@@ -357,5 +372,6 @@ export async function removeExperience(
     return errorResult('UPDATE_FAILED', 'Failed to remove experience');
   }
 
+  void invalidateMatchingCache(userId);
   return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }

@@ -621,4 +621,191 @@ describe('matching-service - line 374 branch coverage', () => {
       expect(result.data.reasoning).toContain('AI analysis failed');
     }
   });
+
+  describe('cache invalidation functions', () => {
+    it('invalidateFreelancerMatchingCache should delete entries from local caches without error', async () => {
+      const {
+        invalidateFreelancerMatchingCache,
+        localSkillGapsCache,
+        localProjectRecCache,
+      } = await import(resolveModule('src/services/matching-service.ts'));
+
+      localSkillGapsCache.set('matching:skill-gaps:u1', { currentSkills: [] });
+      localProjectRecCache.set('matching:projects:u1:10', []);
+      localProjectRecCache.set('matching:projects:u2:10', []);
+
+      await invalidateFreelancerMatchingCache('u1');
+
+      expect(localSkillGapsCache.get('matching:skill-gaps:u1')).toBeUndefined();
+      expect(localProjectRecCache.get('matching:projects:u1:10')).toBeUndefined();
+      expect(localProjectRecCache.get('matching:projects:u2:10')).toBeDefined();
+    });
+
+    it('invalidateProjectMatchingCache should delete matching freelancer recs and clear project recs', async () => {
+      const {
+        invalidateProjectMatchingCache,
+        localFreelancerRecCache,
+        localProjectRecCache,
+      } = await import(resolveModule('src/services/matching-service.ts'));
+
+      localFreelancerRecCache.set('matching:freelancers:p1:10', []);
+      localFreelancerRecCache.set('matching:freelancers:p2:10', []);
+      localProjectRecCache.set('matching:projects:u1:10', []);
+
+      await invalidateProjectMatchingCache('p1');
+
+      expect(localFreelancerRecCache.get('matching:freelancers:p1:10')).toBeUndefined();
+      expect(localFreelancerRecCache.get('matching:freelancers:p2:10')).toBeDefined();
+      expect(localProjectRecCache.size).toBe(0);
+    });
+  });
+
+  describe('analyzeSkillGaps - branch coverage and cache consistency', () => {
+    it('returns PROFILE_NOT_FOUND when profile does not exist', async () => {
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue(null);
+      const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+      const result = await analyzeSkillGaps('non-existent');
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('PROFILE_NOT_FOUND');
+    });
+
+    it('returns fallback with empty skills when profile has no skills', async () => {
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+        id: 'fp-empty',
+        user_id: 'u-empty',
+        skills: [],
+      });
+      const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+      const result = await analyzeSkillGaps('u-empty');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.currentSkills).toEqual([]);
+        expect(result.data.reasoning).toContain('No skills found');
+      }
+    });
+
+    it('returns fallback when AI is not available', async () => {
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+        id: 'fp1',
+        user_id: 'u1',
+        skills: [{ name: 'TypeScript', years_of_experience: 2 }],
+      });
+      mockIsAIAvailable.mockReturnValue(false);
+      const { analyzeSkillGaps, localSkillGapsCache } = await import(resolveModule('src/services/matching-service.ts'));
+      localSkillGapsCache.delete('matching:skill-gaps:u1');
+
+      const result = await analyzeSkillGaps('u1', { forceRefresh: true });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.currentSkills).toEqual(['TypeScript']);
+        expect(result.data.reasoning).toContain('AI analysis unavailable');
+      }
+    });
+
+    it('returns cached analysis when cached skills match current profile skills', async () => {
+      process.env.ENABLE_MATCHING_CACHE_TEST = 'true';
+      try {
+        mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+          id: 'fp1',
+          user_id: 'user-cached-1',
+          skills: [{ name: 'React', years_of_experience: 3 }],
+        });
+        const { analyzeSkillGaps, localSkillGapsCache } = await import(resolveModule('src/services/matching-service.ts'));
+        const cached = {
+          currentSkills: ['React'],
+          recommendedSkills: ['Next.js'],
+          marketDemand: [{ skillName: 'Next.js', demandLevel: 'high' as const }],
+          reasoning: 'Good match',
+        };
+        localSkillGapsCache.set('matching:skill-gaps:user-cached-1', cached);
+
+        const result = await analyzeSkillGaps('user-cached-1');
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.recommendedSkills).toEqual(['Next.js']);
+        }
+      } finally {
+        delete process.env.ENABLE_MATCHING_CACHE_TEST;
+      }
+    });
+
+    it('re-analyzes and invalidates cache when cached skills are stale', async () => {
+      process.env.ENABLE_MATCHING_CACHE_TEST = 'true';
+      try {
+        mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+          id: 'fp1',
+          user_id: 'user-cached-stale',
+          skills: [{ name: 'React', years_of_experience: 3 }, { name: 'TypeScript', years_of_experience: 2 }],
+        });
+        mockIsAIAvailable.mockReturnValue(false);
+        const { analyzeSkillGaps, localSkillGapsCache } = await import(resolveModule('src/services/matching-service.ts'));
+        const staleCached = {
+          currentSkills: ['React'],
+          recommendedSkills: ['Next.js'],
+          marketDemand: [{ skillName: 'Next.js', demandLevel: 'high' as const }],
+          reasoning: 'Old match',
+        };
+        localSkillGapsCache.set('matching:skill-gaps:user-cached-stale', staleCached);
+
+        const result = await analyzeSkillGaps('user-cached-stale');
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.currentSkills).toEqual(['React', 'TypeScript']);
+          expect(result.data.reasoning).toContain('AI analysis unavailable');
+        }
+      } finally {
+        delete process.env.ENABLE_MATCHING_CACHE_TEST;
+      }
+    });
+
+    it('isCachedGapsConsistent properly checks skill consistency', async () => {
+      const { isCachedGapsConsistent } = await import(resolveModule('src/services/matching-service.ts'));
+
+      const cached = {
+        currentSkills: ['React', 'TypeScript'],
+        recommendedSkills: [],
+        marketDemand: [],
+        reasoning: 'test',
+      };
+
+      expect(isCachedGapsConsistent(['React', 'TypeScript'], cached)).toBe(true);
+      expect(isCachedGapsConsistent(['react', 'typescript'], cached)).toBe(true);
+      expect(isCachedGapsConsistent(['React'], cached)).toBe(false);
+      expect(isCachedGapsConsistent(['React', 'Vue'], cached)).toBe(false);
+      expect(isCachedGapsConsistent(['React'], { ...cached, currentSkills: [] })).toBe(false);
+    });
+
+    it('parses valid AI JSON and sanitizes market demand levels', async () => {
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+        id: 'fp2',
+        user_id: 'user-ai-1',
+        skills: [{ name: 'React', years_of_experience: 3 }],
+      });
+      mockIsAIAvailable.mockReturnValue(true);
+      mockGenerateContentFn.mockResolvedValue('{"some":"json"}');
+      mockParseJsonResponse.mockReturnValue({
+        currentSkills: ['React'],
+        recommendedSkills: ['GraphQL'],
+        marketDemand: [
+          { skillName: 'GraphQL', demandLevel: 'high' },
+          { skillName: 'Docker', demandLevel: 'unknown_level' },
+          { skillName: '', demandLevel: 'high' },
+          null,
+        ],
+        reasoning: 'Tailored recommendations',
+      });
+
+      const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+      const result = await analyzeSkillGaps('user-ai-1', { forceRefresh: true });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.recommendedSkills).toEqual(['GraphQL']);
+        expect(result.data.marketDemand).toEqual([
+          { skillName: 'GraphQL', demandLevel: 'high' },
+          { skillName: 'Docker', demandLevel: 'medium' },
+        ]);
+        expect(result.data.reasoning).toBe('Tailored recommendations');
+      }
+    });
+  });
 });

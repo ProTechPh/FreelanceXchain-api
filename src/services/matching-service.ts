@@ -34,6 +34,7 @@ import { getReputation } from './reputation-service.js';
 import { getProUserIdSet } from './subscription-service.js';
 import { redis } from '../config/redis.js';
 import { LRUCache } from '../utils/cache.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
 
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -62,7 +63,7 @@ export const localExtractSkillsCache = new LRUCache<ExtractedSkill[]>(200, 60 * 
 export const localSkillGapsCache = new LRUCache<SkillGapAnalysis>(200, 10 * 60_000);
 
 async function getCached<T>(key: string, localCache: LRUCache<T>): Promise<T | null> {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test' && process.env.ENABLE_MATCHING_CACHE_TEST !== 'true') {
     return null;
   }
   try {
@@ -436,44 +437,132 @@ export async function extractSkillsFromText(
   return successResult(mappedSkills);
 }
 
-export async function analyzeSkillGaps(
-  freelancerId: string
-): Promise<ServiceResult<SkillGapAnalysis>> {
+export async function invalidateFreelancerMatchingCache(freelancerId: string): Promise<void> {
   const cacheKey = `matching:skill-gaps:${freelancerId}`;
-  const cached = await getCached<SkillGapAnalysis>(cacheKey, localSkillGapsCache);
-  if (cached) {
-    logger.debug('Returning cached skill gaps', { freelancerId });
-    return successResult(cached);
-  }
+  localSkillGapsCache.delete(cacheKey);
+  localProjectRecCache.deleteMatching(key => key.startsWith(`matching:projects:${freelancerId}:`));
 
+  try {
+    if (redis && redis.status === 'ready') {
+      await redis.del(cacheKey);
+      const projectKeys = await redis.keys(`matching:projects:${freelancerId}:*`);
+      if (projectKeys && projectKeys.length > 0) {
+        await redis.del(...projectKeys);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Redis del failed for matching cache of ${freelancerId}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function invalidateProjectMatchingCache(projectId: string): Promise<void> {
+  localFreelancerRecCache.deleteMatching(key => key.startsWith(`matching:freelancers:${projectId}:`));
+  localProjectRecCache.clear();
+
+  try {
+    if (redis && redis.status === 'ready') {
+      const freelancerKeys = await redis.keys(`matching:freelancers:${projectId}:*`);
+      if (freelancerKeys && freelancerKeys.length > 0) {
+        await redis.del(...freelancerKeys);
+      }
+      const projectRecKeys = await redis.keys('matching:projects:*');
+      if (projectRecKeys && projectRecKeys.length > 0) {
+        await redis.del(...projectRecKeys);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Redis del failed for project matching cache of ${projectId}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export function isCachedGapsConsistent(currentSkills: string[], cached: SkillGapAnalysis): boolean {
+  const currentNorm = currentSkills.map(s => normalizeSkillName(s)).sort();
+  const cachedNorm = (cached.currentSkills || []).map(s => normalizeSkillName(s)).sort();
+  return (
+    currentNorm.length === cachedNorm.length &&
+    currentNorm.every((s, i) => s === cachedNorm[i])
+  );
+}
+
+function sanitizeMarketDemand(
+  rawItems: SkillGapAnalysis['marketDemand']
+): Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }> {
+  const validLevels = ['high', 'medium', 'low'];
+  return (rawItems ?? [])
+    .map(item => {
+      if (!item || typeof item.skillName !== 'string' || !item.skillName.trim()) {
+        return null;
+      }
+      const demandLevel = validLevels.includes(item.demandLevel) ? item.demandLevel : 'medium';
+      return {
+        skillName: item.skillName.trim(),
+        demandLevel: demandLevel as 'high' | 'medium' | 'low',
+      };
+    })
+    .filter((item): item is { skillName: string; demandLevel: 'high' | 'medium' | 'low' } => item !== null);
+}
+
+function fallbackSkillGap(currentSkills: string[], reasoning: string): ServiceResult<SkillGapAnalysis> {
+  return successResult({
+    currentSkills,
+    recommendedSkills: [],
+    marketDemand: [],
+    reasoning,
+  });
+}
+
+export async function analyzeSkillGaps(
+  freelancerId: string,
+  options?: { forceRefresh?: boolean }
+): Promise<ServiceResult<SkillGapAnalysis>> {
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
-  const currentSkills = profileEntity.skills.map(s => s.name);
+  const currentSkills = (profileEntity.skills || [])
+    .filter(s => s && s.name && s.name.trim().length > 0)
+    .map(s => s.name.trim());
+
+  const cacheKey = `matching:skill-gaps:${freelancerId}`;
+
+  if (!options?.forceRefresh) {
+    const cached = await getCached<SkillGapAnalysis>(cacheKey, localSkillGapsCache);
+    if (cached) {
+      if (isCachedGapsConsistent(currentSkills, cached)) {
+        logger.debug('Returning cached skill gaps', { freelancerId });
+        return successResult(cached);
+      }
+      logger.info('Cached skill gaps are stale compared to profile skills; re-analyzing', {
+        freelancerId,
+        cachedSkills: cached.currentSkills,
+        profileSkills: currentSkills,
+      });
+      await invalidateFreelancerMatchingCache(freelancerId);
+    }
+  }
+
+  if (currentSkills.length === 0) {
+    return fallbackSkillGap(
+      [],
+      'No skills found on your profile. Add skills to your profile so our AI can analyze your skill gaps and market demand.'
+    );
+  }
 
   if (!isAIAvailable()) {
-    return successResult({
-      currentSkills,
-      recommendedSkills: [],
-      marketDemand: [],
-      reasoning: 'AI analysis unavailable; no skill gap insights generated.',
-    });
+    return fallbackSkillGap(currentSkills, 'AI analysis unavailable; no skill gap insights generated.');
   }
 
   const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
-
   const response = await generateContent(prompt);
 
   if (typeof response !== 'string') {
     logger.warn('[SkillGap] AI unavailable or rate-limited, using fallback', { response });
-    return successResult({
-      currentSkills,
-      recommendedSkills: [],
-      marketDemand: [],
-      reasoning: 'AI analysis failed or returned non-text response.',
-    });
+    return fallbackSkillGap(currentSkills, 'AI analysis failed or returned non-text response.');
   }
 
   try {
@@ -482,44 +571,18 @@ export async function analyzeSkillGaps(
       throw new Error('parseJsonResponse returned null');
     }
 
-    const analysis = parsedAnalysis;
-    
-    // Be lenient - accept marketDemand items and fix missing fields
-    const sanitizedMarketDemand = (analysis.marketDemand ?? [])
-      .map(item => {
-        if (!item || typeof item.skillName !== 'string' || !item.skillName.trim()) {
-          return null;
-        }
-        
-        const validLevels = ['high', 'medium', 'low'];
-        const demandLevel = validLevels.includes(item.demandLevel) 
-          ? item.demandLevel 
-          : 'medium';
-        
-        return {
-          skillName: item.skillName.trim(),
-          demandLevel: demandLevel as 'high' | 'medium' | 'low'
-        };
-      })
-      .filter(item => item !== null) as Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }>;
-    
     const result: SkillGapAnalysis = {
-      currentSkills: analysis.currentSkills ?? currentSkills,
-      recommendedSkills: analysis.recommendedSkills ?? [],
-      marketDemand: sanitizedMarketDemand,
-      reasoning: analysis.reasoning ?? 'Analysis completed.',
+      currentSkills: parsedAnalysis.currentSkills ?? currentSkills,
+      recommendedSkills: parsedAnalysis.recommendedSkills ?? [],
+      marketDemand: sanitizeMarketDemand(parsedAnalysis.marketDemand),
+      reasoning: parsedAnalysis.reasoning ?? 'Analysis completed.',
     };
 
     await setCached(cacheKey, result, localSkillGapsCache, SKILL_GAPS_CACHE_TTL_SECONDS);
     return successResult(result);
   } catch (error) {
     logger.warn('[SkillGap] Failed to parse AI response, using fallback', { error });
-    return successResult({
-      currentSkills,
-      recommendedSkills: [],
-      marketDemand: [],
-      reasoning: 'Failed to parse AI response.',
-    });
+    return fallbackSkillGap(currentSkills, 'Failed to parse AI response.');
   }
 }
 

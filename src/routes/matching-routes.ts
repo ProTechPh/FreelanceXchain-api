@@ -330,7 +330,8 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, requirePro, asyncHandl
   const requestId = getRequestId(req);
   const userId = authReq.user.userId;
 
-  const result = await analyzeSkillGaps(userId);
+  const forceRefresh = req.query['refresh'] === 'true' || req.query['force'] === 'true';
+  const result = await analyzeSkillGaps(userId, { forceRefresh });
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;

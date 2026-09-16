@@ -7,7 +7,7 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 import { logger } from '../config/logger.js';
-import { getFreelancerRecommendations } from './matching-service.js';
+import { getFreelancerRecommendations, invalidateProjectMatchingCache } from './matching-service.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -350,6 +350,7 @@ export async function updateProject(
     return errorResult('UPDATE_FAILED', 'Failed to update project');
   }
 
+  void invalidateProjectMatchingCache(projectId);
   return successResult(updated);
 }
 
@@ -565,5 +566,8 @@ export async function deleteProject(
   }
 
   const deleted = await projectRepository.deleteProject(projectId);
+  if (deleted) {
+    void invalidateProjectMatchingCache(projectId);
+  }
   return successResult(deleted);
 }
