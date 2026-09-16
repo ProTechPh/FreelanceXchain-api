@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
-import { LRUCache, skillCache } from '../../utils/cache.js';
+import { LRUCache, skillCache, startAllCacheCleanups, stopAllCacheCleanups } from '../../utils/cache.js';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
@@ -192,5 +192,27 @@ describe('utils/cache.ts - Branch Coverage', () => {
     partialCache.set('key', 'value');
     expect(partialCache.get('key')).toBe('value');
     partialCache.stopCleanup();
+  });
+
+  describe('deleteMatching', () => {
+    it('should delete keys matching predicate and keep non-matching keys', () => {
+      const matchCache = new LRUCache<string>(10);
+      matchCache.set('matching:project:1', 'a');
+      matchCache.set('matching:project:2', 'b');
+      matchCache.set('matching:freelancer:1', 'c');
+      matchCache.deleteMatching((k) => k.startsWith('matching:project:'));
+      expect(matchCache.get('matching:project:1')).toBeUndefined();
+      expect(matchCache.get('matching:project:2')).toBeUndefined();
+      expect(matchCache.get('matching:freelancer:1')).toBe('c');
+      expect(matchCache.size).toBe(1);
+      matchCache.stopCleanup();
+    });
+  });
+
+  describe('startAllCacheCleanups / stopAllCacheCleanups', () => {
+    it('should start and stop cleanup on all registered caches without error', () => {
+      expect(() => startAllCacheCleanups(60_000)).not.toThrow();
+      expect(() => stopAllCacheCleanups()).not.toThrow();
+    });
   });
 });

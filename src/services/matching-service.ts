@@ -63,7 +63,7 @@ export const localExtractSkillsCache = new LRUCache<ExtractedSkill[]>(200, 60 * 
 export const localSkillGapsCache = new LRUCache<SkillGapAnalysis>(200, 10 * 60_000);
 
 async function getCached<T>(key: string, localCache: LRUCache<T>): Promise<T | null> {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test' && process.env.ENABLE_MATCHING_CACHE_TEST !== 'true') {
     return null;
   }
   try {
@@ -479,7 +479,7 @@ export async function invalidateProjectMatchingCache(projectId: string): Promise
   }
 }
 
-function isCachedGapsConsistent(currentSkills: string[], cached: SkillGapAnalysis): boolean {
+export function isCachedGapsConsistent(currentSkills: string[], cached: SkillGapAnalysis): boolean {
   const currentNorm = currentSkills.map(s => normalizeSkillName(s)).sort();
   const cachedNorm = (cached.currentSkills || []).map(s => normalizeSkillName(s)).sort();
   return (
