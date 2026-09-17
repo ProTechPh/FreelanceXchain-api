@@ -37,6 +37,17 @@ router.get('/sitemap.xml', asyncHandler(async (_req, res) => {
   }
 }));
 
+router.get(['/security.txt', '/.well-known/security.txt'], asyncHandler(async (_req, res) => {
+  try {
+    const securityPath = resolve(process.cwd(), 'security.txt');
+    const securityContent = await readFile(securityPath, 'utf8');
+    res.type('text/plain');
+    res.send(securityContent);
+  } catch (_error) {
+    res.status(404).send('Not found');
+  }
+}));
+
 // Backward-compatible alias — canonical endpoint is POST /api/auth/reset-password
 router.post('/reset-password', (_req, res) => {
   res.redirect(307, '/api/auth/reset-password');
