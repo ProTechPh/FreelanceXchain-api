@@ -4,66 +4,52 @@ Utility scripts for deployment, administration, development, and testing.
 
 ## 📁 Script Categories
 
-### 🚀 Deployment Scripts
+### 🗄️ Unified Database Setup & Restoration Script (For Panel Demo)
 
-Scripts for deploying smart contracts to blockchain networks.
+Single all-in-one script for creating the database, collections, attributes, indexes, and storage buckets, with optional demo seed data:
 
-**Location:** `deployment/`
-
-- **[deploy-all.cjs](deployment/deploy-all.cjs)** - Deploy all smart contracts sequentially to Ganache
-- **[deploy-contracts.ts](deployment/deploy-contracts.ts)** - TypeScript deployment script for contracts
-- **[deploy-escrow.cjs](deployment/deploy-escrow.cjs)** - Deploy escrow contract specifically
-- **[deploy.cjs](deployment/deploy.cjs)** - General deployment script
+- **[setup-appwrite-db.ts](setup-appwrite-db.ts)** - All-in-one Appwrite database & storage initializer.
 
 **Usage:**
 
 ```bash
-# Deploy all contracts
-node scripts/deployment/deploy-all.cjs
+# 1. Restore Database & Storage WITHOUT Seed (Clean Schema):
+pnpm run db:restore
+# or: npx tsx scripts/setup-appwrite-db.ts
 
-# Deploy specific contract
-node scripts/deployment/deploy-escrow.cjs
+# 2. Restore Database & Storage WITH Demo Seed Data:
+pnpm run db:restore:seed
+# or: npx tsx scripts/setup-appwrite-db.ts --seed
 ```
 
-### 🛠️ Development Scripts
+What gets seeded with `--seed`:
 
-Development tools and utilities.
+- 6 Active Projects with Milestones (DEX Frontend, DeFi Audit, NFT Marketplace, DAO Dashboard, Bridge UI, Yield Aggregator)
+- 6 KYC Verifications (All `APPROVED` for seamless demo bidding & escrow funding)
+- 6 Demo Users (3 Employers, 3 Freelancers)
+- 4 Freelancer Portfolio Projects
+- 10 Skills & 4 Skill Categories
+- *See [`docs/deployment/database-restoration-guide.md`](../docs/deployment/database-restoration-guide.md) for complete details.*
 
-**Location:** `dev/`
+### 🚀 Smart Contract Deployment Scripts
 
-- **[generate-openapi.ts](generate-openapi.ts)** - Regenerate `openapi.json` from the canonical base spec
-- **[check-openapi.ts](check-openapi.ts)** - CI drift check: fail when committed `openapi.json` differs from the regenerated spec
-- **[check-markdown-links.ts](check-markdown-links.ts)** - CI link check: fail on any broken internal relative link in markdown files
+- **[deploy-all.cjs](deployment/deploy-all.cjs)** - Deploys all 4 singleton smart contracts (`ContractAgreement`, `FreelanceReputation`, `DisputeResolution`, `MilestoneRegistry`) sequentially to Ganache, Polygon Amoy Testnet, or Polygon Mainnet (Production).
 
 **Usage:**
 
 ```bash
-# Regenerate the served OpenAPI spec (reads openapi.base.json + middleware schemas)
-pnpm run openapi:generate
-# or
-tsx scripts/generate-openapi.ts
+# 1. Deploy to Ganache (Local Demo / Panel Defense):
+pnpm run deploy:contracts:ganache
+# or: pnpm run deploy:local
 
-# Verify the committed spec is in sync (runs in CI)
-pnpm run openapi:check
+# 2. Deploy to Polygon Amoy Testnet:
+pnpm run deploy:contracts:amoy
 
-# Verify no markdown file links to a missing file/directory (runs in CI)
-pnpm run docs:check
+# 3. Deploy to Polygon Mainnet (Production):
+pnpm run deploy:contracts:prod
 ```
 
-### 🧪 Testing Scripts
-
-Testing utilities and workflow scripts.
-
-**Location:** `testing/`
-
-- **[test-workflow.cjs](testing/test-workflow.cjs)** - End-to-end workflow testing script
-
-**Usage:**
-
-```bash
-# Run workflow tests
-node scripts/testing/test-workflow.cjs
-```
+> **Full Documentation:** See [`docs/deployment/smart-contract-deployment-guide.md`](../docs/deployment/smart-contract-deployment-guide.md).
 
 ## 🔧 Prerequisites
 
@@ -103,13 +89,6 @@ Before running scripts, ensure you have:
 - Keep private keys secure and never commit them to version control
 - Verify contract addresses after deployment
 
-### Development Scripts
-
-- OpenAPI generation should be run after API changes
-- `openapi.base.json` is the canonical, hand-maintained spec; `openapi.json` is a generated artifact of it plus the validation-middleware schemas
-- Commit both `openapi.base.json` and the generated `openapi.json` to version control
-- CI runs `pnpm run openapi:check`, which fails on any semantic drift — make hand-edits in the base and regenerate, never edit `openapi.json` directly
-
 ## 🔗 Related Documentation
 
 - [Blockchain Integration](../docs/blockchain/integration.md) - Blockchain setup and configuration
@@ -139,5 +118,4 @@ When adding new scripts:
 
 **TypeScript script won't run**
 
-- Use `tsx` or `ts-node` to run TypeScript files directly
-- Or compile first: `tsc scripts/generate-openapi.ts`
+- Use `tsx` to run TypeScript files directly via `pnpm run db:restore`

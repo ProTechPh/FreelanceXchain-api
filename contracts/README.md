@@ -134,21 +134,29 @@ Each freelance contract gets its own escrow instance for isolated fund managemen
 
 ### Deploy All Contracts
 
-```bash
-# Deploy to local Ganache
-node scripts/deployment/deploy-all.cjs
+Deploy the 4 singleton contracts (`ContractAgreement`, `FreelanceReputation`, `DisputeResolution`, `MilestoneRegistry`) using the unified deployment script:
 
-# Deploy specific contract
-node scripts/deployment/deploy-escrow.cjs
+```bash
+# Deploy to local Ganache (Local Demo / Panel Defense)
+pnpm run deploy:contracts:ganache
+
+# Deploy to Polygon Amoy Testnet
+pnpm run deploy:contracts:amoy
+
+# Deploy to Polygon Mainnet (Production)
+pnpm run deploy:contracts:prod
 ```
+
+> **Detailed Guide:** See [`docs/deployment/smart-contract-deployment-guide.md`](../docs/deployment/smart-contract-deployment-guide.md) for network details, faucet setup, and recovery steps.
 
 ### Configuration
 
-Set environment variables in `.env`:
+The script automatically writes contract addresses and active RPC URLs into `.env`:
 
 ```env
 BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545
 BLOCKCHAIN_PRIVATE_KEY=your_private_key_here
+BLOCKCHAIN_MODE=real
 ```
 
 ## 🧪 Testing
