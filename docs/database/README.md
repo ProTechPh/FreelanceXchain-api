@@ -11,7 +11,7 @@ Comprehensive documentation for the FreelanceXchain Appwrite schema, security po
 
 ## Quick Reference
 
-The authoritative collection/attribute reference is the [Appwrite Schema Design](../architecture/database-schema.md) page. All 31 collections are defined there; key ones include `users`, `skill_categories`, `skills`, `freelancer_profiles`, `employer_profiles`, `projects`, `proposals`, `contracts`, `milestones`, `reviews`, `disputes`, `dispute_evidence`, `payments`, `conversations`, `messages`, `notifications`, `kyc_verifications`, `email_preferences`, `audit_log_entries`, `blockchain_transactions`, `blockchain_escrows`, `transactions`, `favorites`, `portfolio_items`, `saved_searches`, `user_custom_skills`, `skill_suggestions`, `rush_upgrade_requests`, `refund_requests`, `emails`, `pending_mfa_sessions`.
+The authoritative collection/attribute reference is the [Appwrite Schema Design](../architecture/database-schema.md) page. All 40 collections are defined there; key ones include `users`, `skill_categories`, `skills`, `freelancer_profiles`, `employer_profiles`, `projects`, `proposals`, `contracts`, `milestones`, `reviews`, `disputes`, `dispute_evidence`, `payments`, `conversations`, `messages`, `notifications`, `kyc_verifications`, `email_preferences`, `user_preferences`, `subscriptions`, `audit_log_entries`, `blockchain_transactions`, `blockchain_escrows`, `blockchain_escrow_milestones`, `transactions`, `favorites`, `portfolio_items`, `saved_searches`, `user_custom_skills`, `skill_suggestions`, `rush_upgrade_requests`, `refund_requests`, `emails`, `email_delivery_failures`, `pending_mfa_sessions`, `blockchain_agreements`, `blockchain_milestones`, `blockchain_dispute_records`, `blockchain_ratings`.
 
 ## Security Checklist
 

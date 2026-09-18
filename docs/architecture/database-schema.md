@@ -48,6 +48,14 @@ any new schema changes. Requirements: `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`
 | `blockchain_escrows` | `contract_id`, `employer_address`, `freelancer_address`, `total_amount`, `balance`, `deployed_at`, `deployment_tx_hash` |
 | `transactions` | `contract_id`, `milestone_id`, `from_user_id`, `to_user_id`, `amount`, `type`, `status`, `transaction_hash`, `metadata` |
 | `pending_mfa_sessions` | `access_token`, `refresh_token`, `user_id`, `factor_id`, `expires_at` |
+| `user_preferences` | `user_id`, `tour_progress` (JSON) |
+| `subscriptions` | `user_id`, `stripe_customer_id`, `stripe_subscription_id`, `stripe_price_id`, `plan`, `status`, `current_period_end` |
+| `email_delivery_failures` | `message_id`, `from_address`, `to_address`, `subject`, `failure_code`, `failure_message`, `received_at` |
+| `blockchain_escrow_milestones` | `escrow_address`, `milestone_id`, `amount`, `status` |
+| `blockchain_agreements` | `contract_id_hash`, `terms_hash`, `employer_wallet`, `freelancer_wallet`, `total_amount`, `milestone_count`, `status`, `employer_signed_at`, `freelancer_signed_at`, `created_at_ts`, `transaction_hash`, `block_number` |
+| `blockchain_milestones` | `milestone_id_hash`, `contract_id_hash`, `work_hash`, `freelancer_wallet`, `employer_wallet`, `amount`, `status`, `submitted_at`, `completed_at`, `title`, `transaction_hash`, `block_number` |
+| `blockchain_dispute_records` | `dispute_id_hash`, `contract_id_hash`, `milestone_id_hash`, `evidence_hash`, `initiator_wallet`, `freelancer_wallet`, `employer_wallet`, `arbiter_wallet`, `amount`, `outcome`, `reasoning`, `created_at_ts`, `resolved_at` |
+| `blockchain_ratings` | `contract_id`, `rater_id`, `ratee_id`, `rating`, `comment`, `timestamp`, `transaction_hash` |
 
 ## Relationships
 

@@ -332,6 +332,27 @@ Saved-search `filters` accept skill **IDs, names, or a mix** in the `skills` arr
 
 ---
 
+## Subscriptions & Billing
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/billing/plans` | No | Public plan descriptor and current Stripe prices |
+| GET | `/api/billing/subscription` | JWT | Current user subscription state, Pro entitlement, and trial eligibility |
+| POST | `/api/billing/checkout-session` | JWT | Create a Stripe Checkout session to upgrade to Pro |
+| POST | `/api/billing/portal-session` | JWT | Create a Stripe Customer Portal session |
+| POST | `/api/webhooks/stripe` | Stripe signature | Inbound Stripe webhook (checkout, subscription updates, cancellations) |
+
+---
+
+## User Preferences
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/user-preferences` | JWT | Get user preferences (creates defaults if missing) |
+| PATCH | `/api/user-preferences/tour-progress` | JWT | Update onboarding tour progress or auto-start setting |
+
+---
+
 ## Error Handling
 
 All error responses follow a single envelope (validation errors add a `details` array):
