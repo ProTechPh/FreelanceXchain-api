@@ -79,29 +79,48 @@ The contract service provides operations for retrieving and updating contract in
 
 ## Payment Processing Service
 
-The payment service handles milestone-based payment workflows, including completion requests, approvals, disputes, and contract completion. It coordinates with the escrow contract service to release payments and with the milestone registry to record completion events on-chain. The service implements idempotency considerations and transaction management, ensuring consistent state across database and blockchain systems. It provides detailed payment status information and supports the complete lifecycle of milestone payments from request to final settlement.
+The payment service handles milestone-based payment workflows, including completion requests, approvals, disputes, and contract completion. It coordinates with the escrow contract service to release payments and with the milestone registry to record completion events on-chain.
+
+### Distributed Locking & Saga Orchestration
+
+To prevent double-spends and ensure strong consistency across off-chain document stores (Appwrite) and on-chain smart contracts (EVM):
+
+- **Distributed Locking ([ADR-006](adr/ADR-006-distributed-locking.md)):** Milestone approvals acquire a shared distributed lock (`milestoneLockKey(milestoneId)`) backed by Redis with in-process fallback, preventing concurrent approval and dispute races.
+- **Saga Orchestrator ([ADR-007](adr/ADR-007-saga-orchestrator-escrow-release.md)):** The milestone approval and release process executes as a multi-step `SagaOrchestrator` with forward steps and backward compensation handlers:
+  1. `mark-releasing-in-db`: Temporarily sets the milestone state to `releasing` to lock off-chain state. Compensated by restoring previous state if blockchain release fails.
+  2. `release-on-blockchain`: Submits transaction to EVM `FreelanceEscrow` smart contract. If the transaction reverts, Step 1 compensation immediately triggers.
+  3. `record-released-in-db`: Updates final milestone status to `released`, persists transaction hash, generates payment records, and creates administrative audit trail.
 
 ```mermaid
 sequenceDiagram
-participant Freelancer
-participant PaymentService
-participant EscrowContract
-participant Blockchain
 participant Employer
-Freelancer->>PaymentService : requestMilestoneCompletion()
-PaymentService->>PaymentService : Validate milestone status
-PaymentService->>Blockchain : submitMilestoneToRegistry()
-PaymentService->>Employer : notifyMilestoneSubmitted()
-PaymentService-->>Freelancer : Milestone submitted
-Employer->>PaymentService : approveMilestone()
-PaymentService->>EscrowContract : releaseMilestone()
-EscrowContract->>Blockchain : Execute payment transaction
-Blockchain-->>EscrowContract : Transaction receipt
-EscrowContract-->>PaymentService : Payment released
-PaymentService->>Blockchain : approveMilestoneOnRegistry()
-PaymentService->>Freelancer : notifyMilestoneApproved()
-PaymentService->>Freelancer : notifyPaymentReleased()
-PaymentService-->>Employer : Approval confirmed
+participant PaymentService
+participant AsyncLock as Distributed Lock (Redis)
+participant Saga as SagaOrchestrator
+participant EscrowContract as EVM Escrow
+participant AppwriteDB as Appwrite DB
+participant Freelancer
+
+Employer->>PaymentService: approveMilestone(contractId, milestoneId)
+PaymentService->>AsyncLock: withLock(milestone-approve:milestoneId)
+AsyncLock->>PaymentService: Lock acquired
+PaymentService->>Saga: execute(MilestonePaymentSagaContext)
+Saga->>AppwriteDB: Step 1: mark-releasing-in-db
+AppwriteDB-->>Saga: Status updated to "releasing"
+Saga->>EscrowContract: Step 2: release-on-blockchain
+alt Blockchain Revert / Error
+    EscrowContract-->>Saga: Revert / Failure
+    Saga->>AppwriteDB: Compensate Step 1 (rollback status)
+    Saga-->>PaymentService: Saga failed (errorResult)
+else Blockchain Success
+    EscrowContract-->>Saga: Transaction receipt (txHash)
+    Saga->>AppwriteDB: Step 3: record-released-in-db & audit log
+    AppwriteDB-->>Saga: Records committed
+    Saga-->>PaymentService: Saga completed successfully
+end
+PaymentService->>Freelancer: notifyMilestoneApproved() & notifyPaymentReleased()
+PaymentService->>AsyncLock: Release lock
+PaymentService-->>Employer: Approval confirmed
 ```
 
 ## Dispute Resolution Service

@@ -9,7 +9,7 @@ FreelanceXchain is a decentralized freelance marketplace with AI skill matching 
 - [Data Models](data-models.md) - Appwrite collections and TypeScript model mapping
 - [Business Logic Layer](business-logic.md) - Service layer architecture and domain logic
 - [Appwrite Schema Design](database-schema.md) - Collections, attributes, indexes, and security model
-- [ADRs](adr/) - Architecture Decision Records (token sessions, partial refunds, rush fees, money-path audit, etc.)
+- [ADRs](adr/README.md) - Architecture Decision Records (token sessions, partial refunds, rush fees, money-path audit, distributed locking, saga orchestrator)
 
 ## Architecture Overview
 
