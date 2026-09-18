@@ -69,7 +69,7 @@ pnpm run deploy:contracts:ganache
    - `FreelanceReputation` (linked to `ContractAgreement`)
    - `DisputeResolution`
    - `MilestoneRegistry`
-4. Writes deployment summary to [`scripts/deployment.json`](../../scripts/deployment.json).
+4. Writes deployment summary to `scripts/deployment.json`.
 5. Automatically writes the contract addresses into `.env`:
 
    ```env
