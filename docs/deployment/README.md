@@ -11,6 +11,8 @@ Essential documentation for deploying and operating FreelanceXchain API.
 
 ## Operations
 
+- [Database Restoration & Panel Demo Guide](database-restoration-guide.md) - Rebuilding the database, storage, and demo seed data (KYC, projects, users)
+- [Smart Contract Deployment Guide](smart-contract-deployment-guide.md) - Deploying contracts to Ganache (Local Demo) and Polygon (Production)
 - [Deployment Configuration](configuration.md) - Environment, Docker, and network configuration
 - [Maintenance Runbook](maintenance.md) - System maintenance procedures and schedules
 - [Migration Guide](migration.md) - Deploying new features to your platform

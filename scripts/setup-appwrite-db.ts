@@ -12,7 +12,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { Client, Databases, ID, Permission, Role, Query, DatabasesIndexType, OrderBy } from 'node-appwrite';
+import { Client, Databases, Storage, ID, Permission, Role, Query, DatabasesIndexType, OrderBy } from 'node-appwrite';
 
 const ENDPOINT = process.env['APPWRITE_ENDPOINT']!;
 const PROJECT_ID = process.env['APPWRITE_PROJECT_ID']!;
@@ -976,30 +976,630 @@ async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
   }
 }
 
+// ─── Storage Bucket Definitions ─────────────────────────────────────────────
+
+const BUCKETS_TO_SETUP = [
+  { bucketId: 'proposal-attachments', bucketName: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true },
+  { bucketId: 'project-attachments', bucketName: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false },
+  { bucketId: 'dispute-evidence', bucketName: 'Dispute Evidence', permissions: [], fileSecurity: true },
+  { bucketId: 'portfolio-images', bucketName: 'Portfolio Images', permissions: [Permission.read(Role.any())], fileSecurity: false },
+  { bucketId: 'milestone-deliverables', bucketName: 'Milestone Deliverables', permissions: [], fileSecurity: true },
+];
+
+async function setupStorage(): Promise<void> {
+  const storage = new Storage(client);
+  const existing = await storage.listBuckets();
+  const existingIds = new Set(existing.buckets.map((b) => b.$id));
+
+  for (const b of BUCKETS_TO_SETUP) {
+    if (existingIds.has(b.bucketId)) {
+      console.log(`    ✓ Bucket '${b.bucketId}' already exists.`);
+    } else {
+      console.log(`    Creating bucket '${b.bucketId}' (${b.bucketName})...`);
+      try {
+        await storage.createBucket(b.bucketId, b.bucketName, b.permissions, b.fileSecurity, true, undefined, ['jpg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'xlsx', 'csv']);
+        console.log(`    ✓ Bucket '${b.bucketId}' created successfully.`);
+      } catch (err: any) {
+        console.error(`    ✗ Error creating bucket '${b.bucketId}':`, err?.message || err);
+      }
+    }
+  }
+}
+
+// ─── Demo Seed Data ──────────────────────────────────────────────────────────
+
+const futureDate = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+const skillCategories = [
+  { seedId: "cat-1", name: "Blockchain", description: "Blockchain development skills", is_active: true },
+  { seedId: "cat-2", name: "Frontend", description: "Frontend development skills", is_active: true },
+  { seedId: "cat-3", name: "Backend", description: "Backend development skills", is_active: true },
+  { seedId: "cat-4", name: "Design", description: "Design and UI/UX skills", is_active: true },
+];
+
+const skills = [
+  { seedId: "skill-1", category_id: "cat-1", name: "Solidity", description: "Smart contract development", is_active: true },
+  { seedId: "skill-2", category_id: "cat-1", name: "Rust", description: "Systems programming", is_active: true },
+  { seedId: "skill-3", category_id: "cat-1", name: "Hardhat", description: "Ethereum development environment", is_active: true },
+  { seedId: "skill-4", category_id: "cat-2", name: "React", description: "Frontend library", is_active: true },
+  { seedId: "skill-5", category_id: "cat-2", name: "TypeScript", description: "Type-safe JavaScript", is_active: true },
+  { seedId: "skill-6", category_id: "cat-2", name: "Tailwind CSS", description: "Utility-first CSS framework", is_active: true },
+  { seedId: "skill-7", category_id: "cat-3", name: "Node.js", description: "JavaScript runtime", is_active: true },
+  { seedId: "skill-8", category_id: "cat-3", name: "Python", description: "Programming language", is_active: true },
+  { seedId: "skill-9", category_id: "cat-4", name: "Figma", description: "UI/UX design tool", is_active: true },
+  { seedId: "skill-10", category_id: "cat-4", name: "UI/UX Design", description: "User interface design", is_active: true },
+];
+
+const employerUsers = [
+  {
+    seedId: "employer-1",
+    email: "sarah@techcorp.com",
+    password_hash: "",
+    name: "Sarah Chen",
+    role: "employer",
+    wallet_address: "0x742d35Cc6634C0532925a3b844Bc9e7595f8bE28",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  },
+  {
+    seedId: "employer-2",
+    email: "mike@blockchain.io",
+    password_hash: "",
+    name: "Mike Johnson",
+    role: "employer",
+    wallet_address: "0x8Ba1f109551bD432803012645Hac13652c22BF79",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  },
+  {
+    seedId: "employer-3",
+    email: "alex@defi.finance",
+    password_hash: "",
+    name: "Alex Rivera",
+    role: "employer",
+    wallet_address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  },
+];
+
+const freelancerUsers = [
+  {
+    seedId: "freelancer-1",
+    email: "ana@freelance.com",
+    password_hash: "",
+    name: "Ana Reyes",
+    role: "freelancer",
+    wallet_address: "0x2546BcD3a805442D0bf58d50f1b29A7e3cf175b9",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  },
+  {
+    seedId: "freelancer-2",
+    email: "juan@web3.dev",
+    password_hash: "",
+    name: "Juan dela Cruz",
+    role: "freelancer",
+    wallet_address: "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  },
+  {
+    seedId: "freelancer-3",
+    email: "maria@fullstack.io",
+    password_hash: "",
+    name: "Maria Santos",
+    role: "freelancer",
+    wallet_address: "0x617F2E2fD72FD9D5503197092aC168c91465E7f2",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  },
+];
+
+const freelancerProfiles = [
+  {
+    seedId: "profile-1",
+    user_id: "freelancer-1",
+    name: "Ana Reyes",
+    nationality: "Filipino",
+    bio: "Smart contract auditor and Solidity developer. Previously audited DeFi protocols worth $50M+ TVL.",
+    hourly_rate: 50,
+    skills: JSON.stringify([
+      { name: "Solidity", years_of_experience: 5 },
+      { name: "Rust", years_of_experience: 3 },
+      { name: "Smart Contract Auditing", years_of_experience: 4 },
+      { name: "Hardhat", years_of_experience: 5 },
+    ]),
+    experience: JSON.stringify([
+      {
+        id: "exp-1",
+        title: "Senior Smart Contract Developer",
+        company: "DeFi Protocol Inc.",
+        description: "Led security audits for multiple DeFi protocols",
+        start_date: "2022-01-01",
+        end_date: null,
+      },
+    ]),
+    availability: "available",
+  },
+  {
+    seedId: "profile-2",
+    user_id: "freelancer-2",
+    name: "Juan dela Cruz",
+    nationality: "Filipino",
+    bio: "UI/UX designer specializing in Web3 interfaces. Experienced in Figma, Adobe XD, and frontend frameworks.",
+    hourly_rate: 28,
+    skills: JSON.stringify([
+      { name: "Figma", years_of_experience: 4 },
+      { name: "Adobe XD", years_of_experience: 3 },
+      { name: "CSS", years_of_experience: 5 },
+      { name: "Tailwind", years_of_experience: 4 },
+    ]),
+    experience: JSON.stringify([
+      {
+        id: "exp-2",
+        title: "UI/UX Designer",
+        company: "CryptoDesign Studio",
+        description: "Designed intuitive interfaces for Web3 applications",
+        start_date: "2021-06-01",
+        end_date: null,
+      },
+    ]),
+    availability: "available",
+  },
+  {
+    seedId: "profile-3",
+    user_id: "freelancer-3",
+    name: "Maria Santos",
+    nationality: "Filipino",
+    bio: "Full-stack web developer with 5 years of experience in React, Node.js, and blockchain development. Passionate about building decentralized applications.",
+    hourly_rate: 35,
+    skills: JSON.stringify([
+      { name: "React", years_of_experience: 5 },
+      { name: "Node.js", years_of_experience: 5 },
+      { name: "Solidity", years_of_experience: 3 },
+      { name: "TypeScript", years_of_experience: 4 },
+      { name: "PostgreSQL", years_of_experience: 4 },
+    ]),
+    experience: JSON.stringify([
+      {
+        id: "exp-3",
+        title: "Senior Web Developer",
+        company: "TechCorp",
+        description: "Full-stack development for enterprise applications",
+        start_date: "2023-01-01",
+        end_date: null,
+      },
+    ]),
+    availability: "available",
+  },
+];
+
+const employerProfiles = [
+  {
+    seedId: "employer-profile-1",
+    user_id: "employer-1",
+    name: "Sarah Chen",
+    nationality: "Singaporean",
+    company_name: "TechCorp",
+    description: "Leading technology company specializing in blockchain solutions",
+    industry: "Technology",
+  },
+  {
+    seedId: "employer-profile-2",
+    user_id: "employer-2",
+    name: "Mike Johnson",
+    nationality: "American",
+    company_name: "Blockchain.io",
+    description: "Innovative blockchain startup focused on DeFi",
+    industry: "Finance",
+  },
+  {
+    seedId: "employer-profile-3",
+    user_id: "employer-3",
+    name: "Alex Rivera",
+    nationality: "Filipino",
+    company_name: "DeFi Finance",
+    description: "Decentralized finance platform for the future",
+    industry: "DeFi",
+  },
+];
+
+const projects = [
+  {
+    seedId: "project-1",
+    employer_id: "employer-1",
+    title: "Build a Decentralized Exchange (DEX) Frontend",
+    description: "Looking for an experienced React developer to build a modern, responsive frontend for our DEX. The interface should support token swapping, liquidity pool visualization, and portfolio tracking. Must integrate with Web3 wallets like MetaMask and WalletConnect.",
+    required_skills: JSON.stringify([
+      { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 3 },
+      { skill_id: "skill-5", skill_name: "TypeScript", category_id: "cat-2", years_of_experience: 2 },
+    ]),
+    budget: 8000,
+    deadline: futureDate(45),
+    is_rush: false,
+    rush_fee_percentage: 25,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: "m1", title: "UI Design & Components", description: "Create wireframes and reusable components", amount: 2000, due_date: futureDate(15), status: "pending" },
+      { id: "m2", title: "Core Functionality", description: "Implement token swap and wallet integration", amount: 3000, due_date: futureDate(30), status: "pending" },
+      { id: "m3", title: "Testing & Deployment", description: "QA testing and production deployment", amount: 3000, due_date: futureDate(45), status: "pending" },
+    ]),
+    freelancer_limit: 1,
+    tags: JSON.stringify(["DeFi", "React", "Web3"]),
+    attachments: JSON.stringify([]),
+  },
+  {
+    seedId: "project-2",
+    employer_id: "employer-2",
+    title: "Smart Contract Audit for DeFi Protocol",
+    description: "Need a thorough security audit of our Solidity smart contracts. The protocol handles over $10M in TVL and includes lending, borrowing, and liquidation mechanisms. Must provide detailed vulnerability report with remediation recommendations.",
+    required_skills: JSON.stringify([
+      { skill_id: "skill-1", skill_name: "Solidity", category_id: "cat-1", years_of_experience: 4 },
+      { skill_id: "skill-3", skill_name: "Hardhat", category_id: "cat-1", years_of_experience: 3 },
+    ]),
+    budget: 15000,
+    deadline: futureDate(30),
+    is_rush: true,
+    rush_fee_percentage: 50,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: "m4", title: "Initial Assessment", description: "Review contract architecture", amount: 5000, due_date: futureDate(10), status: "pending" },
+      { id: "m5", title: "Deep Analysis", description: "Line-by-line security review", amount: 7000, due_date: futureDate(20), status: "pending" },
+      { id: "m6", title: "Report & Remediation", description: "Final report with fixes", amount: 3000, due_date: futureDate(30), status: "pending" },
+    ]),
+    freelancer_limit: 1,
+    tags: JSON.stringify(["Security", "Audit", "Solidity"]),
+    attachments: JSON.stringify([]),
+  },
+  {
+    seedId: "project-3",
+    employer_id: "employer-3",
+    title: "NFT Marketplace Development",
+    description: "Build a full-stack NFT marketplace with minting, buying, selling, and auction features. Need both frontend and backend development with IPFS integration for metadata storage. Must support multiple blockchain networks.",
+    required_skills: JSON.stringify([
+      { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 3 },
+      { skill_id: "skill-7", skill_name: "Node.js", category_id: "cat-3", years_of_experience: 3 },
+      { skill_id: "skill-1", skill_name: "Solidity", category_id: "cat-1", years_of_experience: 2 },
+    ]),
+    budget: 12000,
+    deadline: futureDate(60),
+    is_rush: false,
+    rush_fee_percentage: 25,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: "m7", title: "Smart Contracts", description: "NFT and marketplace contracts", amount: 4000, due_date: futureDate(20), status: "pending" },
+      { id: "m8", title: "Backend API", description: "REST API and IPFS integration", amount: 4000, due_date: futureDate(40), status: "pending" },
+      { id: "m9", title: "Frontend UI", description: "Complete marketplace interface", amount: 4000, due_date: futureDate(60), status: "pending" },
+    ]),
+    freelancer_limit: 2,
+    tags: JSON.stringify(["NFT", "Marketplace", "Full-Stack"]),
+    attachments: JSON.stringify([]),
+  },
+  {
+    seedId: "project-4",
+    employer_id: "employer-1",
+    title: "DAO Governance Dashboard",
+    description: "Create a comprehensive governance dashboard for our DAO. Features include proposal creation, voting interface, treasury visualization, and member management. Must be intuitive for non-technical users.",
+    required_skills: JSON.stringify([
+      { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 4 },
+      { skill_id: "skill-9", skill_name: "Figma", category_id: "cat-4", years_of_experience: 3 },
+      { skill_id: "skill-10", skill_name: "UI/UX Design", category_id: "cat-4", years_of_experience: 3 },
+    ]),
+    budget: 6500,
+    deadline: futureDate(40),
+    is_rush: false,
+    rush_fee_percentage: 25,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: "m10", title: "Design System", description: "Create design tokens and components", amount: 2000, due_date: futureDate(15), status: "pending" },
+      { id: "m11", title: "Proposal & Voting UI", description: "Core governance features", amount: 2500, due_date: futureDate(30), status: "pending" },
+      { id: "m12", title: "Treasury & Members", description: "Dashboard analytics", amount: 2000, due_date: futureDate(40), status: "pending" },
+    ]),
+    freelancer_limit: 1,
+    tags: JSON.stringify(["DAO", "Governance", "Dashboard"]),
+    attachments: JSON.stringify([]),
+  },
+  {
+    seedId: "project-5",
+    employer_id: "employer-2",
+    title: "Cross-Chain Bridge UI",
+    description: "Design and develop a user-friendly interface for our cross-chain bridge. Should support multiple networks (Ethereum, Polygon, BSC) with real-time fee estimation and transaction tracking.",
+    required_skills: JSON.stringify([
+      { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 3 },
+      { skill_id: "skill-6", skill_name: "Tailwind CSS", category_id: "cat-2", years_of_experience: 2 },
+      { skill_id: "skill-5", skill_name: "TypeScript", category_id: "cat-2", years_of_experience: 3 },
+    ]),
+    budget: 5500,
+    deadline: futureDate(35),
+    is_rush: false,
+    rush_fee_percentage: 25,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: "m13", title: "UI Design", description: "Wireframes and visual design", amount: 1500, due_date: futureDate(10), status: "pending" },
+      { id: "m14", title: "Bridge Interface", description: "Network selection and swap UI", amount: 2500, due_date: futureDate(25), status: "pending" },
+      { id: "m15", title: "Transaction Tracking", description: "Status and history views", amount: 1500, due_date: futureDate(35), status: "pending" },
+    ]),
+    freelancer_limit: 1,
+    tags: JSON.stringify(["Bridge", "Cross-Chain", "UI"]),
+    attachments: JSON.stringify([]),
+  },
+  {
+    seedId: "project-6",
+    employer_id: "employer-3",
+    title: "DeFi Yield Aggregator",
+    description: "Develop a yield aggregator that automatically moves funds between different DeFi protocols to maximize returns. Need both smart contracts and a monitoring dashboard.",
+    required_skills: JSON.stringify([
+      { skill_id: "skill-1", skill_name: "Solidity", category_id: "cat-1", years_of_experience: 4 },
+      { skill_id: "skill-7", skill_name: "Node.js", category_id: "cat-3", years_of_experience: 3 },
+      { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 2 },
+    ]),
+    budget: 18000,
+    deadline: futureDate(75),
+    is_rush: false,
+    rush_fee_percentage: 25,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: "m16", title: "Strategy Design", description: "Yield optimization algorithms", amount: 4000, due_date: futureDate(15), status: "pending" },
+      { id: "m17", title: "Smart Contracts", description: "Vault and strategy contracts", amount: 6000, due_date: futureDate(40), status: "pending" },
+      { id: "m18", title: "Backend & API", description: "Monitoring and automation", amount: 4000, due_date: futureDate(60), status: "pending" },
+      { id: "m19", title: "Dashboard", description: "Analytics and visualization", amount: 4000, due_date: futureDate(75), status: "pending" },
+    ]),
+    freelancer_limit: 2,
+    tags: JSON.stringify(["DeFi", "Yield", "Aggregator"]),
+    attachments: JSON.stringify([]),
+  },
+];
+
+const kycVerifications = [
+  {
+    seedId: "kyc-freelancer-1",
+    user_id: "freelancer-1",
+    status: "approved",
+    didit_session_id: "session_fl1_verified",
+    didit_session_token: "tok_fl1_seeded",
+    didit_session_url: "https://verification.didit.me/v/session_fl1_verified",
+    didit_workflow_id: "wf_freelance_kyc",
+    decision: "approved",
+    document_type: "PASSPORT",
+    document_number: "P1234567A",
+    first_name: "Ana",
+    last_name: "Reyes",
+    nationality: "PH",
+    document_verified: true,
+    liveness_passed: true,
+    face_matched: true,
+    ip_address: "127.0.0.1",
+    metadata: JSON.stringify({ verified_at: "2026-01-15T08:00:00.000Z", tier: "standard" }),
+    admin_notes: "Auto-approved demo account for thesis panel evaluation",
+  },
+  {
+    seedId: "kyc-freelancer-2",
+    user_id: "freelancer-2",
+    status: "approved",
+    didit_session_id: "session_fl2_verified",
+    didit_session_token: "tok_fl2_seeded",
+    didit_session_url: "https://verification.didit.me/v/session_fl2_verified",
+    didit_workflow_id: "wf_freelance_kyc",
+    decision: "approved",
+    document_type: "NATIONAL_ID",
+    document_number: "N7654321B",
+    first_name: "Juan",
+    last_name: "dela Cruz",
+    nationality: "PH",
+    document_verified: true,
+    liveness_passed: true,
+    face_matched: true,
+    ip_address: "127.0.0.1",
+    metadata: JSON.stringify({ verified_at: "2026-01-16T09:30:00.000Z", tier: "standard" }),
+    admin_notes: "Auto-approved demo account for thesis panel evaluation",
+  },
+  {
+    seedId: "kyc-freelancer-3",
+    user_id: "freelancer-3",
+    status: "approved",
+    didit_session_id: "session_fl3_verified",
+    didit_session_token: "tok_fl3_seeded",
+    didit_session_url: "https://verification.didit.me/v/session_fl3_verified",
+    didit_workflow_id: "wf_freelance_kyc",
+    decision: "approved",
+    document_type: "DRIVERS_LICENSE",
+    document_number: "D9876543C",
+    first_name: "Maria",
+    last_name: "Santos",
+    nationality: "PH",
+    document_verified: true,
+    liveness_passed: true,
+    face_matched: true,
+    ip_address: "127.0.0.1",
+    metadata: JSON.stringify({ verified_at: "2026-01-18T10:15:00.000Z", tier: "standard" }),
+    admin_notes: "Auto-approved demo account for thesis panel evaluation",
+  },
+  {
+    seedId: "kyc-employer-1",
+    user_id: "employer-1",
+    status: "approved",
+    didit_session_id: "session_emp1_verified",
+    didit_session_token: "tok_emp1_seeded",
+    didit_session_url: "https://verification.didit.me/v/session_emp1_verified",
+    didit_workflow_id: "wf_employer_kyc",
+    decision: "approved",
+    document_type: "PASSPORT",
+    document_number: "E1122334D",
+    first_name: "Sarah",
+    last_name: "Chen",
+    nationality: "SG",
+    document_verified: true,
+    liveness_passed: true,
+    face_matched: true,
+    ip_address: "127.0.0.1",
+    metadata: JSON.stringify({ verified_at: "2026-01-10T11:00:00.000Z", tier: "business" }),
+    admin_notes: "Auto-approved employer demo account",
+  },
+  {
+    seedId: "kyc-employer-2",
+    user_id: "employer-2",
+    status: "approved",
+    didit_session_id: "session_emp2_verified",
+    didit_session_token: "tok_emp2_seeded",
+    didit_session_url: "https://verification.didit.me/v/session_emp2_verified",
+    didit_workflow_id: "wf_employer_kyc",
+    decision: "approved",
+    document_type: "PASSPORT",
+    document_number: "E2233445E",
+    first_name: "Mike",
+    last_name: "Johnson",
+    nationality: "US",
+    document_verified: true,
+    liveness_passed: true,
+    face_matched: true,
+    ip_address: "127.0.0.1",
+    metadata: JSON.stringify({ verified_at: "2026-01-12T14:20:00.000Z", tier: "business" }),
+    admin_notes: "Auto-approved employer demo account",
+  },
+  {
+    seedId: "kyc-employer-3",
+    user_id: "employer-3",
+    status: "approved",
+    didit_session_id: "session_emp3_verified",
+    didit_session_token: "tok_emp3_seeded",
+    didit_session_url: "https://verification.didit.me/v/session_emp3_verified",
+    didit_workflow_id: "wf_employer_kyc",
+    decision: "approved",
+    document_type: "PASSPORT",
+    document_number: "E3344556F",
+    first_name: "Alex",
+    last_name: "Rivera",
+    nationality: "US",
+    document_verified: true,
+    liveness_passed: true,
+    face_matched: true,
+    ip_address: "127.0.0.1",
+    metadata: JSON.stringify({ verified_at: "2026-01-14T16:45:00.000Z", tier: "business" }),
+    admin_notes: "Auto-approved employer demo account",
+  },
+];
+
+const portfolioItems = [
+  {
+    seedId: "port-1",
+    freelancer_id: "freelancer-1",
+    title: "Decentralized Exchange (DEX) & AMM Liquidity Frontend",
+    description: "Responsive decentralized exchange interface supporting automated market maker token swapping, multi-token liquidity pools, slippage protection, and Web3 wallet connectors.",
+    project_url: "https://github.com/freelancexchain/dex-frontend",
+    images: JSON.stringify(["https://images.unsplash.com/photo-1622979135225-d2ba269bc1df?w=800&auto=format&fit=crop&q=60"]),
+    skills: JSON.stringify(["React", "TypeScript", "EVM", "Ethers.js", "Tailwind CSS"]),
+    completed_at: "2026-01-20",
+  },
+  {
+    seedId: "port-2",
+    freelancer_id: "freelancer-1",
+    title: "Decentralized Freelance & Milestone Escrow Protocol",
+    description: "A non-custodial smart contract escrow protocol on Polygon with automated milestone release, dispute arbitration, and multi-token support.",
+    project_url: "https://github.com/freelancexchain/escrow-dapp",
+    images: JSON.stringify(["https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=800&auto=format&fit=crop&q=60"]),
+    skills: JSON.stringify(["Solidity", "Smart Contracts", "Polygon", "React", "Next.js"]),
+    completed_at: "2025-11-15",
+  },
+  {
+    seedId: "port-3",
+    freelancer_id: "freelancer-2",
+    title: "Web3 Multi-Chain NFT Marketplace & Minter UI",
+    description: "Cross-chain NFT minting and marketplace interface with lazy minting, royalty enforcement, and IPFS metadata storage integration.",
+    project_url: "https://github.com/freelancexchain/nft-marketplace-ui",
+    images: JSON.stringify(["https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=800&auto=format&fit=crop&q=60"]),
+    skills: JSON.stringify(["Figma", "UI/UX Design", "Tailwind CSS", "React"]),
+    completed_at: "2026-02-10",
+  },
+  {
+    seedId: "port-4",
+    freelancer_id: "freelancer-3",
+    title: "Enterprise Web3 Analytics & Subgraph Dashboard",
+    description: "Real-time analytics dashboard indexing on-chain events and subgraphs with high-throughput WebSockets.",
+    project_url: "https://github.com/freelancexchain/web3-analytics",
+    images: JSON.stringify(["https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop&q=60"]),
+    skills: JSON.stringify(["Node.js", "TypeScript", "React", "Python"]),
+    completed_at: "2026-01-05",
+  },
+];
+
+async function seedCollection(collectionId: string, documents: Record<string, unknown>[], name: string): Promise<void> {
+  console.log(`    📦 Seeding ${name}...`);
+  let created = 0;
+  let skipped = 0;
+
+  for (const doc of documents) {
+    const { seedId, id: docId, created_at: _ca, updated_at: _ua, ...data } = doc;
+    const documentId = (seedId || docId) as string;
+    try {
+      await db.createDocument(DATABASE_ID, collectionId, documentId, data);
+      created++;
+    } catch (e: any) {
+      if (e?.code === 409) {
+        skipped++;
+      } else {
+        console.error(`      ✗ Failed to create ${documentId}:`, e?.message || e);
+      }
+    }
+  }
+
+  console.log(`      ✓ Created: ${created}, Skipped: ${skipped}`);
+}
+
+async function seedAllData(): Promise<void> {
+  await seedCollection("skill_categories", skillCategories, "Skill Categories");
+  await seedCollection("skills", skills, "Skills");
+  await seedCollection("users", [...employerUsers, ...freelancerUsers], "Users");
+  await seedCollection("freelancer_profiles", freelancerProfiles, "Freelancer Profiles");
+  await seedCollection("employer_profiles", employerProfiles, "Employer Profiles");
+  await seedCollection("kyc_verifications", kycVerifications, "KYC Verifications");
+  await seedCollection("portfolio_items", portfolioItems, "Portfolio Items");
+  await seedCollection("projects", projects, "Projects");
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  console.log('=== FreelanceXchain — Appwrite Database Setup ===\n');
-  console.log(`Endpoint: ${ENDPOINT}`);
-  console.log(`Project:  ${PROJECT_ID}`);
-  console.log(`Database: ${DATABASE_ID}\n`);
+  const WITH_SEED = process.argv.includes("--seed") || process.argv.includes("-s");
+
+  console.log("=== FreelanceXchain — Appwrite Setup & Restore ===\n");
+  console.log(`Endpoint:  ${ENDPOINT}`);
+  console.log(`Project:   ${PROJECT_ID}`);
+  console.log(`Database:  ${DATABASE_ID}`);
+  console.log(`With Seed: ${WITH_SEED ? "YES (demo seed data will be populated)" : "NO (clean schema and buckets only)"}\n`);
 
   await ensureDatabase();
 
-  console.log(`\nCreating ${COLLECTIONS.length} collections...\n`);
-
+  console.log(`\n1. Creating/Verifying ${COLLECTIONS.length} collections...\n`);
   for (const colDef of COLLECTIONS) {
     console.log(`[${colDef.id}]`);
     await createCollection(colDef);
     await createAttributes(colDef);
     await createIndexes(colDef);
-    console.log('');
+    console.log("");
   }
 
-  console.log('\n=== Setup complete! ===');
+  console.log(`\n2. Creating/Verifying ${BUCKETS_TO_SETUP.length} storage buckets...\n`);
+  await setupStorage();
+
+  if (WITH_SEED) {
+    console.log(`\n3. Seeding demo sample data...\n`);
+    await seedAllData();
+  } else {
+    console.log(`\n3. Skipping seed data (pass --seed to populate initial demo data).`);
+  }
+
+  console.log(`\n=== Setup complete! (Mode: ${WITH_SEED ? "With Seed" : "Clean / Without Seed"}) ===`);
 }
 
 main().catch((err) => {
-  console.error('Setup failed:', err);
+  console.error("Setup failed:", err);
   process.exit(1);
 });
+
