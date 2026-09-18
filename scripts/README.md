@@ -51,6 +51,13 @@ pnpm run deploy:contracts:prod
 
 > **Full Documentation:** See [`docs/deployment/smart-contract-deployment-guide.md`](../docs/deployment/smart-contract-deployment-guide.md).
 
+### 🔄 CI & Maintenance Utility Scripts
+
+- **[bump-version.cjs](bump-version.cjs)** - Automatically increments the patch version in `package.json` and syncs it with `openapi.base.json` and `openapi.json` during GitHub Actions CI build and push.
+- **[check-openapi.ts](check-openapi.ts)** - Validates OpenAPI specification consistency against schema routes.
+- **[generate-openapi.ts](generate-openapi.ts)** - Generates OpenAPI schema documentation.
+- **[check-markdown-links.ts](check-markdown-links.ts)** - Checks internal links across project markdown documentation.
+
 ## 🔧 Prerequisites
 
 Before running scripts, ensure you have:
