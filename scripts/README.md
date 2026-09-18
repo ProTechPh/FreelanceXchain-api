@@ -22,13 +22,14 @@ pnpm run db:restore:seed
 # or: npx tsx scripts/setup-appwrite-db.ts --seed
 ```
 
-> **What gets seeded with `--seed`:**
-> - 6 Active Projects with Milestones (DEX Frontend, DeFi Audit, NFT Marketplace, DAO Dashboard, Bridge UI, Yield Aggregator)
-> - 6 KYC Verifications (All `APPROVED` for seamless demo bidding & escrow funding)
-> - 6 Demo Users (3 Employers, 3 Freelancers)
-> - 4 Freelancer Portfolio Projects
-> - 10 Skills & 4 Skill Categories
-> - *See [`docs/deployment/database-restoration-guide.md`](../docs/deployment/database-restoration-guide.md) for complete details.*
+What gets seeded with `--seed`:
+
+- 6 Active Projects with Milestones (DEX Frontend, DeFi Audit, NFT Marketplace, DAO Dashboard, Bridge UI, Yield Aggregator)
+- 6 KYC Verifications (All `APPROVED` for seamless demo bidding & escrow funding)
+- 6 Demo Users (3 Employers, 3 Freelancers)
+- 4 Freelancer Portfolio Projects
+- 10 Skills & 4 Skill Categories
+- *See [`docs/deployment/database-restoration-guide.md`](../docs/deployment/database-restoration-guide.md) for complete details.*
 
 ### 🚀 Smart Contract Deployment Scripts
 
@@ -87,7 +88,6 @@ Before running scripts, ensure you have:
 - Always test on local blockchain (Ganache) before deploying to testnet/mainnet
 - Keep private keys secure and never commit them to version control
 - Verify contract addresses after deployment
-
 
 ## 🔗 Related Documentation
 

@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "openapi:generate": "tsx scripts/generate-openapi.ts",
+    "openapi:check": "tsx scripts/check-openapi.ts",
+    "docs:check": "tsx scripts/check-markdown-links.ts",
     "docs:lint": "markdownlint-cli2 \"**/*.md\"",
     "start": "node dist/index.js",
     "start:prod": "tsx src/index.ts",

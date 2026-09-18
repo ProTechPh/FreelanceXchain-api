@@ -7,6 +7,7 @@ This guide details how to deploy, configure, and restore the FreelanceXchain sma
 ## 🎯 Panel Defense Quick Reference
 
 During a thesis panel defense or technical demo, panel members often ask:
+
 > *"How are your smart contracts deployed locally for this demo, and how is it transitioned to the live blockchain (Production/Polygon)?"*
 
 ### Cheat Sheet Commands
@@ -24,13 +25,16 @@ During a thesis panel defense or technical demo, panel members often ask:
 FreelanceXchain uses a hybrid smart contract architecture:
 
 ### 1. Singleton Contracts (Deployed Once Per Network)
+
 These contracts maintain global registries and mappings across all users on that network:
+
 1. **`ContractAgreement.sol`**: Immutable on-chain agreements between employers and freelancers, tracking signatures and terms.
 2. **`FreelanceReputation.sol`**: On-chain reputation scores, feedback validation, and weighted scoring linked to verified completed agreements.
 3. **`DisputeResolution.sol`**: On-chain dispute filing, evidence hashing, and arbitrator rulings.
 4. **`MilestoneRegistry.sol`**: On-chain milestone progress tracking and payment completion sign-offs.
 
 ### 2. Per-Instance Contract (Deployed On-Demand)
+
 - **`FreelanceEscrow.sol`**: Deployed individually per project whenever an employer funds a contract escrow. It isolates escrowed funds into dedicated contract addresses for fund security.
 
 ---
@@ -38,20 +42,26 @@ These contracts maintain global registries and mappings across all users on that
 ## 💻 Local Demo Deployment (Ganache)
 
 ### Prerequisites
+
 1. **Ganache** running locally on `http://127.0.0.1:7545` (Ganache UI or `npx ganache --port 7545 --chainId 1337`).
 2. Copy the private key of the first Ganache account into `.env`:
+
    ```env
    BLOCKCHAIN_PRIVATE_KEY=your_ganache_private_key_here
    ```
 
 ### Execution
+
 Run from the `FreelanceXchain-api` root directory:
+
 ```bash
 pnpm run deploy:contracts:ganache
 ```
+
 *(Or shorthand: `pnpm run deploy:local`)*
 
-### What Happens Automatically:
+### What Happens Automatically
+
 1. Verifies contract compilation (automatically runs `hardhat compile` if artifacts are missing).
 2. Connects to `http://127.0.0.1:7545` and checks account balance.
 3. Sequentially deploys:
@@ -61,6 +71,7 @@ pnpm run deploy:contracts:ganache
    - `MilestoneRegistry`
 4. Writes deployment summary to [`scripts/deployment.json`](../../scripts/deployment.json).
 5. Automatically writes the contract addresses into `.env`:
+
    ```env
    GANACHE_AGREEMENT_ADDRESS=0x...
    GANACHE_REPUTATION_ADDRESS=0x...
@@ -75,16 +86,19 @@ pnpm run deploy:contracts:ganache
 ## 🌐 Production & Testnet Deployment (Polygon)
 
 ### 1. Polygon Amoy Testnet (Staging / Pre-Prod)
+
 - **Chain ID:** `80002`
 - **RPC URL:** `https://rpc-amoy.polygon.technology`
 - **Faucet:** Obtain testnet MATIC/POL from [Polygon Faucet](https://faucet.polygon.technology/).
 
 Deploy command:
+
 ```bash
 pnpm run deploy:contracts:amoy
 ```
 
 This auto-populates `.env` with:
+
 ```env
 AMOY_AGREEMENT_ADDRESS=0x...
 AMOY_REPUTATION_ADDRESS=0x...
@@ -97,16 +111,19 @@ BLOCKCHAIN_MODE=real
 ---
 
 ### 2. Polygon Mainnet (Live Production)
+
 - **Chain ID:** `137`
 - **Default RPC:** `https://polygon-rpc.com` (or Infura/Alchemy RPC via `POLYGON_RPC_URL`)
 - **Gas Token:** Real POL/MATIC required on deployer wallet.
 
 Deploy command:
+
 ```bash
 pnpm run deploy:contracts:prod
 ```
 
 This auto-populates `.env` with:
+
 ```env
 POLYGON_AGREEMENT_ADDRESS=0x...
 POLYGON_REPUTATION_ADDRESS=0x...
@@ -145,14 +162,19 @@ Whenever `BLOCKCHAIN_RPC_URL` is set, the API loads the corresponding contract a
 If both the database and the local blockchain are reset during the panel defense:
 
 1. **Step 1: Re-deploy Contracts to Ganache**
+
    ```bash
    pnpm run deploy:contracts:ganache
    ```
+
 2. **Step 2: Restore Database Schema & Seed Data**
+
    ```bash
    pnpm run db:restore:seed
    ```
+
 3. **Step 3: Start Server**
+
    ```bash
    pnpm run dev
    ```
