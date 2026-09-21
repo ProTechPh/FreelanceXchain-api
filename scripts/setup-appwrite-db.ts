@@ -765,6 +765,32 @@ const COLLECTIONS = [
     ],
   },
   {
+    id: 'app_ratings',
+    name: 'App Ratings',
+    // Feedback about FreelanceXchain itself, not about a counterparty. The
+    // `reviews` collection above is the separate freelancer<->employer rating.
+    // Attributed to the submitter, so it must NOT inherit the world-readable
+    // default — see RESTRICTED_COLLECTIONS in createCollection().
+    attributes: [
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      { name: 'user_role', type: 'string', size: 20, required: true },
+      { name: 'rating', type: 'integer', required: true },
+      { name: 'comment', type: 'string', size: 2000, required: false },
+      // Which moment prompted it; see APP_RATING_SOURCES in src/models/app-rating.ts.
+      { name: 'source', type: 'string', size: 40, required: true },
+      // The contract/milestone/proposal/project the prompt came from, when there
+      // is one. Absent for a rating opened from the account menu.
+      { name: 'context_id', type: 'string', size: 36, required: false },
+      { name: 'app_version', type: 'string', size: 20, required: false },
+    ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'source_createdAt', type: DatabasesIndexType.Key, attributes: ['source', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'rating', type: DatabasesIndexType.Key, attributes: ['rating'] },
+      { key: 'source_context_id', type: DatabasesIndexType.Key, attributes: ['source', 'context_id'] },
+    ],
+  },
+  {
     id: 'subscriptions',
     name: 'Subscriptions',
     // Holds Stripe customer/subscription ids, so it must NOT inherit the
@@ -871,11 +897,12 @@ async function ensureDatabase(): Promise<void> {
  * Collections that must never be readable by `Role.any()`.
  *
  * The default permissions below are world-readable, which is wrong for billing
- * records: they carry Stripe customer and subscription ids. These collections
- * are reached only through the server's admin API key, so they get an empty
- * permission set — no client-SDK role can touch them at all.
+ * records (Stripe customer and subscription ids) and equally wrong for app
+ * feedback, which carries a named user's opinion of the platform. These
+ * collections are reached only through the server's admin API key, so they get
+ * an empty permission set — no client-SDK role can touch them at all.
  */
-const RESTRICTED_COLLECTIONS = new Set(['subscriptions']);
+const RESTRICTED_COLLECTIONS = new Set(['subscriptions', 'app_ratings']);
 
 async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
   try {

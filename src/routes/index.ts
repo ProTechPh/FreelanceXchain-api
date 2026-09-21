@@ -21,6 +21,7 @@ import fileUploadRoutes from './file-upload.js';
 import fileManagementRoutes from './file-management-routes.js';
 import messageRoutes from './message-routes.js';
 import reviewRoutes from './review-routes.js';
+import appRatingRoutes from './app-rating-routes.js';
 import healthRoutes from './health-routes.js';
 import favoriteRoutes from './favorite-routes.js';
 import transactionRoutes from './transaction-routes.js';
@@ -108,6 +109,10 @@ router.use('/messages', messageRoutes);
 
 // Review routes
 router.use('/reviews', reviewRoutes);
+
+// App rating routes — feedback about the platform itself, not about a
+// counterparty. The /reviews mount above is the freelancer<->employer rating.
+router.use('/app-ratings', appRatingRoutes);
 
 // Transaction routes
 router.use('/transactions', transactionRoutes);

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ValidationError } from './error-handler.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
+import { APP_RATING_SOURCES } from '../models/app-rating.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
@@ -712,6 +713,25 @@ export const submitReviewSchema: RequestSchema = {
       communication: { type: 'number', minimum: 1, maximum: 5 },
       professionalism: { type: 'number', minimum: 1, maximum: 5 },
       wouldWorkAgain: { type: 'boolean' },
+    },
+  },
+};
+
+/**
+ * "Rate the app" — platform feedback.
+ *
+ * Unlike submitReviewSchema above, `comment` is optional: a star on its own is
+ * a complete submission, and requiring prose is what stops people answering.
+ */
+export const submitAppRatingSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      rating: { type: 'number', minimum: 1, maximum: 5, required: true },
+      comment: { type: 'string', maxLength: 2000 },
+      source: { type: 'string', required: true, enum: [...APP_RATING_SOURCES] },
+      contextId: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$' },
     },
   },
 };
