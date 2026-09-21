@@ -23,7 +23,7 @@ import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.get('/freelancer', authMiddleware, apiRateLimiter, requirePro, asyncHandler(async (req: Request, res: Response) => {
+router.get('/freelancer', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const startDate = req.query['startDate'] as string | undefined;
@@ -47,7 +47,7 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, requirePro, asyncHandl
   res.status(200).json(result.data);
 }));
 
-router.get('/employer', authMiddleware, apiRateLimiter, requirePro, asyncHandler(async (req: Request, res: Response) => {
+router.get('/employer', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const startDate = req.query['startDate'] as string | undefined;
