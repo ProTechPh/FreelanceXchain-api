@@ -30,7 +30,31 @@ const db = new Databases(client);
 // ─── Collection Definitions ─────────────────────────────────────────────────
 // Each collection: { id, name, attributes: [{ name, type, size?, required?, default?, array? }] }
 
-const COLLECTIONS = [
+type AttributeDef = {
+  name: string;
+  type: 'string' | 'integer' | 'double' | 'boolean';
+  size?: number;
+  required: boolean;
+  default?: string | number | boolean;
+  array?: boolean;
+};
+
+type IndexDef = {
+  key: string;
+  type: DatabasesIndexType;
+  attributes: string[];
+  orders?: OrderBy[];
+};
+
+type CollectionDef = {
+  id: string;
+  name: string;
+  description?: string;
+  attributes: AttributeDef[];
+  indexes?: IndexDef[];
+};
+
+const COLLECTIONS: CollectionDef[] = [
   {
     id: 'users',
     name: 'Users',
@@ -1005,12 +1029,21 @@ async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
 
 // ─── Storage Bucket Definitions ─────────────────────────────────────────────
 
+const DOCUMENT_EXTENSIONS = [
+  'pdf', 'doc', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'zip',
+];
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
 const BUCKETS_TO_SETUP = [
-  { bucketId: 'proposal-attachments', bucketName: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true },
-  { bucketId: 'project-attachments', bucketName: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false },
-  { bucketId: 'dispute-evidence', bucketName: 'Dispute Evidence', permissions: [], fileSecurity: true },
-  { bucketId: 'portfolio-images', bucketName: 'Portfolio Images', permissions: [Permission.read(Role.any())], fileSecurity: false },
-  { bucketId: 'milestone-deliverables', bucketName: 'Milestone Deliverables', permissions: [], fileSecurity: true },
+  { bucketId: 'proposal-attachments', bucketName: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'project-attachments', bucketName: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'dispute-evidence', bucketName: 'Dispute Evidence', permissions: [], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'portfolio-images', bucketName: 'Portfolio Images', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: IMAGE_EXTENSIONS },
+  { bucketId: 'profile-images', bucketName: 'Profile Images', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: IMAGE_EXTENSIONS },
+  { bucketId: 'milestone-deliverables', bucketName: 'Milestone Deliverables', permissions: [], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'contract-documents', bucketName: 'Contract Documents', permissions: [Permission.read(Role.any())], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
 ];
 
 async function setupStorage(): Promise<void> {
@@ -1024,7 +1057,7 @@ async function setupStorage(): Promise<void> {
     } else {
       console.log(`    Creating bucket '${b.bucketId}' (${b.bucketName})...`);
       try {
-        await storage.createBucket(b.bucketId, b.bucketName, b.permissions, b.fileSecurity, true, undefined, ['jpg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'xlsx', 'csv']);
+        await storage.createBucket(b.bucketId, b.bucketName, b.permissions, b.fileSecurity, true, undefined, b.extensions);
         console.log(`    ✓ Bucket '${b.bucketId}' created successfully.`);
       } catch (err: any) {
         console.error(`    ✗ Error creating bucket '${b.bucketId}':`, err?.message || err);
