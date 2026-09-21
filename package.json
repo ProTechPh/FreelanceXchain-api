@@ -1,6 +1,6 @@
 {
   "name": "blockchain-freelance-marketplace",
-  "version": "1.0.57",
+  "version": "1.0.58",
   "description": "A decentralized freelance marketplace with AI skill matching and blockchain payments",
   "main": "dist/index.js",
   "type": "module",
