@@ -22,8 +22,21 @@ const MALICIOUS_MAGIC_NUMBERS: Array<{ label: string; bytes: number[] }> = [
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 export const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB total
+export const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024; // 5MB per image
 export const MIN_FILE_COUNT = 1;
 export const MAX_FILE_COUNT = 10;
+
+export const IMAGE_MIME_TYPES = {
+  'image/png': true,
+  'image/jpeg': true,
+  'image/jpg': true,
+  'image/gif': true,
+  'image/webp': true,
+} as const;
+
+export const IMAGE_EXTENSIONS = [
+  '.png', '.jpg', '.jpeg', '.gif', '.webp',
+];
 
 export const ALLOWED_MIME_TYPES = {
   'application/pdf': true,
@@ -39,19 +52,11 @@ export const ALLOWED_MIME_TYPES = {
   'image/jpg': true,
   'image/gif': true,
   'image/webp': true,
-  'application/zip': true,
-  'application/x-rar-compressed': true,
-  'application/x-7z-compressed': true,
-  'video/mp4': true,
-  'video/webm': true,
-  'video/quicktime': true,
 } as const;
 
-const ALLOWED_EXTENSIONS = [
+export const ALLOWED_EXTENSIONS = [
   '.pdf', '.doc', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.csv',
   '.png', '.jpg', '.jpeg', '.gif', '.webp',
-  '.zip', '.rar', '.7z',
-  '.mp4', '.webm', '.mov',
 ];
 
 export function sanitizeFilename(filename: string): string {
@@ -110,15 +115,19 @@ export function sanitizeCsvBuffer(buffer: Buffer): Buffer {
   return Buffer.from(sanitizedLines.join('\n'), 'utf8');
 }
 
-function hasValidExtension(filename: string): boolean {
+function hasValidExtension(filename: string, allowedExtensions: readonly string[] = ALLOWED_EXTENSIONS): boolean {
   const lowerFilename = filename.toLowerCase();
-  return ALLOWED_EXTENSIONS.some(ext => lowerFilename.endsWith(ext));
+  return allowedExtensions.some(ext => lowerFilename.endsWith(ext));
 }
 
 /**
  * Validate file MIME type using magic number detection
  */
-async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{ valid: boolean; detectedType?: string; error?: string }> {
+async function validateFileMimeType(
+  buffer: Buffer,
+  filename: string,
+  allowedMimeTypes: Record<string, boolean> = ALLOWED_MIME_TYPES
+): Promise<{ valid: boolean; detectedType?: string; error?: string }> {
   try {
     // Special handling for text, markdown, and CSV files (no magic number)
     const lower = filename.toLowerCase();
@@ -132,6 +141,9 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
           : lower.endsWith('.csv')
             ? 'text/csv'
             : 'text/plain';
+        if (!(detectedType in allowedMimeTypes)) {
+          return { valid: false, detectedType, error: `File type ${detectedType} is not allowed` };
+        }
         return { valid: true, detectedType };
       }
     }
@@ -143,7 +155,7 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
       return { valid: false, error: 'Could not detect file type' };
     }
 
-    if (!(detectedType.mime in ALLOWED_MIME_TYPES)) {
+    if (!(detectedType.mime in allowedMimeTypes)) {
       return {
         valid: false,
         detectedType: detectedType.mime,
@@ -160,29 +172,34 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
 
 const storage = multer.memoryStorage();
 
-const fileFilter: multer.Options['fileFilter'] = (req, file, cb) => {
-  if (!hasValidExtension(file.originalname)) {
-    const error = new Error(`File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}`);
-    (error as Error & { code?: string }).code = 'INVALID_FILE_TYPE';
-    return cb(error);
-  }
-
-  cb(null, true);
-};
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: MAX_FILE_SIZE,
-    files: MAX_FILE_COUNT,
-  },
-});
-
 /**
  * Middleware that runs multer and translates upload errors into HTTP responses.
  */
-function handleMulterUpload(fieldName: string, maxFiles: number): RequestHandler {
+function handleMulterUpload(
+  fieldName: string,
+  maxFiles: number,
+  maxFileSize: number = MAX_FILE_SIZE,
+  allowedExtensions: readonly string[] = ALLOWED_EXTENSIONS
+): RequestHandler {
+  const customFileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
+    if (!hasValidExtension(file.originalname, allowedExtensions)) {
+      const error = new Error(`File type not allowed. Allowed types: ${allowedExtensions.join(', ')}`);
+      (error as Error & { code?: string }).code = 'INVALID_FILE_TYPE';
+      return cb(error);
+    }
+
+    cb(null, true);
+  };
+
+  const uploadInstance = multer({
+    storage,
+    fileFilter: customFileFilter,
+    limits: {
+      fileSize: maxFileSize,
+      files: maxFiles,
+    },
+  });
+
   return (req: Request, res: Response, next: NextFunction): void => {
     // Reject upfront if Content-Length header exceeds MAX_TOTAL_SIZE to prevent memory spikes
     const contentLength = req.headers['content-length'];
@@ -191,13 +208,13 @@ function handleMulterUpload(fieldName: string, maxFiles: number): RequestHandler
       return;
     }
 
-    upload.array(fieldName, maxFiles)(req, res, (err: unknown) => {
+    uploadInstance.array(fieldName, maxFiles)(req, res, (err: unknown) => {
       if (!err) return next();
 
       // Multer and our fileFilter attach a `code` to the error (Error | MulterError).
       const uploadError = err as { code?: string; message: string };
       if (uploadError.code === 'LIMIT_FILE_SIZE') {
-        sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
+        sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `File size exceeds ${maxFileSize / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
         return;
       }
 
@@ -220,6 +237,8 @@ type UploadValidationOptions = {
   minFiles: number;
   maxFiles: number;
   validateMagicNumbers: boolean;
+  allowedMimeTypes?: Record<string, boolean>;
+  maxTotalSize?: number;
 };
 
 /**
@@ -240,8 +259,9 @@ async function validateAndScanFile(
   req: Request,
   res: Response,
   file: Express.Multer.File,
+  allowedMimeTypes: Record<string, boolean> = ALLOWED_MIME_TYPES,
 ): Promise<boolean> {
-  const validation = await validateFileMimeType(file.buffer, file.originalname);
+  const validation = await validateFileMimeType(file.buffer, file.originalname, allowedMimeTypes);
 
   if (!validation.valid) {
     logger.warn('File upload rejected - invalid MIME type', {
@@ -297,7 +317,7 @@ async function validateUploadedFiles(
   next: NextFunction,
   options: UploadValidationOptions,
 ): Promise<void> {
-  const { minFiles, maxFiles, validateMagicNumbers } = options;
+  const { minFiles, maxFiles, validateMagicNumbers, allowedMimeTypes = ALLOWED_MIME_TYPES, maxTotalSize = MAX_TOTAL_SIZE } = options;
 
   try {
     // Type guard: ensure files is an array, not a dictionary or other type
@@ -321,14 +341,14 @@ async function validateUploadedFiles(
     }
 
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-    if (totalSize > MAX_TOTAL_SIZE) {
-      sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
+    if (totalSize > maxTotalSize) {
+      sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${maxTotalSize / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
       return;
     }
 
     if (validateMagicNumbers) {
       for (const file of files) {
-        const accepted = await validateAndScanFile(req, res, file);
+        const accepted = await validateAndScanFile(req, res, file, allowedMimeTypes);
         if (!accepted) return;
       }
     }
@@ -359,18 +379,26 @@ export function createFileUploadMiddleware(
     minFiles?: number;
     maxFiles?: number;
     validateMagicNumbers?: boolean;
+    allowedMimeTypes?: Record<string, boolean>;
+    allowedExtensions?: readonly string[];
+    maxFileSize?: number;
+    maxTotalSize?: number;
   } = {}
 ) {
   const {
     minFiles = MIN_FILE_COUNT,
     maxFiles = MAX_FILE_COUNT,
     validateMagicNumbers = true,
+    allowedMimeTypes = ALLOWED_MIME_TYPES,
+    allowedExtensions = ALLOWED_EXTENSIONS,
+    maxFileSize = MAX_FILE_SIZE,
+    maxTotalSize = MAX_TOTAL_SIZE,
   } = options;
 
   return [
-    handleMulterUpload(fieldName, maxFiles),
+    handleMulterUpload(fieldName, maxFiles, maxFileSize, allowedExtensions),
     (req: Request, res: Response, next: NextFunction): Promise<void> =>
-      validateUploadedFiles(req, res, next, { minFiles, maxFiles, validateMagicNumbers }),
+      validateUploadedFiles(req, res, next, { minFiles, maxFiles, validateMagicNumbers, allowedMimeTypes, maxTotalSize }),
   ];
 }
 
@@ -421,11 +449,15 @@ export const uploadDisputeEvidence = createFileUploadMiddleware('files', {
 });
 
 /**
- * Middleware for portfolio images (1-5 files)
+ * Middleware for portfolio images (1-5 images only, max 5MB each)
  */
 export const uploadPortfolioImages = createFileUploadMiddleware('files', {
   minFiles: 1,
   maxFiles: 5,
+  maxFileSize: MAX_IMAGE_FILE_SIZE,
+  maxTotalSize: 15 * 1024 * 1024,
+  allowedMimeTypes: IMAGE_MIME_TYPES,
+  allowedExtensions: IMAGE_EXTENSIONS,
   validateMagicNumbers: true,
 });
 
