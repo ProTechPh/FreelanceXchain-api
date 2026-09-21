@@ -1,17 +1,22 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import {
-  createFileUploadMiddleware,
-  IMAGE_MIME_TYPES,
-  IMAGE_EXTENSIONS,
-  MAX_IMAGE_FILE_SIZE,
-} from '../middleware/file-upload-middleware.js';
+import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFile, deleteFile, getSignedUrl, listUserFiles, getFileQuota } from '../utils/storage-uploader.js';
 import { sendErrorResponse, getRequestId } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
+
+const PROFILE_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+const PROFILE_IMAGE_MIME_TYPES = {
+  'image/png': true,
+  'image/jpeg': true,
+  'image/jpg': true,
+  'image/gif': true,
+  'image/webp': true,
+};
+const MAX_PROFILE_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const ALLOWED_BUCKETS = [
   'profile-images',
@@ -62,14 +67,14 @@ router.post(
       // Enforce strict image-only validation and 5MB limit for profile-images
       if (bucket === 'profile-images') {
         const lowerName = file.originalname.toLowerCase();
-        const isImageExt = IMAGE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+        const isImageExt = PROFILE_IMAGE_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
         const mime = (file as Express.Multer.File & { detectedMimeType?: string }).detectedMimeType || file.mimetype;
-        if (!isImageExt || !(mime in IMAGE_MIME_TYPES)) {
+        if (!isImageExt || !(mime in PROFILE_IMAGE_MIME_TYPES)) {
           sendErrorResponse(res, 400, 'INVALID_FILE_TYPE', 'Profile images must be PNG, JPEG, WebP, or GIF', { requestId: getRequestId(req) });
           return;
         }
-        if (file.size > MAX_IMAGE_FILE_SIZE) {
-          sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `Profile images must be ${MAX_IMAGE_FILE_SIZE / (1024 * 1024)}MB or smaller`, { requestId: getRequestId(req) });
+        if (file.size > MAX_PROFILE_IMAGE_SIZE) {
+          sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `Profile images must be ${MAX_PROFILE_IMAGE_SIZE / (1024 * 1024)}MB or smaller`, { requestId: getRequestId(req) });
           return;
         }
       }

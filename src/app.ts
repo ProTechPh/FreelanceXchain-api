@@ -40,8 +40,7 @@ function configureCors(app: Express): void {
       if (validateCorsOrigin(origin, allowedOrigins)) {
         callback(null, true);
       } else {
-        // Reject cross-origin requests by withholding CORS headers without throwing an unhandled 500 error
-        callback(null, false);
+        callback(new Error('Not allowed by CORS'));
       }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
