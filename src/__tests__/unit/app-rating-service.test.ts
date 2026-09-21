@@ -227,6 +227,48 @@ describe('summarize', () => {
   });
 });
 
+describe('failure paths', () => {
+  it('reports a save failure instead of throwing', async () => {
+    const { submitAppRating } = await importService();
+    mockAppRatingRepo.createRating.mockRejectedValueOnce(new Error('appwrite down'));
+
+    const result = await submitAppRating(baseInput);
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('SUBMIT_FAILED');
+  });
+
+  it('reports a listing failure instead of throwing', async () => {
+    const { listAppRatings } = await importService();
+    mockAppRatingRepo.listAll.mockRejectedValueOnce(new Error('appwrite down'));
+
+    const result = await listAppRatings();
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('LIST_FAILED');
+  });
+
+  it('reports a summary failure instead of throwing', async () => {
+    const { getAppRatingSummary } = await importService();
+    mockAppRatingRepo.fetchAllForSummary.mockRejectedValueOnce(new Error('appwrite down'));
+
+    const result = await getAppRatingSummary();
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('SUMMARY_FAILED');
+  });
+
+  it('summarizes through the repository on the happy path', async () => {
+    const { submitAppRating, getAppRatingSummary } = await importService();
+    await submitAppRating(baseInput);
+
+    const result = await getAppRatingSummary();
+
+    expect(result.success).toBe(true);
+    expect(result.data.total).toBe(1);
+  });
+});
+
 describe('listAppRatings', () => {
   it('attributes each row to its submitter', async () => {
     const { submitAppRating, listAppRatings } = await importService();
