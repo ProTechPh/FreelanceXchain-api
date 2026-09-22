@@ -33,7 +33,7 @@ export function validateRegisterInput(body: unknown): { valid: boolean; errors: 
   const errors: ValidationError[] = [];
 
   if (!validateEmail(email)) {
-    errors.push({ field: 'email', message: 'Valid email is required' });
+    errors.push({ field: 'email', message: 'Enter a valid email address.' });
   }
 
   if (typeof password === 'string') {
@@ -42,11 +42,11 @@ export function validateRegisterInput(body: unknown): { valid: boolean; errors: 
       passwordValidation.errors.forEach(err => errors.push({ field: 'password', message: err }));
     }
   } else {
-    errors.push({ field: 'password', message: 'Password is required' });
+    errors.push({ field: 'password', message: 'Password is required.' });
   }
 
   if (!validateRole(role)) {
-    errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
+    errors.push({ field: 'role', message: 'Choose a role: freelancer or employer.' });
   }
 
   if (errors.length > 0) return { valid: false, errors };
@@ -58,10 +58,10 @@ export function validateLoginInput(body: unknown): { valid: boolean; errors: Val
   const errors: ValidationError[] = [];
 
   if (!validateEmail(email)) {
-    errors.push({ field: 'email', message: 'Valid email is required' });
+    errors.push({ field: 'email', message: 'Enter a valid email address.' });
   }
   if (!password || typeof password !== 'string') {
-    errors.push({ field: 'password', message: 'Password is required' });
+    errors.push({ field: 'password', message: 'Password is required.' });
   }
 
   if (errors.length > 0) return { valid: false, errors };
@@ -131,7 +131,7 @@ export function validateChangePasswordInput(body: unknown): {
   const errors: ValidationError[] = [];
 
   if (!currentPassword || typeof currentPassword !== 'string') {
-    errors.push({ field: 'currentPassword', message: 'Current password is required' });
+    errors.push({ field: 'currentPassword', message: 'Enter your current password.' });
   }
 
   if (typeof newPassword === 'string') {
@@ -140,11 +140,11 @@ export function validateChangePasswordInput(body: unknown): {
       passwordValidation.errors.forEach(err => errors.push({ field: 'newPassword', message: err }));
     }
   } else {
-    errors.push({ field: 'newPassword', message: 'New password is required' });
+    errors.push({ field: 'newPassword', message: 'Enter a new password.' });
   }
 
   if (typeof currentPassword === 'string' && typeof newPassword === 'string' && currentPassword === newPassword) {
-    errors.push({ field: 'newPassword', message: 'New password must be different from current password' });
+    errors.push({ field: 'newPassword', message: 'Your new password must be different from your current one.' });
   }
 
   if (errors.length > 0) return { valid: false, errors };

@@ -93,7 +93,7 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, asyncHandler(
     return res.json(result.data.milestone);
   } catch (error) {
     logger.error('Error getting milestone', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestone', { requestId: getRequestId(req) });
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Something went wrong fetching this milestone', { requestId: getRequestId(req) });
   }
 }));
 

@@ -163,7 +163,7 @@ export async function updateContractStatus(
     const openDisputes = await disputeRepository.getDisputesByContract(contractId);
     const hasOpenDisputes = openDisputes.items.some(d => d.status === 'open' || d.status === 'under_review');
     if (hasOpenDisputes) {
-      return errorResult('OPEN_DISPUTES_EXIST', 'Cannot resolve contract while open disputes exist');
+      return errorResult('OPEN_DISPUTES_EXIST', 'This contract has open disputes that must be resolved first.');
     }
   }
 
@@ -227,7 +227,7 @@ export async function cancelPendingContract(contractId: string, userId: string):
   }
 
   if (contract.status !== 'pending') {
-    return errorResult('INVALID_STATUS', `Only pending contracts can be cancelled. Current status: ${contract.status}`);
+    return errorResult('INVALID_STATUS', `This contract can only be cancelled while it is pending. Its current status is: ${contract.status}.`);
   }
 
   if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
@@ -283,7 +283,7 @@ export async function getContractWalletAddresses(
   ]);
 
   if (!employer?.wallet_address || !freelancer?.wallet_address) {
-    return errorResult('MISSING_WALLET', 'Both employer and freelancer must have wallet addresses configured');
+    return errorResult('MISSING_WALLET', 'Both parties need a connected wallet address before this contract can proceed.');
   }
 
   return successResult({
