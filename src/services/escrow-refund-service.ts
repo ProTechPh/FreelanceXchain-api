@@ -17,6 +17,7 @@ import { getBlockchainAdapter } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
+import { paymentSummaryCache } from '../utils/cache.js';
 
 /**
  * Compute the escrow balance still available for refund: the contract total
@@ -470,6 +471,11 @@ export async function approveRefund(
             error: recordError,
             refundId: input.refundId,
           });
+        } finally {
+          // Always ensure cached payment summaries are invalidated for both parties on refund
+          paymentSummaryCache.delete(contract.employer_id);
+          paymentSummaryCache.delete(contract.freelancer_id);
+          paymentSummaryCache.delete(refund.requested_by);
         }
 
         const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);

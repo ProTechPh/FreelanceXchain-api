@@ -99,6 +99,23 @@ describe('CSRF Middleware', () => {
     process.env.NODE_ENV = originalEnv;
   });
 
+  it('should skip csrf protection for signed webhook paths (blockchain, stripe)', () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+
+    for (const webhookPath of ['/api/webhooks/blockchain', '/api/webhooks/stripe']) {
+      const req = { method: 'POST', path: webhookPath, headers: {} } as any;
+      const res = {} as any;
+      const next = jest.fn();
+
+      csrfProtection(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+    }
+
+    process.env.NODE_ENV = originalEnv;
+  });
+
   it('should skip csrf protection for GET requests', () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'development';

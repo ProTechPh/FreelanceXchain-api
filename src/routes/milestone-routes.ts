@@ -59,6 +59,47 @@ function sendMilestoneSubmitError(
   sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, { requestId });
 }
 
+function validateDeliverablesList(deliverables: unknown): { valid: boolean; error?: string } {
+  if (deliverables === undefined || deliverables === null) {
+    return { valid: true };
+  }
+  if (!Array.isArray(deliverables)) {
+    return { valid: false, error: 'Deliverables must be an array' };
+  }
+  if (deliverables.length > 20) {
+    return { valid: false, error: 'Cannot submit more than 20 deliverable files' };
+  }
+  for (let i = 0; i < deliverables.length; i++) {
+    const item = deliverables[i];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { valid: false, error: `Deliverable at index ${i} must be an object` };
+    }
+    const { filename, url, size } = item as Record<string, unknown>;
+    if (filename !== undefined && (typeof filename !== 'string' || filename.trim().length === 0 || filename.length > 255 || filename.includes('..') || filename.includes('\0'))) {
+      return { valid: false, error: `Invalid filename at deliverable index ${i}` };
+    }
+    if (typeof url !== 'string' || url.trim().length === 0) {
+      return { valid: false, error: `Valid URL is required for deliverable at index ${i}` };
+    }
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { valid: false, error: `Deliverable URL at index ${i} must use http or https protocol` };
+      }
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0' || host === '169.254.169.254' || host === 'metadata.google.internal') {
+        return { valid: false, error: `Deliverable URL at index ${i} targets a restricted host` };
+      }
+    } catch {
+      return { valid: false, error: `Invalid URL format at deliverable index ${i}` };
+    }
+    if (size !== undefined && (typeof size !== 'number' || !Number.isFinite(size) || size < 0 || size > 100 * 1024 * 1024)) {
+      return { valid: false, error: `Invalid file size at deliverable index ${i}` };
+    }
+  }
+  return { valid: true };
+}
+
 /**
  * @swagger
  * /api/milestones/{id}:
@@ -253,6 +294,16 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
     const userId = req.user?.userId ?? '';
     const { deliverables, notes } = req.body;
 
+    if (deliverables !== undefined) {
+      const val = validateDeliverablesList(deliverables);
+      if (!val.valid) {
+        return sendErrorResponse(res, 400, 'VALIDATION_ERROR', val.error || 'Invalid deliverables', { requestId: getRequestId(req) });
+      }
+    }
+    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 5000)) {
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Notes must be at most 5000 characters', { requestId: getRequestId(req) });
+    }
+
     const result = await submitMilestoneFromProjectContext(milestoneId, userId, deliverables || [], notes);
 
     if (!result.success) {
@@ -317,13 +368,21 @@ router.post('/:id/submit-with-files',
       const files = req.files as Express.Multer.File[] | undefined;
 
       // Parse existing deliverables if provided
-      let existingFiles = [];
+      let existingFiles: any[] = [];
       if (existingDeliverables) {
         try {
-          existingFiles = JSON.parse(existingDeliverables);
+          existingFiles = typeof existingDeliverables === 'string' ? JSON.parse(existingDeliverables) : existingDeliverables;
         } catch {
           return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid existingDeliverables format', { requestId: getRequestId(req) });
         }
+        const val = validateDeliverablesList(existingFiles);
+        if (!val.valid) {
+          return sendErrorResponse(res, 400, 'VALIDATION_ERROR', val.error || 'Invalid existingDeliverables', { requestId: getRequestId(req) });
+        }
+      }
+
+      if (notes !== undefined && (typeof notes !== 'string' || notes.length > 5000)) {
+        return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Notes must be at most 5000 characters', { requestId: getRequestId(req) });
       }
 
       // Upload new files if provided

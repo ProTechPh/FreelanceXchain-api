@@ -214,16 +214,25 @@ async function verifyClientEscrowOnChain(
   freelancerWallet: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const { ethers } = await import('ethers');
+    if (!ethers.isAddress(escrowAddress)) {
+      return { success: false, error: 'Target escrow address is not a valid Ethereum address' };
+    }
+
     const { getProvider, isWeb3Available } = await import('../services/web3-client.js');
     const { getBlockchainMode } = await import('../services/blockchain/factory.js');
     if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
       return { success: true };
     }
 
-    const { FreelanceEscrowABI } = await import('../services/contract-abis.js');
-    const { ethers } = await import('ethers');
-
     const provider = getProvider();
+    const code = await provider.getCode(escrowAddress);
+    if (!code || code === '0x' || code === '0x0') {
+      return { success: false, error: 'Target address is not a deployed contract on chain' };
+    }
+
+    const { FreelanceEscrowABI } = await import('../services/contract-abis.js');
+
     const escrowContract = new ethers.Contract(escrowAddress, FreelanceEscrowABI, provider);
 
     const callString = (name: string): Promise<string | null> =>
@@ -314,6 +323,12 @@ async function handleClientEscrowFunding({
   requestId,
   res,
 }: ClientEscrowFundingParams): Promise<string | null> {
+  const { ethers } = await import('ethers');
+  if (!ethers.isAddress(clientEscrowAddress)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'clientEscrowAddress must be a valid Ethereum address', { requestId });
+    return null;
+  }
+
   const walletResult = await getContractWalletAddresses(contract.id);
   if (!walletResult.success) {
     sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });

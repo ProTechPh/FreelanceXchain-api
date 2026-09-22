@@ -190,7 +190,13 @@ export function requireTieredKyc(
     // Check if the requested amount falls within the micro-transaction threshold
     if (getAmount) {
       const amount = getAmount(req);
-      if (amount !== undefined && amount < thresholdEth) {
+      if (
+        amount !== undefined &&
+        typeof amount === 'number' &&
+        Number.isFinite(amount) &&
+        amount >= 0 &&
+        amount < thresholdEth
+      ) {
         // Micro-contract exemption: allow without blocking on full Didit KYC
         next();
         return;

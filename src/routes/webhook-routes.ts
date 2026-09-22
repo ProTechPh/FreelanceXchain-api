@@ -95,7 +95,7 @@ router.post('/blockchain', webhookRateLimiter, asyncHandler(async (req: Request,
     // marked as processed only AFTER the switch below succeeds, so a failure
     // is not permanently swallowed (at-least-once delivery will retry it).
     const dedupKey = blockchainEventKey(event as string, data as Record<string, unknown> | undefined);
-    const duplicate = blockchainWebhookDeduper.has(dedupKey);
+    const duplicate = await blockchainWebhookDeduper.hasAsync(dedupKey);
     if (duplicate) {
       logger.info('Duplicate blockchain webhook ignored:', { event, dedupKey });
       return res.status(200).json({ received: true, duplicate: true });
