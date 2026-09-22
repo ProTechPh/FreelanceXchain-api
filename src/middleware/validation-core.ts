@@ -635,9 +635,9 @@ export const submitProposalSchema: RequestSchema = {
     properties: {
       projectId: { type: 'string', required: true },
       attachments: { type: 'array', minItems: 1, required: true },
-      proposedRate: { type: 'number', minimum: 1, required: true },
-      estimatedDuration: { type: 'number', minimum: 1, required: true },
-      coverLetter: { type: 'string' },
+      proposedRate: { type: 'number', minimum: 1, maximum: 1_000_000, required: true },
+      estimatedDuration: { type: 'number', minimum: 1, maximum: 3650, required: true },
+      coverLetter: { type: 'string', maxLength: 10000 },
     },
   },
 };
@@ -656,9 +656,9 @@ export const submitProposalMultipartSchema: RequestSchema = {
     properties: {
       projectId: { type: 'string', required: true },
       // Attachments arrive as files (req.files), not body fields.
-      proposedRate: { type: 'number', minimum: 1, required: true },
-      estimatedDuration: { type: 'number', minimum: 1, required: true },
-      coverLetter: { type: 'string' },
+      proposedRate: { type: 'number', minimum: 1, maximum: 1_000_000, required: true },
+      estimatedDuration: { type: 'number', minimum: 1, maximum: 3650, required: true },
+      coverLetter: { type: 'string', maxLength: 10000 },
     },
   },
 };

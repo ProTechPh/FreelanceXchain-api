@@ -5750,14 +5750,17 @@
                   },
                   "proposedRate": {
                     "type": "number",
-                    "minimum": 1
+                    "minimum": 1,
+                    "maximum": 1000000
                   },
                   "estimatedDuration": {
                     "type": "number",
-                    "minimum": 1
+                    "minimum": 1,
+                    "maximum": 3650
                   },
                   "coverLetter": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 10000
                   }
                 }
               }
@@ -5778,14 +5781,17 @@
                   },
                   "proposedRate": {
                     "type": "number",
-                    "minimum": 1
+                    "minimum": 1,
+                    "maximum": 1000000
                   },
                   "estimatedDuration": {
                     "type": "number",
-                    "minimum": 1
+                    "minimum": 1,
+                    "maximum": 3650
                   },
                   "coverLetter": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 10000
                   },
                   "files": {
                     "type": "array",

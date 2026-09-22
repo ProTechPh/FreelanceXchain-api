@@ -53,7 +53,8 @@ router.post('/stripe', webhookRateLimiter, asyncHandler(async (req: Request, res
 
   const { event } = verified;
 
-  if (stripeWebhookDeduper.has(event.id)) {
+  const isDuplicate = await stripeWebhookDeduper.hasAsync(event.id);
+  if (isDuplicate) {
     logger.info('Duplicate Stripe webhook ignored', { eventId: event.id, eventType: event.type });
     res.status(200).json({ received: true, duplicate: true });
     return;

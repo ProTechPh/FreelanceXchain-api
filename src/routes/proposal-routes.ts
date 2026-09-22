@@ -300,11 +300,11 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
   if (!attachments || !Array.isArray(attachments)) {
     errors.push({ field: 'attachments', message: 'Attachments must be an array' });
   }
-  if (!proposedRate || typeof proposedRate !== 'number' || proposedRate < 1) {
-    errors.push({ field: 'proposedRate', message: 'Proposed rate must be at least 1' });
+  if (!proposedRate || typeof proposedRate !== 'number' || !Number.isFinite(proposedRate) || proposedRate < 1 || proposedRate > 1_000_000) {
+    errors.push({ field: 'proposedRate', message: 'Proposed rate must be between 1 and 1,000,000' });
   }
-  if (!estimatedDuration || typeof estimatedDuration !== 'number' || estimatedDuration < 1) {
-    errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be at least 1 day' });
+  if (!estimatedDuration || typeof estimatedDuration !== 'number' || !Number.isFinite(estimatedDuration) || estimatedDuration < 1 || estimatedDuration > 3650) {
+    errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be between 1 and 3650 days' });
   }
 
   if (errors.length > 0) {

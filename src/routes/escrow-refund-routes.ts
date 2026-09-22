@@ -51,8 +51,12 @@ router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, v
     const userId = req.user?.userId ?? '';
     const { amount, reason } = req.body;
 
-    if (!reason) {
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
       return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Refund reason is required', { requestId: getRequestId(req) });
+    }
+
+    if (amount !== undefined && (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0 || Number.isNaN(amount))) {
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Refund amount must be a positive number', { requestId: getRequestId(req) });
     }
 
     const result = await createRefundRequest({
@@ -180,7 +184,7 @@ router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, req
     const userId = req.user?.userId ?? '';
     const { reason } = req.body;
 
-    if (!reason) {
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
       return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Rejection reason is required', { requestId: getRequestId(req) });
     }
 

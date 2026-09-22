@@ -104,9 +104,17 @@ function configureSwaggerDocs(app: Express, openApiSpec: Record<string, unknown>
   });
 }
 
+export function assertBlockchainConfigSafe(): void {
+  if (config.server.nodeEnv === 'production' && config.blockchain.mode === 'simulated') {
+    throw new Error('BLOCKCHAIN_MODE=simulated is prohibited in production');
+  }
+}
+
 export async function createApp(): Promise<Express> {
   // Refuse to boot a production server that would hand Pro to every user.
   assertBillingConfigSafe();
+  // Refuse to boot a production server with simulated blockchain ledger.
+  assertBlockchainConfigSafe();
 
   const app = express();
 

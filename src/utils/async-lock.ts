@@ -15,10 +15,18 @@ import { redis } from '../config/redis.js';
 import { logger } from '../config/logger.js';
 
 // Timing constants are overridable via env for ops tuning and fast test runs.
-const LOCK_TTL_MS = Number(process.env['ASYNC_LOCK_TTL_MS'] ?? 30_000);
-const LOCK_ACQUIRE_TIMEOUT_MS = Number(process.env['ASYNC_LOCK_ACQUIRE_TIMEOUT_MS'] ?? 10_000);
-const LOCK_RETRY_INTERVAL_MS = Number(process.env['ASYNC_LOCK_RETRY_INTERVAL_MS'] ?? 30);
-const LOCK_REFRESH_INTERVAL_MS = Number(process.env['ASYNC_LOCK_REFRESH_INTERVAL_MS'] ?? 10_000);
+function getLockTtlMs(): number {
+  return Number(process.env['ASYNC_LOCK_TTL_MS'] ?? 30_000);
+}
+function getLockAcquireTimeoutMs(): number {
+  return Number(process.env['ASYNC_LOCK_ACQUIRE_TIMEOUT_MS'] ?? 10_000);
+}
+function getLockRetryIntervalMs(): number {
+  return Number(process.env['ASYNC_LOCK_RETRY_INTERVAL_MS'] ?? 30);
+}
+function getLockRefreshIntervalMs(): number {
+  return Number(process.env['ASYNC_LOCK_REFRESH_INTERVAL_MS'] ?? 10_000);
+}
 
 /** Per-key promise chain used for the in-process fallback lock. */
 const localLocks = new Map<string, Promise<void>>();
@@ -83,7 +91,8 @@ function localWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 async function redisWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const lockKey = `lock:${key}`;
   const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const deadline = Date.now() + LOCK_ACQUIRE_TIMEOUT_MS;
+  const lockTtl = getLockTtlMs();
+  const deadline = Date.now() + getLockAcquireTimeoutMs();
 
   // Acquire phase — ONLY Redis failures here degrade to the in-process lock.
   // The callback (fn) runs outside this try/catch, so an application error inside
@@ -91,7 +100,7 @@ async function redisWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   // never re-executed through the fallback (that would double side effects).
   try {
     for (;;) {
-      const acquired = await redis.set(lockKey, token, 'PX', LOCK_TTL_MS, 'NX');
+      const acquired = await redis.set(lockKey, token, 'PX', lockTtl, 'NX');
 
       if (acquired === 'OK') break;
 
@@ -102,7 +111,7 @@ async function redisWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
         return localWithLock(key, fn);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_INTERVAL_MS));
+      await new Promise((resolve) => setTimeout(resolve, getLockRetryIntervalMs()));
     }
   } catch (error) {
     // Redis failure — fall back to the in-process lock so callers still get
@@ -114,10 +123,10 @@ async function redisWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   // Lock held — run the callback. Errors propagate untouched (no re-run) and
   // the lock is always released with the ownership token.
   const refresher = setInterval(() => {
-    redis.pexpire(lockKey, LOCK_TTL_MS).catch(() => {
+    redis.pexpire(lockKey, lockTtl).catch(() => {
       /* best-effort refresh */
     });
-  }, LOCK_REFRESH_INTERVAL_MS);
+  }, getLockRefreshIntervalMs());
   if (typeof (refresher as NodeJS.Timeout).unref === 'function') {
     (refresher as NodeJS.Timeout).unref();
   }
