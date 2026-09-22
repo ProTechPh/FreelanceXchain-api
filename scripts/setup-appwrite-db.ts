@@ -30,7 +30,31 @@ const db = new Databases(client);
 // ─── Collection Definitions ─────────────────────────────────────────────────
 // Each collection: { id, name, attributes: [{ name, type, size?, required?, default?, array? }] }
 
-const COLLECTIONS = [
+type AttributeDef = {
+  name: string;
+  type: 'string' | 'integer' | 'double' | 'boolean';
+  size?: number;
+  required: boolean;
+  default?: string | number | boolean;
+  array?: boolean;
+};
+
+type IndexDef = {
+  key: string;
+  type: DatabasesIndexType;
+  attributes: string[];
+  orders?: OrderBy[];
+};
+
+type CollectionDef = {
+  id: string;
+  name: string;
+  description?: string;
+  attributes: AttributeDef[];
+  indexes?: IndexDef[];
+};
+
+const COLLECTIONS: CollectionDef[] = [
   {
     id: 'users',
     name: 'Users',
@@ -765,6 +789,63 @@ const COLLECTIONS = [
     ],
   },
   {
+    id: 'app_ratings',
+    name: 'App Ratings',
+    // Feedback about FreelanceXchain itself, not about a counterparty. The
+    // `reviews` collection above is the separate freelancer<->employer rating.
+    // Attributed to the submitter, so it must NOT inherit the world-readable
+    // default — see RESTRICTED_COLLECTIONS in createCollection().
+    attributes: [
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      { name: 'user_role', type: 'string', size: 20, required: true },
+      { name: 'rating', type: 'integer', required: true },
+      { name: 'comment', type: 'string', size: 2000, required: false },
+      // Which moment prompted it; see APP_RATING_SOURCES in src/models/app-rating.ts.
+      { name: 'source', type: 'string', size: 40, required: true },
+      // The contract/milestone/proposal/project the prompt came from, when there
+      // is one. Absent for a rating opened from the account menu.
+      { name: 'context_id', type: 'string', size: 36, required: false },
+      { name: 'app_version', type: 'string', size: 20, required: false },
+    ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'source_createdAt', type: DatabasesIndexType.Key, attributes: ['source', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'rating', type: DatabasesIndexType.Key, attributes: ['rating'] },
+      { key: 'source_context_id', type: DatabasesIndexType.Key, attributes: ['source', 'context_id'] },
+    ],
+  },
+  {
+    id: 'support_tickets',
+    name: 'Support Tickets',
+    // A user asking the platform for help, and the admin's reply. Distinct from
+    // `disputes` (two users, real money, arbitration) and from `app_ratings`
+    // above (one-way feedback nobody answers).
+    // Carries a named user's problem report, so it must NOT inherit the
+    // world-readable default — see RESTRICTED_COLLECTIONS in createCollection().
+    attributes: [
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      // Recorded so the admin queue can show who filed it; never used to gate
+      // behaviour — freelancers and employers get the identical flow.
+      { name: 'user_role', type: 'string', size: 20, required: true },
+      { name: 'subject', type: 'string', size: 200, required: true },
+      { name: 'description', type: 'string', size: 4000, required: true },
+      // See SUPPORT_TICKET_CATEGORIES in src/models/support-ticket.ts.
+      { name: 'category', type: 'string', size: 40, required: true },
+      // open | in_progress | resolved | closed
+      { name: 'status', type: 'string', size: 20, required: false, default: 'open' },
+      // The admin's answer, which the submitter reads. Required by the service
+      // when resolving; absent on a ticket that was merely closed.
+      { name: 'resolution_note', type: 'string', size: 2000, required: false },
+      { name: 'resolved_by', type: 'string', size: 36, required: false },
+      { name: 'resolved_at', type: 'string', size: 40, required: false },
+    ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'category_createdAt', type: DatabasesIndexType.Key, attributes: ['category', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
+  },
+  {
     id: 'subscriptions',
     name: 'Subscriptions',
     // Holds Stripe customer/subscription ids, so it must NOT inherit the
@@ -871,11 +952,13 @@ async function ensureDatabase(): Promise<void> {
  * Collections that must never be readable by `Role.any()`.
  *
  * The default permissions below are world-readable, which is wrong for billing
- * records: they carry Stripe customer and subscription ids. These collections
- * are reached only through the server's admin API key, so they get an empty
- * permission set — no client-SDK role can touch them at all.
+ * records (Stripe customer and subscription ids) and equally wrong for app
+ * feedback, which carries a named user's opinion of the platform, and for
+ * support tickets, which carry a named user's problem report. These
+ * collections are reached only through the server's admin API key, so they get
+ * an empty permission set — no client-SDK role can touch them at all.
  */
-const RESTRICTED_COLLECTIONS = new Set(['subscriptions']);
+const RESTRICTED_COLLECTIONS = new Set(['subscriptions', 'app_ratings', 'support_tickets']);
 
 async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
   try {
@@ -978,12 +1061,21 @@ async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
 
 // ─── Storage Bucket Definitions ─────────────────────────────────────────────
 
+const DOCUMENT_EXTENSIONS = [
+  'pdf', 'doc', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'zip',
+];
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
 const BUCKETS_TO_SETUP = [
-  { bucketId: 'proposal-attachments', bucketName: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true },
-  { bucketId: 'project-attachments', bucketName: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false },
-  { bucketId: 'dispute-evidence', bucketName: 'Dispute Evidence', permissions: [], fileSecurity: true },
-  { bucketId: 'portfolio-images', bucketName: 'Portfolio Images', permissions: [Permission.read(Role.any())], fileSecurity: false },
-  { bucketId: 'milestone-deliverables', bucketName: 'Milestone Deliverables', permissions: [], fileSecurity: true },
+  { bucketId: 'proposal-attachments', bucketName: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'project-attachments', bucketName: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'dispute-evidence', bucketName: 'Dispute Evidence', permissions: [], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'portfolio-images', bucketName: 'Portfolio Images', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: IMAGE_EXTENSIONS },
+  { bucketId: 'profile-images', bucketName: 'Profile Images', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: IMAGE_EXTENSIONS },
+  { bucketId: 'milestone-deliverables', bucketName: 'Milestone Deliverables', permissions: [], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'contract-documents', bucketName: 'Contract Documents', permissions: [Permission.read(Role.any())], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
 ];
 
 async function setupStorage(): Promise<void> {
@@ -997,7 +1089,7 @@ async function setupStorage(): Promise<void> {
     } else {
       console.log(`    Creating bucket '${b.bucketId}' (${b.bucketName})...`);
       try {
-        await storage.createBucket(b.bucketId, b.bucketName, b.permissions, b.fileSecurity, true, undefined, ['jpg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'xlsx', 'csv']);
+        await storage.createBucket(b.bucketId, b.bucketName, b.permissions, b.fileSecurity, true, undefined, b.extensions);
         console.log(`    ✓ Bucket '${b.bucketId}' created successfully.`);
       } catch (err: any) {
         console.error(`    ✗ Error creating bucket '${b.bucketId}':`, err?.message || err);

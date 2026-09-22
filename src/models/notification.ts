@@ -22,7 +22,8 @@ export type NotificationType =
   | 'saved_search_match'
   | 'project_match'
   | 'subscription_payment_failed'
-  | 'subscription_trial_ending';
+  | 'subscription_trial_ending'
+  | 'support_ticket_resolved';
 
 export type Notification = {
   id: string;

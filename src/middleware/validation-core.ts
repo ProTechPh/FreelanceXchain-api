@@ -1,6 +1,16 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ValidationError } from './error-handler.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
+import { APP_RATING_SOURCES } from '../models/app-rating.js';
+import {
+  MAX_DESCRIPTION_LENGTH,
+  MAX_RESOLUTION_LENGTH,
+  MAX_SUBJECT_LENGTH,
+  MIN_DESCRIPTION_LENGTH,
+  MIN_SUBJECT_LENGTH,
+  SUPPORT_TICKET_CATEGORIES,
+  SUPPORT_TICKET_STATUSES,
+} from '../models/support-ticket.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
@@ -712,6 +722,61 @@ export const submitReviewSchema: RequestSchema = {
       communication: { type: 'number', minimum: 1, maximum: 5 },
       professionalism: { type: 'number', minimum: 1, maximum: 5 },
       wouldWorkAgain: { type: 'boolean' },
+    },
+  },
+};
+
+/**
+ * "Rate the app" — platform feedback.
+ *
+ * Unlike submitReviewSchema above, `comment` is optional: a star on its own is
+ * a complete submission, and requiring prose is what stops people answering.
+ */
+export const submitAppRatingSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      rating: { type: 'number', minimum: 1, maximum: 5, required: true },
+      comment: { type: 'string', maxLength: 2000 },
+      source: { type: 'string', required: true, enum: [...APP_RATING_SOURCES] },
+      contextId: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$' },
+    },
+  },
+};
+
+/**
+ * Customer support tickets.
+ *
+ * Both length floors are deliberate: a five-character subject and a
+ * twenty-character description are the minimum that give an admin anything to
+ * act on, and rejecting "help" here costs less than a round trip that resolves
+ * to "what do you mean?".
+ */
+export const submitSupportTicketSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      subject: { type: 'string', minLength: MIN_SUBJECT_LENGTH, maxLength: MAX_SUBJECT_LENGTH, required: true },
+      description: { type: 'string', minLength: MIN_DESCRIPTION_LENGTH, maxLength: MAX_DESCRIPTION_LENGTH, required: true },
+      category: { type: 'string', required: true, enum: [...SUPPORT_TICKET_CATEGORIES] },
+    },
+  },
+};
+
+/**
+ * `resolutionNote` is optional here but required by the service when the new
+ * status is `resolved` — the rule depends on another field, which this schema
+ * language cannot express.
+ */
+export const updateSupportTicketStatusSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      status: { type: 'string', required: true, enum: [...SUPPORT_TICKET_STATUSES] },
+      resolutionNote: { type: 'string', maxLength: MAX_RESOLUTION_LENGTH },
     },
   },
 };

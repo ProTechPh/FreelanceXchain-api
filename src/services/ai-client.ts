@@ -712,7 +712,7 @@ export function keywordMatchSkills(
     matchScore,
     matchedSkills,
     missingSkills,
-    reasoning: `Keyword-based matching: ${matchedSkills.length}/${totalRequired} skills matched`,
+    reasoning: `Skill-based matching: ${matchedSkills.length}/${totalRequired} skills matched`,
   };
 }
 

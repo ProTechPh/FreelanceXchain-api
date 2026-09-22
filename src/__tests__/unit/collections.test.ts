@@ -32,6 +32,7 @@ describe('Collections Config', () => {
         'EMAILS',
         'EMAIL_DELIVERY_FAILURES',
         'SUBSCRIPTIONS',
+        'APP_RATINGS',
       ];
       expect(Object.keys(COLLECTIONS).sort()).toEqual(expectedKeys.sort());
     });
@@ -52,6 +53,7 @@ describe('Collections Config', () => {
       expect(COLLECTIONS.EMAIL_PREFERENCES).toBe('email_preferences');
       expect(COLLECTIONS.SAVED_SEARCHES).toBe('saved_searches');
       expect(COLLECTIONS.EMAILS).toBe('emails');
+      expect(COLLECTIONS.APP_RATINGS).toBe('app_ratings');
     });
 
     it('should have string values for all collections', async () => {
