@@ -61,7 +61,7 @@ export async function submitProposal(
   const project = mapProjectFromEntity(projectEntity);
 
   if (project.status !== 'open') {
-    return errorResult('PROJECT_NOT_OPEN', 'Project is not accepting proposals');
+    return errorResult('PROJECT_NOT_OPEN', 'This project is no longer accepting proposals.');
   }
 
   const existingProposal = await proposalRepository.getExistingProposal(input.projectId, freelancerId);
@@ -73,7 +73,7 @@ export async function submitProposal(
   const acceptedCount = await proposalRepository.getAcceptedProposalCount(input.projectId);
   const freelancerLimit = projectEntity.freelancer_limit != null ? projectEntity.freelancer_limit : 1;
   if (acceptedCount >= freelancerLimit) {
-    return errorResult('FREELANCER_LIMIT_REACHED', `This project has already accepted the maximum number of freelancers (${freelancerLimit})`);
+    return errorResult('FREELANCER_LIMIT_REACHED', `This project has already filled all ${freelancerLimit} freelancer slot${freelancerLimit === 1 ? '' : 's'} and is no longer accepting proposals.`);
   }
 
   const proposalEntity: Omit<ProposalEntity, 'created_at' | 'updated_at'> = {
@@ -240,7 +240,7 @@ async function validateProposalAcceptance(
   // a redundant findProposalById call.
 
   if (proposalEntity.status !== 'pending') {
-    return { error: errorResult('INVALID_STATUS', `Cannot accept proposal with status "${proposalEntity.status}"`) };
+    return { error: errorResult('INVALID_STATUS', `You can only accept proposals that are still pending. This proposal is currently: ${proposalEntity.status}.`) };
   }
 
   const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
@@ -254,7 +254,7 @@ async function validateProposalAcceptance(
   }
 
   if (!project.milestones || project.milestones.length === 0) {
-    return { error: errorResult('NO_MILESTONES', 'Project must have milestones defined before accepting a proposal') };
+    return { error: errorResult('NO_MILESTONES', 'Add at least one milestone to this project before accepting a proposal.') };
   }
 
   const proposalRate = proposalEntity.proposed_rate;
@@ -264,7 +264,7 @@ async function validateProposalAcceptance(
 
   const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
   if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
-    return { error: errorResult('AMOUNT_MISMATCH', 'Proposal rate must match the total project milestone amount before contract creation') };
+    return { error: errorResult('AMOUNT_MISMATCH', 'The proposal rate must match the total of all project milestones before the contract can be created.') };
   }
 
   /* istanbul ignore next -- mapProjectFromEntity always defaults isRush=false, rushFeePercentage=25 */
@@ -277,7 +277,7 @@ async function validateProposalAcceptance(
   const freelancerLimit = projectEntity.freelancer_limit != null ? projectEntity.freelancer_limit : 1;
   const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
   if (preCheckAcceptedCount >= freelancerLimit) {
-    return { error: errorResult('FREELANCER_LIMIT_REACHED', `This project has already accepted the maximum number of freelancers (${freelancerLimit})`) };
+    return { error: errorResult('FREELANCER_LIMIT_REACHED', `This project has already filled all ${freelancerLimit} freelancer slot${freelancerLimit === 1 ? '' : 's'} and is no longer accepting proposals.`) };
   }
 
   return { proposalEntity, project, projectEntity, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage };
@@ -609,7 +609,7 @@ export async function rejectProposal(
 
   // Check if proposal is pending
   if (proposalEntity.status !== 'pending') {
-    return errorResult('INVALID_STATUS', `Cannot reject proposal with status "${proposalEntity.status}"`);
+    return errorResult('INVALID_STATUS', `You can only reject proposals that are still pending. This proposal is currently: ${proposalEntity.status}.`);
   }
 
   // Verify employer owns the project
@@ -675,7 +675,7 @@ export async function withdrawProposal(
 
   // Check if proposal can be withdrawn
   if (proposalEntity.status !== 'pending') {
-    return errorResult('INVALID_STATUS', `Cannot withdraw proposal with status "${proposalEntity.status}"`);
+    return errorResult('INVALID_STATUS', `You can only withdraw proposals that are still pending. This proposal is currently: ${proposalEntity.status}.`);
   }
 
   const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
