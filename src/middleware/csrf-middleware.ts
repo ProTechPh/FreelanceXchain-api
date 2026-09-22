@@ -52,6 +52,7 @@ const {
 const CSRF_EXEMPT_PATHS = [
   '/health',
   '/api/health',
+  '/api/webhooks', // All webhooks (verified by HMAC / signature)
   '/api/webhooks/blockchain', // Blockchain event webhook (HMAC-verified)
   '/api/webhooks/stripe', // Stripe webhook (signature-verified)
   '/api/auth/login',
