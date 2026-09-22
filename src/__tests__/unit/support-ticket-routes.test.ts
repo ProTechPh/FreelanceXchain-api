@@ -67,6 +67,20 @@ function signInAs(role: string, userId = 'user-1') {
   });
 }
 
+/**
+ * Lets a request through without populating `req.user`.
+ *
+ * The real `authMiddleware` never does this — it sends a 401 itself — so this
+ * exercises the handlers' own defensive guard, which is what stops a future
+ * middleware change from silently handing an anonymous request to the service.
+ */
+function signInAsNobody(user?: Record<string, unknown>) {
+  mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+    if (user) req.user = user;
+    next();
+  });
+}
+
 describe('Support Ticket Routes', () => {
   let app: express.Express;
 
@@ -123,6 +137,29 @@ describe('Support Ticket Routes', () => {
       expect(mockSubmitSupportTicket).not.toHaveBeenCalled();
     });
 
+    it('refuses an unauthenticated caller rather than reaching the service', async () => {
+      signInAsNobody();
+
+      const res = await request(app).post('/api/support-tickets').send(VALID_TICKET);
+
+      expect(res.status).toBe(401);
+      expect(mockSubmitSupportTicket).not.toHaveBeenCalled();
+    });
+
+    // The role is only ever recorded on the ticket, so a session without one
+    // still files successfully rather than being turned away.
+    it('records an unknown role when the session carries none', async () => {
+      signInAsNobody({ userId: 'user-7' });
+      mockSubmitSupportTicket.mockResolvedValue(ok({ id: 'ticket-7' }));
+
+      const res = await request(app).post('/api/support-tickets').send(VALID_TICKET);
+
+      expect(res.status).toBe(201);
+      expect(mockSubmitSupportTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-7', userRole: 'unknown' })
+      );
+    });
+
     it('returns 429 once the open-ticket allowance is used up', async () => {
       mockSubmitSupportTicket.mockResolvedValue(
         fail('TOO_MANY_OPEN_TICKETS', 'You already have 5 tickets awaiting a reply.')
@@ -143,6 +180,25 @@ describe('Support Ticket Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual([{ id: 'ticket-1' }]);
       expect(mockListMySupportTickets).toHaveBeenCalledWith('user-1');
+    });
+
+    it('refuses an unauthenticated caller', async () => {
+      signInAsNobody();
+
+      const res = await request(app).get('/api/support-tickets/me');
+
+      expect(res.status).toBe(401);
+      expect(mockListMySupportTickets).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a read failure as a 500', async () => {
+      mockListMySupportTickets.mockResolvedValue(
+        fail('LIST_FAILED', 'Could not load your support tickets.')
+      );
+
+      const res = await request(app).get('/api/support-tickets/me');
+
+      expect(res.status).toBe(500);
     });
   });
 
@@ -192,6 +248,37 @@ describe('Support Ticket Routes', () => {
       expect(res.body.tickets).toHaveLength(1);
       expect(res.body.stats.open).toBe(3);
       expect(res.body.stats.resolved).toBe(12);
+    });
+
+    it('passes no filters through when the query is empty', async () => {
+      signInAs('admin');
+      mockListSupportTickets.mockResolvedValue(ok({ tickets: [], total: 0, stats: EMPTY_STATS }));
+
+      const res = await request(app).get('/api/support-tickets/admin');
+
+      expect(res.status).toBe(200);
+      expect(mockListSupportTickets).toHaveBeenCalledWith({});
+    });
+
+    it('surfaces a queue read failure as a 500', async () => {
+      signInAs('admin');
+      mockListSupportTickets.mockResolvedValue(fail('LIST_FAILED', 'Could not load support tickets.'));
+
+      const res = await request(app).get('/api/support-tickets/admin');
+
+      expect(res.status).toBe(500);
+    });
+
+    // requireRole passes on the role alone, so the handler checks the id too.
+    it('refuses a session that carries a role but no user id', async () => {
+      signInAsNobody({ role: 'admin' });
+
+      const res = await request(app)
+        .patch('/api/support-tickets/admin/ticket-1/status')
+        .send({ status: 'closed' });
+
+      expect(res.status).toBe(401);
+      expect(mockUpdateSupportTicketStatus).not.toHaveBeenCalled();
     });
 
     it('resolves a ticket with a note', async () => {

@@ -141,15 +141,12 @@ router.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const requestId = getRequestId(req);
     const adminId = req.user?.userId;
-    const ticketId = req.params['id'];
+    // The route only matches with a non-empty :id segment — an empty one 404s
+    // before reaching here — so this is present by construction.
+    const ticketId = req.params['id'] as string;
 
     if (!adminId) {
       sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
-      return;
-    }
-
-    if (!ticketId) {
-      sendErrorResponse(res, 400, 'INVALID_REQUEST', 'Ticket id is required', { requestId });
       return;
     }
 
