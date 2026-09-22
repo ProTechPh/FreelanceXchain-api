@@ -8,8 +8,8 @@ Endpoints for managing user plans, subscriptions, Stripe Checkout, and the Strip
 
 FreelanceXchain provides a two-tier subscription model:
 
-- **Free**: Core marketplace features (projects, proposals, escrow, messaging, and on-chain reputation).
-- **Pro**: Advanced capabilities including AI skill matching, automated AI proposals, personalized analytics, and priority candidate matching.
+- **Free**: Core marketplace features (projects, proposals, escrow, messaging, on-chain reputation) plus the full analytics layer (earnings and spend reports, platform metrics, liquidity, funnel and skill demand trends).
+- **Pro**: Advanced capabilities including AI skill matching, automated AI proposals, and priority candidate matching.
 
 Subscriptions are handled via Stripe Checkout and Customer Portal sessions. Entitlements are synchronized asynchronously via Stripe webhooks and persisted in the `subscriptions` collection.
 
@@ -37,12 +37,12 @@ Returns the available plans and current Stripe prices for display on the pricing
       "id": "free",
       "name": "Free",
       "prices": [],
-      "description": "The full marketplace: projects, proposals, escrow, messaging and reputation."
+      "description": "The full marketplace: projects, proposals, escrow, messaging, reputation and the whole analytics layer."
     },
     {
       "id": "pro",
       "name": "Pro",
-      "description": "Everything in Free, plus AI matching, AI proposals, your analytics and priority matching.",
+      "description": "Everything in Free, plus AI matching, AI proposals and priority matching.",
       "prices": [
         {
           "id": "price_123_monthly",

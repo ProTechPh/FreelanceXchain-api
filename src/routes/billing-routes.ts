@@ -64,12 +64,12 @@ router.get('/plans', apiRateLimiter, asyncHandler(async (_req: Request, res: Res
         id: 'free',
         name: 'Free',
         prices: [],
-        description: 'The full marketplace: projects, proposals, escrow, messaging and reputation.',
+        description: 'The full marketplace: projects, proposals, escrow, messaging, reputation and the whole analytics layer.',
       },
       {
         id: 'pro',
         name: 'Pro',
-        description: 'Everything in Free, plus AI matching, AI proposals, your analytics and priority matching.',
+        description: 'Everything in Free, plus AI matching, AI proposals and priority matching.',
         // Monthly and annual are billing variants of one plan, not two tiers.
         prices,
       },

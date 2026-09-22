@@ -46,11 +46,6 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   authMiddleware: mockAuthMiddleware,
 }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/subscription-middleware.ts'), () => ({
-  requirePro: (_req: any, _res: any, next: any) => next(),
-  PLAN_UPGRADE_REQUIRED: 'PLAN_UPGRADE_REQUIRED',
-}));
-
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
