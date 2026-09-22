@@ -95,7 +95,7 @@ export function validatePasswordResetInput(body: unknown): {
       passwordValidation.errors.forEach(err => errors.push({ field: 'password', message: err }));
     }
   } else {
-    errors.push({ field: 'password', message: 'Password is required' });
+    errors.push({ field: 'password', message: 'Password is required.' });
   }
 
   if (errors.length > 0) return { valid: false, errors };

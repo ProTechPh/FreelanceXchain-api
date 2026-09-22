@@ -845,7 +845,7 @@ describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(res.body.error.details).toEqual(expect.arrayContaining([
-        expect.objectContaining({ field: 'password', message: 'Password is required' })
+        expect.objectContaining({ field: 'password', message: 'Password is required.' })
       ]));
     });
   });
@@ -945,7 +945,7 @@ describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(res.body.error.details).toEqual(expect.arrayContaining([
-        expect.objectContaining({ field: 'password', message: 'Password is required' })
+        expect.objectContaining({ field: 'password', message: 'Password is required.' })
       ]));
     });
   });
