@@ -22,6 +22,7 @@ import fileManagementRoutes from './file-management-routes.js';
 import messageRoutes from './message-routes.js';
 import reviewRoutes from './review-routes.js';
 import appRatingRoutes from './app-rating-routes.js';
+import supportTicketRoutes from './support-ticket-routes.js';
 import healthRoutes from './health-routes.js';
 import favoriteRoutes from './favorite-routes.js';
 import transactionRoutes from './transaction-routes.js';
@@ -113,6 +114,10 @@ router.use('/reviews', reviewRoutes);
 // App rating routes — feedback about the platform itself, not about a
 // counterparty. The /reviews mount above is the freelancer<->employer rating.
 router.use('/app-ratings', appRatingRoutes);
+
+// Customer support tickets — a user asking the platform a question, which an
+// admin answers. Unlike /disputes, there is no counterparty.
+router.use('/support-tickets', supportTicketRoutes);
 
 // Transaction routes
 router.use('/transactions', transactionRoutes);

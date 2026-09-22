@@ -815,6 +815,37 @@ const COLLECTIONS: CollectionDef[] = [
     ],
   },
   {
+    id: 'support_tickets',
+    name: 'Support Tickets',
+    // A user asking the platform for help, and the admin's reply. Distinct from
+    // `disputes` (two users, real money, arbitration) and from `app_ratings`
+    // above (one-way feedback nobody answers).
+    // Carries a named user's problem report, so it must NOT inherit the
+    // world-readable default — see RESTRICTED_COLLECTIONS in createCollection().
+    attributes: [
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      // Recorded so the admin queue can show who filed it; never used to gate
+      // behaviour — freelancers and employers get the identical flow.
+      { name: 'user_role', type: 'string', size: 20, required: true },
+      { name: 'subject', type: 'string', size: 200, required: true },
+      { name: 'description', type: 'string', size: 4000, required: true },
+      // See SUPPORT_TICKET_CATEGORIES in src/models/support-ticket.ts.
+      { name: 'category', type: 'string', size: 40, required: true },
+      // open | in_progress | resolved | closed
+      { name: 'status', type: 'string', size: 20, required: false, default: 'open' },
+      // The admin's answer, which the submitter reads. Required by the service
+      // when resolving; absent on a ticket that was merely closed.
+      { name: 'resolution_note', type: 'string', size: 2000, required: false },
+      { name: 'resolved_by', type: 'string', size: 36, required: false },
+      { name: 'resolved_at', type: 'string', size: 40, required: false },
+    ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'category_createdAt', type: DatabasesIndexType.Key, attributes: ['category', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
+  },
+  {
     id: 'subscriptions',
     name: 'Subscriptions',
     // Holds Stripe customer/subscription ids, so it must NOT inherit the
@@ -922,11 +953,12 @@ async function ensureDatabase(): Promise<void> {
  *
  * The default permissions below are world-readable, which is wrong for billing
  * records (Stripe customer and subscription ids) and equally wrong for app
- * feedback, which carries a named user's opinion of the platform. These
+ * feedback, which carries a named user's opinion of the platform, and for
+ * support tickets, which carry a named user's problem report. These
  * collections are reached only through the server's admin API key, so they get
  * an empty permission set — no client-SDK role can touch them at all.
  */
-const RESTRICTED_COLLECTIONS = new Set(['subscriptions', 'app_ratings']);
+const RESTRICTED_COLLECTIONS = new Set(['subscriptions', 'app_ratings', 'support_tickets']);
 
 async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
   try {

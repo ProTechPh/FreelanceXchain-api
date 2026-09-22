@@ -288,6 +288,30 @@ export async function notifyDisputeResolved(
   });
 }
 
+export type NotifySupportTicketResolvedInput = {
+  userId: string;
+  ticketId: string;
+  subject: string;
+};
+
+/**
+ * Tells the submitter their support ticket was answered.
+ *
+ * Sent only on `resolved`, never on `closed`: a closed ticket has no answer to
+ * read, and pinging someone to tell them nothing happened is worse than silence.
+ */
+export async function notifySupportTicketResolved(
+  input: NotifySupportTicketResolvedInput
+): Promise<ServiceResult<Notification>> {
+  return createNotification({
+    userId: input.userId,
+    type: 'support_ticket_resolved',
+    title: 'Support Ticket Resolved',
+    message: `Your support ticket "${input.subject}" has been resolved. Open Help & Support to read the reply.`,
+    data: { ticketId: input.ticketId, subject: input.subject },
+  });
+}
+
 export type NotifyRatingReceivedInput = {
   userId: string;
   rating: number;
