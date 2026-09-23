@@ -15,6 +15,20 @@ import { userRepository } from '../repositories/user-repository.js';
 import { getBlockchainMode } from './blockchain/factory.js';
 import { isWeb3Available, sendTransaction, getTransactionByHash } from './web3-client.js';
 
+function hasMoreThanTwoDecimals(value: number): boolean {
+  const decimalStr = value.toString().split('.')[1];
+  return decimalStr !== undefined && decimalStr.length > 2;
+}
+
+function calculateRushFee(baseAmount: number, percentage: number): number {
+  // Validate precision before calculation
+  if (hasMoreThanTwoDecimals(percentage)) {
+    throw new Error('Percentage must have maximum 2 decimal places');
+  }
+  // Use Math.round with proper scaling for precision-safe calculation
+  return Math.round(baseAmount * percentage * 100) / 10000;
+}
+
 function hasDeployedEscrow(contractEntity: { escrow_address?: string | null }): boolean {
   return Boolean(contractEntity.escrow_address && contractEntity.escrow_address.trim().length > 0);
 }
@@ -242,7 +256,7 @@ async function applyAcceptedRushFee(
     return { error: errorResult('INVALID_STATUS', 'Rush upgrade can only be accepted before any milestone has been submitted, approved, or refunded') };
   }
 
-  const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
+  const newRushFee = calculateRushFee(contractEntity.base_amount, agreedPercentage);
   const escrowDeployed = hasDeployedEscrow(contractEntity);
 
   let transactionHash: string | undefined;
@@ -298,7 +312,7 @@ export async function requestRushUpgrade(
 ): Promise<ServiceResult<RushUpgradeRequest>> {
   // M18: Lock per contract to prevent duplicate rush upgrade requests
   return withLock(`rush-upgrade:${input.contractId}`, async () => {
-    if (input.proposedPercentage <= 0 || input.proposedPercentage > 100) {
+    if (input.proposedPercentage <= 0 || input.proposedPercentage > 100 || hasMoreThanTwoDecimals(input.proposedPercentage)) {
       return errorResult('VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100');
     }
 
@@ -415,7 +429,7 @@ async function acceptRushUpgrade(
   }
 
   const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
-  const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
+  const newRushFee = calculateRushFee(contractEntity.base_amount, agreedPercentage);
   const escrowDeployed = hasDeployedEscrow(contractEntity);
   const now = new Date().toISOString();
 
@@ -520,7 +534,7 @@ async function counterOfferRushUpgrade(
   const { requestEntity, contractEntity } = context;
   const now = new Date().toISOString();
 
-  if (!input.counterPercentage || input.counterPercentage <= 0 || input.counterPercentage > 100) {
+  if (!input.counterPercentage || input.counterPercentage <= 0 || input.counterPercentage > 100 || hasMoreThanTwoDecimals(input.counterPercentage)) {
     return errorResult('VALIDATION_ERROR', 'Counter percentage must be between 0.01 and 100');
   }
 
@@ -683,7 +697,7 @@ export async function payRushUpgradeFee(
     }
 
     const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
-    const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
+    const newRushFee = calculateRushFee(contractEntity.base_amount, agreedPercentage);
 
     const transferResult = await transferRushFee({
       requestId: input.requestId,
