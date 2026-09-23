@@ -142,6 +142,18 @@ export function getAllowedOrigins(): string[] {
  * Prevents unauthorized or direct browser navigation access to API routes.
  */
 export function directAccessGuard(req: Request, res: Response, next: NextFunction): void {
+    // 0. Always allow CORS preflights
+    if (req.method === 'OPTIONS') {
+        next();
+        return;
+    }
+
+    // In development or test environments, allow local development without requiring secret header
+    if (config.server.nodeEnv !== 'production') {
+        next();
+        return;
+    }
+
     const path = req.path || req.url;
 
     // 1. Whitelisted static & health routes
