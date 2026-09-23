@@ -128,11 +128,6 @@ export async function createApp(): Promise<Express> {
   app.use(securityHeaders);
   app.use(requestIdMiddleware);
   app.use(httpsEnforcement);
-
-  // CORS middleware with restricted origins (mounted early so preflights and error responses get CORS headers)
-  configureCors(app);
-
-  // Direct access guard (blocks direct navigation and unauthorized non-origin traffic)
   app.use(directAccessGuard);
 
   // Response compression (gzip/deflate for responses >= 1KB)
@@ -163,6 +158,9 @@ export async function createApp(): Promise<Express> {
 
   // Cookie parsing middleware (required for CSRF protection)
   app.use(cookieParser());
+
+  // CORS middleware with restricted origins
+  configureCors(app);
 
   // Request logging middleware
   app.use(requestLogger);

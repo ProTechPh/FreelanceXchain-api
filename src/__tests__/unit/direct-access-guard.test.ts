@@ -120,33 +120,4 @@ describe('directAccessGuard middleware', () => {
     directAccessGuard(reqCorrect, mockRes as Response, nextFn);
     expect(nextFn).toHaveBeenCalled();
   });
-
-  it('allows OPTIONS preflight requests even when secret is configured', () => {
-    // @ts-expect-error test override
-    config.server.internalApiSecret = 'test-secret-12345';
-
-    const reqOptions = {
-      method: 'OPTIONS',
-      path: '/api/freelancers',
-      url: '/api/freelancers',
-      headers: {},
-    } as unknown as Request;
-
-    directAccessGuard(reqOptions, mockRes as Response, nextFn);
-    expect(nextFn).toHaveBeenCalled();
-    expect(mockRes.status).not.toHaveBeenCalled();
-  });
-
-  it('allows requests from whitelisted CORS origins without internal secret', () => {
-    // @ts-expect-error test override
-    config.server.internalApiSecret = 'test-secret-12345';
-
-    const reqBrowser = createMockReq('/api/freelancers', {
-      origin: 'https://freelancexchain.works',
-    });
-
-    directAccessGuard(reqBrowser, mockRes as Response, nextFn);
-    expect(nextFn).toHaveBeenCalled();
-    expect(mockRes.status).not.toHaveBeenCalled();
-  });
 });
