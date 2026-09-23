@@ -13,6 +13,7 @@ import {
   securityHeaders,
   requestIdMiddleware,
   httpsEnforcement,
+  directAccessGuard,
   getAllowedOrigins,
   validateCorsOrigin
 } from './middleware/security-middleware.js';
@@ -44,7 +45,7 @@ function configureCors(app: Express): void {
       }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'Cache-Control'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'Cache-Control', 'X-Internal-Secret'],
     credentials: true,
   }));
 }
@@ -127,6 +128,7 @@ export async function createApp(): Promise<Express> {
   app.use(securityHeaders);
   app.use(requestIdMiddleware);
   app.use(httpsEnforcement);
+  app.use(directAccessGuard);
 
   // Response compression (gzip/deflate for responses >= 1KB)
   app.use(compression({

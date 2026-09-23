@@ -70,6 +70,7 @@ export const config = {
     // address. Express `trust proxy` semantics: a positive N trusts N hops from the
     // socket connection (the rightmost N entries of X-Forwarded-For).
     trustProxyHops: getEnvVarNumber('TRUST_PROXY_HOPS', 1),
+    internalApiSecret: getEnvVarOptional('INTERNAL_API_SECRET'),
   },
   appwrite: {
     endpoint: getEnvVar('APPWRITE_ENDPOINT'),

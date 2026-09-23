@@ -36,6 +36,7 @@ export default {
     '!src/index.ts',
     '!src/types/**',
     '!src/models/**',
+    '!src/constants/**',
     '!src/__tests__/**',
     '!src/config/index.ts',
     '!src/config/database.ts',
