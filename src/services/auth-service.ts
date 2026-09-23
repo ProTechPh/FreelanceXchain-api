@@ -9,6 +9,7 @@ import { favoriteRepository } from '../repositories/favorites-repository.js';
 import { account as adminAccount, createUserClient, users } from '../config/appwrite.js';
 import { UserRole } from '../models/user.js';
 import { getErrorMessage } from '../utils/index.js';
+import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
 import {
@@ -25,9 +26,6 @@ export { isAuthError };
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
 
-/**
- * Safely extract a numeric error code (e.g. Appwrite's HTTP status) from an unknown thrown value.
- */
 function getErrorCode(error: unknown): number | undefined {
   if (typeof error === 'object' && error !== null) {
     const code = (error as Record<string, unknown>).code;
@@ -36,9 +34,6 @@ function getErrorCode(error: unknown): number | undefined {
   return undefined;
 }
 
-/**
- * Safely extract a string error type (e.g. Appwrite's `user_more_factors_required`) from an unknown thrown value.
- */
 function getErrorType(error: unknown): string | undefined {
   if (typeof error === 'object' && error !== null) {
     const type = (error as Record<string, unknown>).type;
@@ -51,7 +46,6 @@ function requireSessionSecret(session: { secret?: string }): string {
   if (!session.secret) {
     throw new Error('Appwrite session response did not include a secret');
   }
-
   return session.secret;
 }
 
@@ -60,7 +54,7 @@ function extractSessionSecretFromCookies(cookieHeaders: string[] | string | null
   const cookieStr = Array.isArray(cookieHeaders) ? cookieHeaders.join('; ') : cookieHeaders;
   
   const projectId = config.appwrite.projectId.toLowerCase();
-  const projectRegex = new RegExp(`a_session_${projectId}(?:_legacy)?=([^;]+)`, 'i');
+  const projectRegex = new RegExp('a_session_' + projectId + '(?:_legacy)?=([^;]+)', 'i');
   const projectMatch = cookieStr.match(projectRegex);
   if (projectMatch && projectMatch[1]) {
     return decodeURIComponent(projectMatch[1]);
@@ -109,7 +103,7 @@ async function tryGuestSdkSession(userId: string, secret: string): Promise<strin
 }
 
 async function exchangeTokenViaHttp(userId: string, secret: string): Promise<string> {
-  const url = `${config.appwrite.endpoint}/account/sessions/token`;
+  const url = config.appwrite.endpoint + '/account/sessions/token';
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -129,14 +123,13 @@ async function exchangeTokenViaHttp(userId: string, secret: string): Promise<str
     const errText = await response.text();
     logger.warn('createTokenSession: HTTP fallback error body', { userId, errText });
 
-    // Try adminAccount as last resort
     try {
       const adminSession = await adminAccount.createSession({ userId, secret });
       if (adminSession?.secret) return adminSession.secret;
     } catch {
       // ignore
     }
-    throw new Error(`Token session exchange failed: ${response.status} ${errText}`);
+    throw new Error('Token session exchange failed: ' + response.status + ' ' + errText);
   }
 
   const data = (await response.json().catch(() => ({}))) as { secret?: string };
@@ -161,13 +154,11 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
     hasSecret: Boolean(rawSecret),
   });
 
-  // In unit tests, use mocked adminAccount
   if (config.server.nodeEnv === 'test') {
     const adminSession = await adminAccount.createSession({ userId, secret });
     if (adminSession?.secret) return adminSession.secret;
   }
 
-  // 1. Try Appwrite Users API (Server API key has users/sessions scope)
   try {
     const userSession = await users.createSession(userId);
     if (userSession?.secret) {
@@ -184,17 +175,14 @@ async function createTokenSession(userId: string, rawSecret: string): Promise<st
     });
   }
 
-  // 2. Try Appwrite SDK with guest client (no API key — same as browser SDK)
   const sdkSecret = await tryGuestSdkSession(userId, secret);
   if (sdkSecret) return sdkSecret;
 
-  // 2. If JWT was decoded, also try with the raw JWT
   if (wasJwt) {
     const rawSdkSecret = await tryGuestSdkSession(userId, rawSecret);
     if (rawSdkSecret) return rawSdkSecret;
   }
 
-  // 3. Direct HTTP request as fallback
   return exchangeTokenViaHttp(userId, secret);
 }
 
@@ -207,7 +195,6 @@ async function createEmailPasswordSessionHelper(email: string, password: string)
     return adminSession.secret;
   }
 
-  // 1. Try adminAccount first in case API Key has sessions.write
   try {
     const adminSession = await adminAccount.createEmailPasswordSession({ email, password });
     if (adminSession?.secret) return adminSession.secret;
@@ -215,8 +202,7 @@ async function createEmailPasswordSessionHelper(email: string, password: string)
     logger.debug('adminAccount.createEmailPasswordSession failed, attempting guest fallback', { error: getErrorMessage(adminErr) });
   }
 
-  // 2. Direct HTTP request as guest and parse response body or Set-Cookie header
-  const url = `${config.appwrite.endpoint}/account/sessions/email`;
+  const url = config.appwrite.endpoint + '/account/sessions/email';
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -228,7 +214,7 @@ async function createEmailPasswordSessionHelper(email: string, password: string)
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Email password login failed: ${response.status} ${errText}`);
+    throw new Error('Email password login failed: ' + response.status + ' ' + errText);
   }
 
   const data = (await response.json().catch(() => ({}))) as { secret?: string };
@@ -247,18 +233,14 @@ type PasswordValidationResult = {
   errors: string[];
 };
 
-/**
- * Validates password strength
- * Requirements: min 8 chars, uppercase, lowercase, number, special char
- */
 export function validatePasswordStrength(password: string): PasswordValidationResult {
   const errors: string[] = [];
 
   if (password.length < PASSWORD_MIN_LENGTH) {
-    errors.push(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+    errors.push('Password must be at least ' + PASSWORD_MIN_LENGTH + ' characters');
   }
   if (password.length > PASSWORD_MAX_LENGTH) {
-    errors.push(`Password must be at most ${PASSWORD_MAX_LENGTH} characters`);
+    errors.push('Password must be at most ' + PASSWORD_MAX_LENGTH + ' characters');
   }
   if (!/[a-z]/.test(password)) {
     errors.push('Password must contain at least one lowercase letter');
@@ -320,12 +302,12 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
   };
 }
 
-async function dispatchRegistrationVerification(sessionSecret: string, userId: string, email: string): Promise<void> {
+async function sendVerificationEmail(sessionSecret: string, userId: string, email: string): Promise<void> {
   try {
     const userClient = createUserClient(sessionSecret);
     const account = new Account(userClient);
-    const frontendBaseUrl = config.server.frontendUrl;
-    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+    const frontendBaseUrl = getFrontendBaseUrl();
+    const redirectUrl = frontendBaseUrl + '/verify-email';
     await account.createVerification(redirectUrl);
     logger.info('Email verification link dispatched upon registration', { userId, email });
   } catch (verificationError) {
@@ -336,89 +318,124 @@ async function dispatchRegistrationVerification(sessionSecret: string, userId: s
   }
 }
 
-async function compensateOrphanedAppwriteUser(appwriteUserId: string, email: string): Promise<void> {
-  try {
-    await users.delete(appwriteUserId);
-    logger.warn('Compensated: deleted orphaned Appwrite user after registration failure', {
-      appwriteUserId,
-      email,
-    });
-  } catch (deleteError) {
-    logger.error('CRITICAL: Failed to delete orphaned Appwrite user', {
-      appwriteUserId,
-      email,
-      deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
-    });
-  }
-}
-
-export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
-  const normalizedEmail = input.email.toLowerCase().trim();
-
-  const emailExists = await userRepository.emailExists(normalizedEmail);
-  if (emailExists) {
+function toAuthError(error: unknown): AuthError {
+  if (getErrorMessage(error)?.includes('already exists') || getErrorCode(error) === 409) {
     return {
       code: 'DUPLICATE_EMAIL',
       message: 'An account with this email already exists',
     };
   }
+  return {
+    code: 'INTERNAL_ERROR',
+    message: 'Failed to create user',
+  };
+}
 
-  let appwriteUser: Models.User<Models.Preferences> | undefined;
+async function withCompensation<T, R>(
+  factory: () => Promise<T>,
+  onSuccess: (t: T) => Promise<R>,
+  compensate: (t: T) => Promise<void>
+): Promise<R | AuthError> {
+  let resource: T | undefined;
   try {
-    appwriteUser = await users.create(
-      ID.unique(),
-      normalizedEmail,
-      undefined, // phone (optional)
-      input.password,
-      input.email.split('@')[0] // name from email
-    );
-
-    const publicUser = await userRepository.createUser({
-      id: appwriteUser.$id,
-      email: normalizedEmail,
-      password_hash: '', // Appwrite handles password
-      role: input.role,
-      wallet_address: '',
-      name: input.email.split('@')[0] || 'User',
-      is_suspended: false,
-      suspension_reason: null,
-      mfa_enabled: false,
-    });
-
-    const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
-    await dispatchRegistrationVerification(sessionSecret, publicUser.id, normalizedEmail);
-
-    return {
-      user: {
-        id: publicUser.id,
-        email: publicUser.email,
-        role: publicUser.role,
-        walletAddress: publicUser.wallet_address,
-        createdAt: publicUser.created_at,
-        emailVerification: false,
-      },
-      accessToken: sessionSecret,
-      refreshToken: sessionSecret,
-    };
-  } catch (error: unknown) {
-    if (appwriteUser?.$id) {
-      await compensateOrphanedAppwriteUser(appwriteUser.$id, normalizedEmail);
+    resource = await factory();
+    return await onSuccess(resource);
+  } catch (error) {
+    if (resource) {
+      try {
+        await compensate(resource);
+      } catch (compensationError) {
+        logger.error('Compensation failed', { error: compensationError });
+      }
     }
+    return toAuthError(error);
+  }
+}
 
-    logger.error('Registration failed', { error: getErrorMessage(error), email: normalizedEmail });
-    
-    if (getErrorMessage(error)?.includes('already exists') || getErrorCode(error) === 409) {
+async function createAppwriteUser(
+  email: string,
+  password: string
+): Promise<Models.User<Models.Preferences>> {
+  return users.create(
+    ID.unique(),
+    email,
+    undefined,
+    password,
+    email.split('@')[0]
+  );
+}
+
+async function createPublicUserRecord(
+  appwriteUser: Models.User<Models.Preferences>,
+  role: UserRole
+): Promise<UserEntity> {
+  const publicUser = await userRepository.createUser({
+    id: appwriteUser.$id,
+    email: appwriteUser.email,
+    password_hash: '',
+    role: role,
+    wallet_address: '',
+    name: appwriteUser.email.split('@')[0] || 'User',
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  });
+  return publicUser;
+}
+
+async function ensureEmailIsUnique(email: string): Promise<void> {
+  const emailExists = await userRepository.emailExists(email);
+  if (emailExists) {
+    throw Object.assign(new Error('An account with this email already exists'), {
+      code: 'DUPLICATE_EMAIL',
+    });
+  }
+}
+
+function buildAuthResult(publicUser: UserEntity, sessionSecret: string): AuthResult {
+  return {
+    user: {
+      id: publicUser.id,
+      email: publicUser.email,
+      role: publicUser.role,
+      walletAddress: publicUser.wallet_address,
+      createdAt: publicUser.created_at,
+      emailVerification: false,
+    },
+    accessToken: sessionSecret,
+    refreshToken: sessionSecret,
+  };
+}
+
+export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
+  const normalizedEmail = input.email.toLowerCase().trim();
+
+  try {
+    await ensureEmailIsUnique(normalizedEmail);
+  } catch (error) {
+    if ((error as any).code === 'DUPLICATE_EMAIL') {
       return {
         code: 'DUPLICATE_EMAIL',
         message: 'An account with this email already exists',
       };
     }
-    
-    return {
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to create user',
-    };
+    throw error;
   }
+
+  logger.info('Registration attempt', { email: normalizedEmail, role: input.role });
+
+  return withCompensation(
+    () => createAppwriteUser(normalizedEmail, input.password),
+    async (appwriteUser) => {
+      logger.info('Appwrite user created', { userId: appwriteUser.$id });
+      const publicUser = await createPublicUserRecord(appwriteUser, input.role);
+      logger.info('Public user record created', { userId: publicUser.id });
+      const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
+      await sendVerificationEmail(sessionSecret, publicUser.id, normalizedEmail);
+      return buildAuthResult(publicUser, sessionSecret);
+    },
+    async (appwriteUser) => { await users.delete(appwriteUser.$id); }
+  );
 }
 
 export async function login(input: LoginInput): Promise<AuthResponse> {
@@ -433,12 +450,6 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       accountUser = await authenticatedAccount.get();
     } catch (mfaError: unknown) {
       if (getErrorType(mfaError) === 'user_more_factors_required') {
-        // SECURITY NOTE: The session.secret returned here is a partially-authenticated
-        // Appwrite session. It is needed for the MFA challenge/verify flow but should
-        // NOT be treated as a fully authenticated token. Appwrite enforces MFA at the
-        // session level for account.get(), but other session-scoped operations may not
-        // be protected. Frontend must complete MFA before using this token for any
-        // purpose other than the /api/auth/login/mfa-verify endpoint.
         return {
           code: 'MFA_REQUIRED',
           message: 'Multi-factor authentication required',
@@ -446,7 +457,6 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
           mfaSessionToken: sessionSecret,
         };
       }
-      // Other error — rethrow
       throw mfaError;
     }
 
@@ -459,7 +469,6 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       };
     }
 
-    // Block login if email is not verified (admins are exempt)
     const isEmailVerified = accountUser?.emailVerification ?? false;
     if (!isEmailVerified && publicUser.role !== 'admin') {
       try {
@@ -509,7 +518,6 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
       };
     }
 
-    // Appwrite sessions are long-lived, return the same token
     const result = await createAuthResult(publicUser, refreshToken, refreshToken);
     return result;
   } catch (error: unknown) {
@@ -564,7 +572,7 @@ export async function validateTokenAndGetUser(accessToken: string): Promise<Auth
   const tokenResult = await validateToken(accessToken);
   
   if ('code' in tokenResult) {
-    return tokenResult; // Return AuthError
+    return tokenResult;
   }
 
   let userEntity = await userRepository.getUserById(tokenResult.userId);
@@ -587,12 +595,8 @@ export async function requestPasswordReset(email: string, customFrontendUrl?: st
     const userClient = createUserClient('');
     const account = new Account(userClient);
 
-    const frontendBaseUrl = customFrontendUrl
-      || process.env.PUBLIC_URL
-      || process.env.FRONTEND_URL
-      || 'http://localhost:5173';
-    const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
-    const redirectUrl = `${normalizedFrontendBaseUrl}/reset-password`;
+    const frontendBaseUrl = getFrontendBaseUrl(customFrontendUrl);
+    const redirectUrl = frontendBaseUrl + '/reset-password';
 
     await account.createRecovery({
       email: email.toLowerCase().trim(), 
@@ -603,7 +607,6 @@ export async function requestPasswordReset(email: string, customFrontendUrl?: st
     return { success: true };
   } catch (error: unknown) {
     logger.error('Password reset request failed', { error: getErrorMessage(error), email });
-    // BLF-4.3: Return generic message to prevent user enumeration via error message differences
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to send password reset email',
@@ -643,7 +646,6 @@ export async function resetPasswordWithRecovery(
 
     logger.error('Password reset with recovery failed', { error: errorMessage, type: errorType, userId });
 
-    // Detect password history or reuse (Appwrite password-history policy or same password)
     if (
       lowerMsg.includes('recent') ||
       lowerMsg.includes('history') ||
@@ -688,12 +690,9 @@ export async function updatePassword(accessToken: string, newPassword: string): 
       password: newPassword
     });
 
-    // BLF-4.2: Invalidate all other sessions after password change to prevent
-    // stolen session tokens from remaining valid after a password reset.
     try {
       await account.deleteSessions();
     } catch (sessionError) {
-      // Non-critical: password was already changed. Log but don't fail the operation.
       logger.warn('Failed to invalidate sessions after password change', {
         error: sessionError instanceof Error ? sessionError.message : String(sessionError),
       });
@@ -739,7 +738,6 @@ export async function changePassword(
       oldPassword: currentPassword,
     });
 
-    // Invalidate sessions so user is logged out and must sign in again
     try {
       await account.deleteSessions();
     } catch (sessionErr) {
@@ -794,7 +792,7 @@ export async function logout(accessToken?: string): Promise<{ success: boolean }
     
     return {
       code: 'INTERNAL_ERROR',
-      message: getErrorMessage(error) || '' || 'Failed to logout',
+      message: getErrorMessage(error) ?? 'Failed to logout',
     };
   }
 }
@@ -824,7 +822,6 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     logger.warn('Failed to retrieve Appwrite user metadata for current user', { userId, error });
   }
 
-  // Admins are automatically considered KYC approved
   if (user.role === 'admin') {
     return {
       id: user.id,
@@ -836,7 +833,6 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
       createdAt: user.created_at,
       authProvider,
       emailVerification,
-      // Admins operate the platform and are never billed for it.
       plan: 'pro',
       planStatus: 'active',
     };
@@ -849,11 +845,6 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     ? kycFullName
     : (user.name || user.email.split('@')[0] || 'User');
 
-  // Entitlement travels with the user object so the frontend can gate a widget
-  // synchronously at render instead of waterfalling a second request. A read
-  // failure degrades to 'free' rather than failing /auth/me outright — the
-  // server-side gate is the real enforcement point, this is only the hint the
-  // UI paints from.
   const { getEntitlement } = await import('./subscription-service.js');
   const entitlement = await getEntitlement(userId);
   const plan = entitlement.success ? entitlement.data.plan : 'free';
@@ -887,10 +878,6 @@ export async function updateUserWallet(
       };
     }
 
-    // A wallet is set once (at registration / first connect) and cannot be silently
-    // overwritten — otherwise funds could be redirected on future escrow payouts.
-    // Ethereum addresses are EIP-55 checksummed but case-insensitive, so compare
-    // normalized forms to avoid false locks for the same address in a different case.
     const normalizedExisting = existing.wallet_address?.toLowerCase();
     const normalizedRequested = walletAddress.toLowerCase();
     if (normalizedExisting && normalizedExisting !== normalizedRequested) {
@@ -900,7 +887,6 @@ export async function updateUserWallet(
       };
     }
 
-    // Idempotent: same address (any casing) — nothing to change.
     if (normalizedExisting === normalizedRequested) {
       return { walletAddress: existing.wallet_address ?? walletAddress };
     }
@@ -927,15 +913,10 @@ export async function getOAuthUrl(provider: string, customFrontendUrl?: string):
   const userClient = createUserClient('');
   const account = new Account(userClient);
 
-  const frontendBaseUrl = customFrontendUrl
-    || process.env.FRONTEND_URL
-    || process.env.PUBLIC_URL
-    || 'http://localhost:3000';
-  const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
-  const successUrl = `${normalizedFrontendBaseUrl}/auth/callback`;
-  const failureUrl = `${normalizedFrontendBaseUrl}/login?error=oauth_failed`;
+  const frontendBaseUrl = getFrontendBaseUrl(customFrontendUrl);
+  const successUrl = frontendBaseUrl + '/auth/callback';
+  const failureUrl = frontendBaseUrl + '/login?error=oauth_failed';
 
-  // Appwrite OAuth providers mapping if names differ
   const appwriteProvider = (provider === 'linkedin_oidc' ? 'linkedin' : provider) as OAuthProvider;
 
   logger.info('Generating OAuth URL', {
@@ -968,14 +949,11 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
     
-    // In Appwrite, the "accessToken" passed here from callback is already the session secret
     const appwriteUser = await account.get();
     
-    // Check if user exists in our DB, if not they need to register (handled by callback route)
     const publicUser = await userRepository.getUserById(appwriteUser.$id);
     
     if (!publicUser) {
-      // User authenticated with OAuth but no DB profile yet
       return {
         code: 'AUTH_REQUIRE_REGISTRATION',
         message: 'OAuth authentication successful, but user profile not found. Please complete registration with a role.',
@@ -984,7 +962,7 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
 
     return {
       accessToken,
-      refreshToken: accessToken, // Appwrite sessions are persistent
+      refreshToken: accessToken,
     };
   } catch (error: unknown) {
     logger.error('OAuth session exchange failed', { error: getErrorMessage(error) });
@@ -995,22 +973,14 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
   }
 }
 
-/**
- * Enroll user in MFA
- * Appwrite supports TOTP as an authenticator type
- * Email and phone are challenge-based factors
- * Returns recovery codes and TOTP secret/URI on enrollment
- */
 export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email' = 'totp'): Promise<{ success: boolean; recoveryCodes?: string[]; secret?: string; uri?: string } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
     if (factorType === 'totp') {
-      // TOTP enrollment returns secret and URI for QR code
       const result = await account.createMFAAuthenticator({ type: AuthenticatorType.Totp });
       
-      // Generate recovery codes (only once per account)
       let recoveryCodes: string[] = [];
       try {
         const codes = await account.createMfaRecoveryCodes();
@@ -1027,14 +997,12 @@ export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email
       };
     }
 
-    // Email is challenge-based, no enrollment needed
-    // They're verified through challenges during login
     return { success: true };
   } catch (error: unknown) {
     logger.error('MFA enrollment failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_ENROLLMENT_FAILED',
-      message: getErrorMessage(error) || '' || 'Failed to enroll in MFA',
+      message: getErrorMessage(error) ?? 'Failed to enroll in MFA',
     };
   }
 }
@@ -1044,7 +1012,6 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Only TOTP needs authenticator verification
     if (factorType === 'totp') {
       await account.updateMFAAuthenticator({
         type: AuthenticatorType.Totp,
@@ -1052,7 +1019,6 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
       });
     }
     
-    // Enable MFA on the account (Appwrite official step)
     await account.updateMFA(true);
     
     const appwriteUser = await account.get();
@@ -1063,7 +1029,7 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
     logger.error('MFA verification failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_VERIFY_FAILED',
-      message: getErrorMessage(error) || '' || 'Invalid MFA code',
+      message: getErrorMessage(error) ?? 'Invalid MFA code',
     };
   }
 }
@@ -1074,7 +1040,7 @@ export async function challengeMFA(accessToken: string, factorId: string): Promi
     const account = new Account(userClient);
     
     const challenge = await account.createMFAChallenge({
-      factor: factorId as AuthenticationFactor // e.g. 'totp' — client-supplied factor id
+      factor: factorId as AuthenticationFactor
     });
     
     return { challengeId: challenge.$id };
@@ -1091,7 +1057,6 @@ export async function verifyMFAChallenge(accessToken: string, factorId: string, 
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // In Appwrite, we update the session with the MFA challenge
     await account.updateMFAChallenge({
       challengeId,
       otp: code
@@ -1102,7 +1067,7 @@ export async function verifyMFAChallenge(accessToken: string, factorId: string, 
     logger.error('MFA challenge verification failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_CHALLENGE_FAILED',
-      message: getErrorMessage(error) || '' || 'Invalid MFA code',
+      message: getErrorMessage(error) ?? 'Invalid MFA code',
     };
   }
 }
@@ -1132,7 +1097,6 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // C3: Verify OTP code before disabling MFA for ALL factor types
     if (!otpCode) {
       return {
         code: 'MFA_CODE_REQUIRED',
@@ -1149,14 +1113,12 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
       otp: otpCode,
     });
 
-    // OTP verified — now safe to delete the authenticator
     if (factorType === 'totp') {
       await account.deleteMFAAuthenticator({
         type: AuthenticatorType.Totp
       });
     }
 
-    // Disable MFA on the Appwrite account (not just locally)
     await account.updateMFA(false);
 
     const appwriteUser = await account.get();
@@ -1171,29 +1133,14 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
   }
 }
 
-/**
- * Resend confirmation email
- *
- * SECURITY (BUG-2): This endpoint is reachable without authentication (a logged-out
- * user may request a fresh verification link). Unauthenticated email bombing of
- * arbitrary known accounts is mitigated at the route layer via passwordResetRateLimiter
- * (5 attempts / 15 minutes, fail-closed). Here we simply avoid triggering unnecessary
- * verification emails for already-handled cases and never reveal whether the address
- * exists (anti-enumeration).
- */
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
     const user = await userRepository.getUserByEmail(normalizedEmail);
     if (!user) {
-      // Don't reveal whether the email exists (same response as success)
       return { success: true };
     }
 
-    // Appwrite's account.createVerification requires an authenticated session.
-    // Create a temporary server-side session for the user (admin Users API) so the
-    // verification email can actually be sent, then request the verification token
-    // through that session.
     const session = await users.createSession(user.id);
     const sessionSecret = requireSessionSecret(session);
 
@@ -1201,14 +1148,11 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
       const userClient = createUserClient(sessionSecret);
       const account = new Account(userClient);
 
-      const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
-      const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+      const frontendBaseUrl = getFrontendBaseUrl();
+      const redirectUrl = frontendBaseUrl + '/verify-email';
 
       await account.createVerification(redirectUrl);
     } finally {
-      // The session was created only to send the verification email — delete it so
-      // repeated resends do not accumulate long-lived server-side sessions.
-      // Best-effort: a failed cleanup must not fail the verification request.
       try {
         await users.deleteSession(user.id, session.$id);
       } catch (cleanupError) {
@@ -1223,14 +1167,10 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
     return { success: true };
   } catch (error: unknown) {
     logger.error('Failed to resend confirmation email', { error: getErrorMessage(error), email });
-    // Don't reveal internal errors to prevent enumeration
     return { success: true };
   }
 }
 
-/**
- * Verify user email using the userId and secret token from Appwrite verification link.
- */
 export async function verifyEmail(userId: string, secret: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient('');
@@ -1292,7 +1232,7 @@ export async function registerWithAppwrite(accessToken: string, role: UserRole):
     const publicUser = await userRepository.createUser({
       id: appwriteUser.$id,
       email: appwriteUser.email,
-      password_hash: '', // Handled by Appwrite
+      password_hash: '',
       role,
       wallet_address: '',
       name: appwriteUser.name || appwriteUser.email.split('@')[0] || 'User',
@@ -1329,8 +1269,8 @@ export async function requestMagicUrl(email: string): Promise<{ userId: string }
     const userClient = createUserClient('');
     const account = new Account(userClient);
     
-    const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/auth/magic-url-callback`;
+    const frontendBaseUrl = getFrontendBaseUrl();
+    const redirectUrl = frontendBaseUrl + '/auth/magic-url-callback';
     
     const token = await account.createMagicURLToken(ID.unique(), email.toLowerCase().trim(), redirectUrl);
     return { userId: token.userId };
@@ -1361,9 +1301,95 @@ export async function verifyAuthToken(userId: string, secret: string): Promise<A
   }
 }
 
-/**
- * Disconnects the user's wallet address from their profile.
- */
+class ActiveContractsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ActiveContractsError';
+  }
+}
+
+async function ensureNoActiveContracts(userId: string): Promise<void> {
+  const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
+  const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
+  const hasActiveContract =
+    freelancerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed') ||
+    employerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed');
+
+  if (hasActiveContract) {
+    throw new ActiveContractsError('Cannot delete account while you have active or disputed contracts with pending escrow funds. Please complete or resolve active contracts first.');
+  }
+}
+
+async function cleanupUserData(userId: string, role: string): Promise<void> {
+  if (role === 'freelancer') {
+    const profile = await freelancerProfileRepository.getProfileByUserId(userId).catch(() => null);
+    if (profile) {
+      await freelancerProfileRepository.delete(profile.id).catch(() => {});
+    }
+  } else if (role === 'employer') {
+    const profile = await employerProfileRepository.getProfileByUserId(userId).catch(() => null);
+    if (profile) {
+      await employerProfileRepository.delete(profile.id).catch(() => {});
+    }
+  }
+
+  const emailPref = await emailPreferenceRepository.findByUserId(userId).catch(() => null);
+  if (emailPref) {
+    await emailPreferenceRepository.delete(emailPref.id).catch(() => {});
+  }
+
+  const favs = await favoriteRepository.findByUser(userId).catch(() => []);
+  for (const f of favs) {
+    await favoriteRepository.delete(f.id).catch(() => {});
+  }
+}
+
+export async function deleteUserAccount(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
+  try {
+    const user = await userRepository.getUserById(userId);
+    if (!user) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    try {
+      await ensureNoActiveContracts(userId);
+    } catch (error) {
+      if (error instanceof ActiveContractsError) {
+        return {
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: error.message,
+        };
+      }
+      throw error;
+    }
+
+    await cleanupUserData(userId, user.role);
+
+    try {
+      await users.delete(userId);
+    } catch (appwriteErr) {
+      logger.warn('Failed to delete user from Appwrite auth service', { userId, error: getErrorMessage(appwriteErr) });
+    }
+
+    await userRepository.deleteUser(userId);
+
+    logger.info('User account permanently deleted under data erasure compliance', { userId });
+    return {
+      success: true,
+      message: 'Account and associated data have been permanently deleted.',
+    };
+  } catch (error: unknown) {
+    logger.error('Account deletion failed', { error: getErrorMessage(error), userId });
+    return {
+      code: 'DELETE_FAILED',
+      message: 'Failed to delete account. Please try again or contact support.',
+    };
+  }
+}
+
 export async function disconnectUserWallet(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
   try {
     const existing = await userRepository.getUserById(userId);
@@ -1374,7 +1400,6 @@ export async function disconnectUserWallet(userId: string): Promise<{ success: b
       };
     }
 
-    // Check if user has active escrow contracts
     const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
     const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
     const hasActiveContract =
@@ -1402,79 +1427,4 @@ export async function disconnectUserWallet(userId: string): Promise<{ success: b
   }
 }
 
-/**
- * Permanently deletes the user's account and personal data (GDPR Right to Erasure).
- */
-export async function deleteUserAccount(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
-  try {
-    const user = await userRepository.getUserById(userId);
-    if (!user) {
-      return {
-        code: 'USER_NOT_FOUND',
-        message: 'User not found',
-      };
-    }
-
-    // Check for active or disputed contracts with locked escrow funds
-    const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
-    const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
-    const hasActiveContract =
-      freelancerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed') ||
-      employerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed');
-
-    if (hasActiveContract) {
-      return {
-        code: 'ACTIVE_CONTRACTS_EXIST',
-        message: 'Cannot delete account while you have active or disputed contracts with pending escrow funds. Please complete or resolve active contracts first.',
-      };
-    }
-
-    // Clean up profiles
-    if (user.role === 'freelancer') {
-      const profile = await freelancerProfileRepository.getProfileByUserId(userId).catch(() => null);
-      if (profile) {
-        await freelancerProfileRepository.delete(profile.id).catch(() => {});
-      }
-    } else if (user.role === 'employer') {
-      const profile = await employerProfileRepository.getProfileByUserId(userId).catch(() => null);
-      if (profile) {
-        await employerProfileRepository.delete(profile.id).catch(() => {});
-      }
-    }
-
-    // Clean up email preferences
-    const emailPref = await emailPreferenceRepository.findByUserId(userId).catch(() => null);
-    if (emailPref) {
-      await emailPreferenceRepository.delete(emailPref.id).catch(() => {});
-    }
-
-    // Clean up favorites
-    const favs = await favoriteRepository.findByUser(userId).catch(() => []);
-    for (const f of favs) {
-      await favoriteRepository.delete(f.id).catch(() => {});
-    }
-
-    // Delete user from Appwrite Authentication service
-    try {
-      await users.delete(userId);
-    } catch (appwriteErr) {
-      logger.warn('Failed to delete user from Appwrite auth service', { userId, error: getErrorMessage(appwriteErr) });
-    }
-
-    // Delete user record from database
-    await userRepository.deleteUser(userId);
-
-    logger.info('User account permanently deleted under data erasure compliance', { userId });
-    return {
-      success: true,
-      message: 'Account and associated data have been permanently deleted.',
-    };
-  } catch (error: unknown) {
-    logger.error('Account deletion failed', { error: getErrorMessage(error), userId });
-    return {
-      code: 'DELETE_FAILED',
-      message: 'Failed to delete account. Please try again or contact support.',
-    };
-  }
-}
 
