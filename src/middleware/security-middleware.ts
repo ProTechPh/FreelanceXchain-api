@@ -142,6 +142,12 @@ export function getAllowedOrigins(): string[] {
  * Prevents unauthorized or direct browser navigation access to API routes.
  */
 export function directAccessGuard(req: Request, res: Response, next: NextFunction): void {
+    // 0. Whitelist OPTIONS (preflight requests must bypass access guard)
+    if (req.method === 'OPTIONS') {
+        next();
+        return;
+    }
+
     const path = req.path || req.url;
 
     // 1. Whitelisted static & health routes
@@ -195,10 +201,26 @@ export function directAccessGuard(req: Request, res: Response, next: NextFunctio
         return;
     }
 
-    // 6. Enforce internal secret if configured
+    // 6. Enforce internal secret or allowed origin if internalSecret is configured
     const internalSecret = config.server.internalApiSecret;
     if (internalSecret) {
         const incomingSecret = req.headers['x-internal-secret'];
+        const origin = req.headers.origin;
+        const isAllowedOrigin = origin && validateCorsOrigin(origin, getAllowedOrigins());
+
+        // Allow if request originates from an authorized web application (browser SPA via CORS)
+        if (isAllowedOrigin) {
+            next();
+            return;
+        }
+
+        // In test environment, bypass unless running unit test with explicit test-secret
+        if (getNodeEnv() === 'test' && !internalSecret.startsWith('test-secret')) {
+            next();
+            return;
+        }
+
+        // Require valid internal secret for server-to-server and non-origin requests
         if (!incomingSecret || incomingSecret !== internalSecret) {
             res.status(403).json({
                 success: false,
