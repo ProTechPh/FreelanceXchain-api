@@ -7,6 +7,28 @@ import type { ServiceResult } from '../types/service-result.js';
 import { successResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 
+/**
+ * Wraps an async operation with timing logs to identify slow queries.
+ * Logs operations taking >100ms as warnings, others as debug.
+ */
+async function timedOperation<T>(
+  operationName: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await fn();
+  } finally {
+    const duration = performance.now() - start;
+    if (duration > 100) {
+      logger.warn(`Slow search query [${operationName}]: ${duration.toFixed(2)}ms`);
+    } else {
+      logger.debug(`Search query [${operationName}]: ${duration.toFixed(2)}ms`);
+    }
+  }
+}
+
+
 // TODO: Multi-filter search currently chains individual repository calls and merges client-side.
 // For better scalability, consider using a Appwrite RPC function or database view that applies
 // all filters (keyword, skills, budget range) in a single query.
@@ -94,16 +116,24 @@ export async function searchProjects(
   if (hasKeyword && !hasSkills && !hasBudgetRange) {
     // Keyword-only: the repository matches title OR description via a single
     // Query.or, so pagination happens server-side — no fetch-all fallback.
-    entityResult = await projectRepository.searchProjects(filters.keyword!, queryOptions);
+    entityResult = await timedOperation('searchProjects.keyword', () =>
+      projectRepository.searchProjects(filters.keyword!, queryOptions)
+    );
   } else if (hasSkills && !hasKeyword && !hasBudgetRange) {
-    entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, queryOptions);
+    entityResult = await timedOperation('searchProjects.skills', () =>
+      projectRepository.getProjectsBySkills(filters.skillIds!, queryOptions)
+    );
   } else if (hasBudgetRange && !hasKeyword && !hasSkills) {
     const minBudget = filters.minBudget ?? 0;
     const maxBudget = filters.maxBudget ?? Number.MAX_SAFE_INTEGER;
-    entityResult = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, queryOptions);
+    entityResult = await timedOperation('searchProjects.budget', () =>
+      projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, queryOptions)
+    );
   } else if (!hasKeyword && !hasSkills && !hasBudgetRange) {
     // No filters - return all open projects
-    entityResult = await projectRepository.getAllOpenProjects(queryOptions);
+    entityResult = await timedOperation('searchProjects.allOpen', () =>
+      projectRepository.getAllOpenProjects(queryOptions)
+    );
   } else {
     // Multiple filters: the first filter runs at the database level (narrowing
     // the candidate set via the indexes) and the rest refine in memory on that
@@ -113,12 +143,16 @@ export async function searchProjects(
     // highest-cardinality index.
     const firstFilterOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
     if (hasKeyword) {
-      entityResult = await projectRepository.searchProjects(filters.keyword!, firstFilterOptions);
+      entityResult = await timedOperation('searchProjects.keywordFirstFilter', () =>
+      projectRepository.searchProjects(filters.keyword!, firstFilterOptions)
+    );
     } else {
       // Multi-filter is only reached when keyword or skills is present (a
       // budget-only request matches the single-filter branch above), so the
       // remaining first-filter option here is always skills.
-      entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions);
+      entityResult = await timedOperation('searchProjects.skillsFirstFilter', () =>
+      projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions)
+    );
     }
 
     if (entityResult.items.length >= SEARCH_FALLBACK_LIMIT) {
@@ -212,15 +246,23 @@ export async function searchFreelancers(
   let entityResult: PaginatedResult<FreelancerProfileEntity>;
 
   if (hasSkills && !hasKeyword) {
-    entityResult = await freelancerProfileRepository.searchBySkills(skillNameValues!, queryOptions);
+    entityResult = await timedOperation('searchFreelancers.skills', () =>
+      freelancerProfileRepository.searchBySkills(skillNameValues!, queryOptions)
+    );
   } else if (hasKeyword && !hasSkills) {
-    entityResult = await freelancerProfileRepository.searchByKeyword(filters.keyword!, queryOptions);
+    entityResult = await timedOperation('searchFreelancers.keyword', () =>
+      freelancerProfileRepository.searchByKeyword(filters.keyword!, queryOptions)
+    );
   } else if (!hasKeyword && !hasSkills) {
     // No filters - return all profiles
-    entityResult = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
+    entityResult = await timedOperation('searchFreelancers.allProfiles', () =>
+      freelancerProfileRepository.getAllProfilesPaginated(queryOptions)
+    );
   } else {
     // Multiple filters - fetch broad set, filter in memory, then paginate
-    const allProfiles = await freelancerProfileRepository.getAllProfilesPaginated({ limit: SEARCH_FALLBACK_LIMIT, offset: 0 });
+    const allProfiles = await timedOperation('searchFreelancers.allProfilesFallback', () =>
+      freelancerProfileRepository.getAllProfilesPaginated({ limit: SEARCH_FALLBACK_LIMIT, offset: 0 })
+    );
 
     if (allProfiles.items.length >= SEARCH_FALLBACK_LIMIT) {
       logger.warn('Freelancer search fallback limit reached, results may be incomplete', { limit: SEARCH_FALLBACK_LIMIT });

@@ -1041,14 +1041,16 @@ describe('analytics-service: sort by projectCount in calculateTopSkills (line 58
       // Call 3: PROPOSALS
       .mockResolvedValueOnce({ documents: [], total: 0 })
       // Call 4: CONTRACTS (calculateTopSkills)
-      .mockResolvedValueOnce({ documents: contracts, total: 3 });
-
-    // Projects: p1 has [React, Node], p2 has [React], p3 has [Python]
-    // React appears 2x, Node 1x, Python 1x → React should be first
-    mockDatabases.getDocument
-      .mockResolvedValueOnce({ $id: 'p1', required_skills: [{ skill_name: 'React' }, { skill_name: 'Node.js' }] })
-      .mockResolvedValueOnce({ $id: 'p2', required_skills: [{ skill_name: 'React' }] })
-      .mockResolvedValueOnce({ $id: 'p3', required_skills: [{ skill_name: 'Python' }] });
+      .mockResolvedValueOnce({ documents: contracts, total: 3 })
+      // Call 5: PROJECTS (batch fetch by IDs in calculateTopSkills)
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', required_skills: [{ skill_name: 'React' }, { skill_name: 'Node.js' }] },
+          { $id: 'p2', required_skills: [{ skill_name: 'React' }] },
+          { $id: 'p3', required_skills: [{ skill_name: 'Python' }] },
+        ],
+        total: 3,
+      });
 
     const { getFreelancerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
     const result = await getFreelancerAnalytics('user-1');

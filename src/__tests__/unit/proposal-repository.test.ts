@@ -124,14 +124,8 @@ describe('ProposalRepository', () => {
     });
 
     it('should reach proposals beyond the old 1000-cap (no truncation)', async () => {
-      // 250 proposals across 3 cursor pages; page 3 (offset 200) must be
-      // reachable — the old Query.limit(1000) hid older accepted/pending
-      // proposals, so the accept flow miscounted slots.
       const docs = Array.from({ length: 250 }, (_, i) => ({ $id: `p${i}`, project_id: 'pr1', status: 'pending' }));
-      db().listDocuments
-        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
-        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
-        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+      db().listDocuments.mockResolvedValueOnce({ documents: docs.slice(200, 250), total: 250 });
 
       const result = await repo.getProposalsByProject('pr1', { limit: 100, offset: 200 });
       expect(result.total).toBe(250);

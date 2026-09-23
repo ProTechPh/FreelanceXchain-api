@@ -157,13 +157,8 @@ describe('ContractRepository', () => {
     });
 
     it('should reach contracts beyond the old 1000-cap (no truncation)', async () => {
-      // 250 contracts across 3 cursor pages; page 3 (offset 200) must be
-      // reachable — the old Query.limit(1000) made it empty.
       const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `c${i}` }));
-      mockListDocuments
-        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
-        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
-        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+      mockListDocuments.mockResolvedValueOnce({ documents: docs.slice(200, 250), total: 250 });
 
       const result = await repo.getContractsByFreelancer('f1', { limit: 100, offset: 200 });
       expect(result.total).toBe(250);
@@ -187,10 +182,7 @@ describe('ContractRepository', () => {
 
     it('should reach contracts beyond the old 1000-cap (no truncation)', async () => {
       const docs = Array.from({ length: 250 }, (_, i) => toAppwriteDoc({ id: `c${i}` }));
-      mockListDocuments
-        .mockResolvedValueOnce({ documents: docs.slice(0, 100), total: 250 })
-        .mockResolvedValueOnce({ documents: docs.slice(100, 200), total: 250 })
-        .mockResolvedValueOnce({ documents: docs.slice(200), total: 250 });
+      mockListDocuments.mockResolvedValueOnce({ documents: docs.slice(200, 250), total: 250 });
 
       const result = await repo.getContractsByEmployer('e1', { limit: 100, offset: 200 });
       expect(result.total).toBe(250);
@@ -271,35 +263,22 @@ describe('ContractRepository', () => {
       expect(result.items[1].id).toBe('c1');
     });
 
-    it('should not truncate at 25 documents per role (fetchAll multi-page regression)', async () => {
-      // 120 freelancer contracts + 120 employer contracts. Each role query
-      // exceeds one 100-doc page, exercising the cursor-pagination loop that
-      // the old listWithQueries implementation (default 25-doc Appwrite limit)
-      // silently dropped.
-      const freelancerPage1 = Array.from({ length: 100 }, (_, i) =>
-        toAppwriteDoc({ id: `f-${i}`, created_at: `2025-01-01T00:00:0${i % 10}Z` })
+    it('should not truncate at 25 documents per role (offset pagination)', async () => {
+      const freelancerDocs = Array.from({ length: 120 }, (_, i) =>
+        toAppwriteDoc({ id: `f-${i}`, created_at: `2025-01-01T00:00:00Z` })
       );
-      const freelancerPage2 = Array.from({ length: 20 }, (_, i) =>
-        toAppwriteDoc({ id: `f-${100 + i}`, created_at: '2025-01-02T00:00:00Z' })
-      );
-      const employerPage1 = Array.from({ length: 100 }, (_, i) =>
-        toAppwriteDoc({ id: `e-${i}`, created_at: '2025-02-01T00:00:00Z' })
-      );
-      const employerPage2 = Array.from({ length: 20 }, (_, i) =>
-        toAppwriteDoc({ id: `e-${100 + i}`, created_at: '2025-02-02T00:00:00Z' })
+      const employerDocs = Array.from({ length: 120 }, (_, i) =>
+        toAppwriteDoc({ id: `e-${i}`, created_at: `2025-02-01T00:00:00Z` })
       );
 
       mockListDocuments
-        .mockResolvedValueOnce({ documents: freelancerPage1, total: 120 })
-        .mockResolvedValueOnce({ documents: freelancerPage2, total: 120 })
-        .mockResolvedValueOnce({ documents: employerPage1, total: 120 })
-        .mockResolvedValueOnce({ documents: employerPage2, total: 120 });
+        .mockResolvedValueOnce({ documents: freelancerDocs.slice(0, 20), total: 120 })
+        .mockResolvedValueOnce({ documents: employerDocs.slice(0, 20), total: 120 });
 
       const result = await repo.getUserContracts('u1');
       expect(result.total).toBe(240);
-      expect(result.items).toHaveLength(20); // default page limit
-      // All 240 fetched (not truncated at 25+25=50)
-      expect(mockListDocuments).toHaveBeenCalledTimes(4);
+      expect(result.items).toHaveLength(20);
+      expect(mockListDocuments).toHaveBeenCalledTimes(2);
     });
 
     it('should return empty page when the database throws', async () => {

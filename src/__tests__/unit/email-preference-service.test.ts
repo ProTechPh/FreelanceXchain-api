@@ -7,12 +7,14 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 const mockLoggerError = jest.fn();
 const mockLoggerInfo = jest.fn();
 const mockLoggerWarn = jest.fn();
+const mockLoggerDebug = jest.fn();
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: {
     error: mockLoggerError,
     info: mockLoggerInfo,
     warn: mockLoggerWarn,
+    debug: mockLoggerDebug,
   },
 }));
 
@@ -83,6 +85,10 @@ describe('Email Preference Service', () => {
         milestone_updates: true,
         payment_notifications: true,
         dispute_notifications: true,
+        contract_notifications: true,
+        message_notifications: true,
+        review_notifications: true,
+        kyc_notifications: true,
         marketing_emails: false,
         weekly_digest: true,
       }));
@@ -485,7 +491,8 @@ describe('Email Preference Service - Direct Branch Coverage', () => {
     mockDatabases.createDocument.mockResolvedValueOnce({
       $id: 'ep-1', user_id: 'user-1', proposal_received: true, proposal_accepted: true,
       milestone_updates: true, payment_notifications: true, dispute_notifications: true,
-      marketing_emails: false, weekly_digest: true,
+      contract_notifications: true, message_notifications: true, review_notifications: true,
+      kyc_notifications: true, marketing_emails: false, weekly_digest: true,
       created_at: '2025-01-01', updated_at: '2025-01-01',
     });
 
