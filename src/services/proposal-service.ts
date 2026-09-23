@@ -493,6 +493,32 @@ type InitializeEscrowForContractInput = {
   rushFeePercentage: number;
 };
 
+async function applyRushMilestoneScaling(
+  project: Project,
+  proposalRate: number,
+  rushFee: number
+): Promise<Project> {
+  if (project.milestones.length === 0) return project;
+  const scaledAmounts = rescaleMilestoneAmounts(
+    project.milestones.map(m => m.amount),
+    proposalRate,
+    rushFee,
+  );
+  const scaledMilestones = project.milestones.map((m, i) => ({
+    ...m,
+    amount: scaledAmounts[i] ?? m.amount,
+  }));
+  const scaledEntityMilestones: MilestoneEntity[] = project.milestones.map((m, i) => ({
+    ...m,
+    due_date: m.dueDate,
+    amount: scaledAmounts[i] ?? m.amount,
+  }));
+  if ((project.freelancerLimit ?? 1) <= 1) {
+    await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
+  }
+  return { ...project, milestones: scaledMilestones };
+}
+
 async function initializeEscrowForContract(
   input: InitializeEscrowForContractInput
 ): Promise<void> {
@@ -552,30 +578,7 @@ export async function acceptProposal(
     // (deployed from project milestones) is funded with base + fee and the DB read
     // model matches the on-chain ledger. Without this, validateEscrowAmounts fails
     // with AMOUNT_MISMATCH and a rush contract can never be activated.
-    let rushProject = project;
-    if (isRush && rushFee > 0 && project.milestones.length > 0) {
-      const scaledAmounts = rescaleMilestoneAmounts(
-        project.milestones.map(m => m.amount),
-        proposalRate,
-        rushFee,
-      );
-      const scaledMilestones = project.milestones.map((m, i) => ({
-        ...m,
-        amount: scaledAmounts[i] ?? m.amount,
-      }));
-      const scaledEntityMilestones: MilestoneEntity[] = project.milestones.map((m, i) => ({
-        ...m,
-        due_date: m.dueDate,
-        amount: scaledAmounts[i] ?? m.amount,
-      }));
-      // Only mutate the project's milestones if it is a single-freelancer project.
-      // For multi-freelancer projects, the project document serves as a shared template
-      // and must not be mutated, avoiding template corruption for other proposals.
-      if ((project.freelancerLimit ?? 1) <= 1) {
-        await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
-      }
-      rushProject = { ...project, milestones: scaledMilestones };
-    }
+    const rushProject = (isRush && rushFee > 0) ? await applyRushMilestoneScaling(project, proposalRate, rushFee) : project;
 
     const contractResult = await createContractFromAcceptedProposal({
       proposalId,
@@ -594,10 +597,8 @@ export async function acceptProposal(
     // BLF-6.2: Only reject the remaining pending proposals once the project's
     // freelancer slots are full; otherwise multi-freelancer projects could never
     // fill their other slots.
-    const maxFreelancers = project.freelancerLimit != null ? project.freelancerLimit : 1;
-    await rejectOtherProposals(project.id, proposalId, maxFreelancers);
+    await rejectOtherProposals(project.id, proposalId, project.freelancerLimit ?? 1);
 
-    // H12: Log non-critical failures but don't silently swallow them
     try {
       await initializeEscrowForContract({
         contract: contract,
@@ -615,21 +616,18 @@ export async function acceptProposal(
       });
     }
 
-    // Phase: Update project status
     try {
       await updateProjectAfterAcceptance(project.id, proposalId);
     } catch (updateError) {
-      logger.error('Failed to update project status after acceptance — proposal accepted but project status may be stale', {
+      logger.error('Failed to update project status after acceptance ï¿½ proposal accepted but project status may be stale', {
         projectId: project.id,
         proposalId: proposal.id,
         error: updateError,
       });
     }
 
-    // Phase: Notify (non-blocking)
     void notifyProposalAccepted(proposal, contract, project);
 
-    // Phase: Audit (non-blocking)
     void auditProposalAcceptance({ proposal, contract, employerId, project, totalAmount, rushFee, isRush });
 
     return successResult({
