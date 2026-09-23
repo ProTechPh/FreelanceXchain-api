@@ -145,8 +145,8 @@ export class RedisCache<T> implements Cache<T> {
       const data = await redis.get(this.getFullKey(key));
       if (!data) return null;
       return JSON.parse(data) as T;
-    } catch (error) {
-      logger.warn(`[cache:${this.prefix}] Redis get error:`, error);
+    } catch (error: unknown) {
+      logger.warn(`[cache:${this.prefix}] Redis get error: ${String(error)}`);
       const value = this.fallbackCache.get(key);
       return value ?? null;
     }
@@ -162,7 +162,7 @@ export class RedisCache<T> implements Cache<T> {
     // Fire-and-forget Redis update
     if (this.redisAvailable) {
       redis.setex(this.getFullKey(key), ttlSeconds, JSON.stringify(value)).catch((error) => {
-        logger.warn(`[cache:${this.prefix}] Redis set error:`, error);
+        logger.warn(`[cache:${this.prefix}] Redis set error: ${String(error)}`);
       });
     }
   }
@@ -180,8 +180,8 @@ export class RedisCache<T> implements Cache<T> {
 
     try {
       await redis.setex(this.getFullKey(key), ttlSeconds, JSON.stringify(value));
-    } catch (error) {
-      logger.warn(`[cache:${this.prefix}] Redis set error:`, error);
+    } catch (error: unknown) {
+      logger.warn(`[cache:${this.prefix}] Redis set error: ${String(error)}`);
     }
   }
 
@@ -192,7 +192,7 @@ export class RedisCache<T> implements Cache<T> {
     // Fire-and-forget Redis delete
     if (this.redisAvailable) {
       redis.del(this.getFullKey(key)).catch((error) => {
-        logger.warn(`[cache:${this.prefix}] Redis delete error:`, error);
+        logger.warn(`[cache:${this.prefix}] Redis delete error: ${String(error)}`);
       });
     }
     
@@ -209,8 +209,8 @@ export class RedisCache<T> implements Cache<T> {
 
     try {
       await redis.del(this.getFullKey(key));
-    } catch (error) {
-      logger.warn(`[cache:${this.prefix}] Redis delete error:`, error);
+    } catch (error: unknown) {
+      logger.warn(`[cache:${this.prefix}] Redis delete error: ${String(error)}`);
     }
   }
 
@@ -222,7 +222,7 @@ export class RedisCache<T> implements Cache<T> {
     // Fire-and-forget Redis delete
     if (this.redisAvailable) {
       this.deleteMatchingAsync(predicate).catch((error) => {
-        logger.warn(`[cache:${this.prefix}] Redis deleteMatching error:`, error);
+        logger.warn(`[cache:${this.prefix}] Redis deleteMatching error: ${String(error)}`);
       });
     }
   }
@@ -260,8 +260,8 @@ export class RedisCache<T> implements Cache<T> {
         }
         await pipeline.exec();
       }
-    } catch (error) {
-      logger.warn(`[cache:${this.prefix}] Redis deleteMatching error:`, error);
+    } catch (error: unknown) {
+      logger.warn(`[cache:${this.prefix}] Redis deleteMatching error: ${String(error)}`);
     }
   }
 
@@ -272,7 +272,7 @@ export class RedisCache<T> implements Cache<T> {
     // Fire-and-forget Redis clear
     if (this.redisAvailable) {
       this.clearAsync().catch((error) => {
-        logger.warn(`[cache:${this.prefix}] Redis clear error:`, error);
+        logger.warn(`[cache:${this.prefix}] Redis clear error: ${String(error)}`);
       });
     }
   }
@@ -298,8 +298,8 @@ export class RedisCache<T> implements Cache<T> {
         }
         await pipeline.exec();
       }
-    } catch (error) {
-      logger.warn(`[cache:${this.prefix}] Redis clear error:`, error);
+    } catch (error: unknown) {
+      logger.warn(`[cache:${this.prefix}] Redis clear error: ${String(error)}`);
     }
   }
 
@@ -327,6 +327,7 @@ export class RedisCache<T> implements Cache<T> {
           
           for (let i = 0; i < keys.length; i++) {
             const fullKey = keys[i];
+            if (!fullKey) continue;
             const data = values[i];
             if (data) {
               // Extract the key without prefix
@@ -346,8 +347,8 @@ export class RedisCache<T> implements Cache<T> {
       } while (cursor !== '0');
       
       logger.info(`[cache:${this.prefix}] Warmed cache with ${this.fallbackCache.size} entries`);
-    } catch (error) {
-      logger.warn(`[cache:${this.prefix}] Failed to warm cache:`, error);
+    } catch (error: unknown) {
+      logger.warn(`[cache:${this.prefix}] Failed to warm cache: ${String(error)}`);
     }
   }
 
@@ -437,3 +438,5 @@ export async function warmAllCaches(): Promise<void> {
     }
   }
 }
+
+

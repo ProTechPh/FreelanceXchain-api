@@ -405,7 +405,8 @@ export async function getPlatformMetrics(
     const completedContractsCount = completedContractsResponse.total;
 
     // Paginated cursor fetch for completed contracts
-    const effectiveLimit = limit + offset; — the old Query.limit(1000) undercounted volume and
+    const effectiveLimit = limit + offset;
+    // the old Query.limit(1000) undercounted volume and
     // active users past 1000 records (the limit(1000) truncation class).
     const completedDocs = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
       Query.equal('status', 'completed'),
@@ -1761,4 +1762,5 @@ export async function getMarketplaceVelocityReport(): Promise<ServiceResult<Mark
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
+
 
