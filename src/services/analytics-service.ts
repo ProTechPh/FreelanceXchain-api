@@ -19,15 +19,39 @@ import { successResult, errorResult } from '../types/service-result.js';
 import { ENTITLED_STATUSES, type SubscriptionStatus } from '../models/subscription.js';
 
 /**
+ * Wraps an async operation with timing logs to identify slow queries.
+ * Logs operations taking >100ms as warnings, others as debug.
+ */
+async function timedOperation<T>(
+  operationName: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await fn();
+  } finally {
+    const duration = performance.now() - start;
+    if (duration > 100) {
+      logger.warn(`Slow analytics query [${operationName}]: ${duration.toFixed(2)}ms`);
+    } else {
+      logger.debug(`Analytics query [${operationName}]: ${duration.toFixed(2)}ms`);
+    }
+  }
+}
+
+
+
+/**
  * Fetch ALL documents matching the queries using cursor-based pagination (the
  * base-repository.fetchAll pattern, for this service's raw collection scans).
  * The old Query.limit(1000) silently undercounted: a user with more than 1000
  * completed contracts saw truncated earnings/spend totals (the limit(1000)
  * truncation class). Errors propagate to the caller.
  */
-async function fetchAllCollection(collectionId: string, baseQueries: string[], pageSize = 100): Promise<Models.DefaultDocument[]> {
+async function fetchAllCollection(collectionId: string, baseQueries: string[], pageSize = 100, maxDocs?: number): Promise<Models.DefaultDocument[]> {
   const allDocs: Models.DefaultDocument[] = [];
   let lastId: string | undefined;
+  const effectiveMaxDocs = maxDocs && maxDocs > 0 ? maxDocs : undefined;
 
   while (true) {
     const queries = [...baseQueries, Query.limit(pageSize)];
@@ -35,8 +59,15 @@ async function fetchAllCollection(collectionId: string, baseQueries: string[], p
       queries.push(Query.cursorAfter(lastId));
     }
 
-    const response = await databases.listDocuments(DATABASE_ID, collectionId, queries);
+    const response = await timedOperation(collectionId + '.listDocuments', () =>
+      databases.listDocuments(DATABASE_ID, collectionId, queries)
+    );
     allDocs.push(...response.documents);
+
+    // Check if we've reached the maximum document limit
+    if (effectiveMaxDocs && allDocs.length >= effectiveMaxDocs) {
+      return allDocs.slice(0, effectiveMaxDocs);
+    }
 
     if (response.documents.length < pageSize) break;
     lastId = response.documents[response.documents.length - 1]?.$id;
@@ -49,6 +80,11 @@ async function fetchAllCollection(collectionId: string, baseQueries: string[], p
 interface DateRangeOptions {
   startDate?: string;
   endDate?: string;
+}
+
+interface PaginationOptions {
+  limit?: number;
+  offset?: number;
 }
 
 interface FreelancerAnalytics {
@@ -102,6 +138,11 @@ export interface FunnelMetricsReport {
   totalRegistered: number;
   overallConversionRate: number;
   generatedAt: string;
+  pagination?: {
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 export interface AdminAnalytics {
@@ -143,6 +184,11 @@ export interface CohortRetentionReport {
   averageMonth1Retention: number;
   averageMonth3Retention: number;
   generatedAt: string;
+  pagination?: {
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 export interface UserChurnRisk {
@@ -166,6 +212,11 @@ export interface ChurnRiskReport {
   };
   highRiskUsers: UserChurnRisk[];
   generatedAt: string;
+  pagination?: {
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 export interface MarketplaceVelocityReport {
@@ -323,7 +374,10 @@ export async function getEmployerAnalytics(
 /**
  * Get platform metrics
  */
-export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetrics>> {
+export async function getPlatformMetrics(
+  options: PaginationOptions = {}
+): Promise<ServiceResult<PlatformMetrics & { pagination?: { limit: number; offset: number; hasMore: boolean } }>> {
+  const { limit = 100, offset = 0 } = options;
   const cached = platformMetricsCache.get('platform_metrics');
   if (cached) {
     return successResult(cached);
@@ -348,18 +402,22 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     const totalUsers = usersResponse.total;
     const totalProjects = projectsResponse.total;
     const totalContracts = contractsResponse.total;
-    const completedContracts = completedContractsResponse.total;
+    const completedContractsCount = completedContractsResponse.total;
 
-    // Full cursor fetches — the old Query.limit(1000) undercounted volume and
+    // Paginated cursor fetch for completed contracts
+    const effectiveLimit = limit + offset; — the old Query.limit(1000) undercounted volume and
     // active users past 1000 records (the limit(1000) truncation class).
     const completedDocs = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
       Query.equal('status', 'completed'),
-    ]);
-    const totalTransactionVolume = completedDocs.reduce(
+    ], 100, effectiveLimit);
+
+    // Apply offset to completed contracts for pagination
+    const paginatedCompletedDocs = completedDocs.slice(offset, offset + limit);
+    const totalTransactionVolume = paginatedCompletedDocs.reduce(
       (sum, c) => sum + Number(c.total_amount || 0), 0
     );
 
-    const auditLogs = await fetchAllCollection(COLLECTIONS.AUDIT_LOG_ENTRIES, []);
+    const auditLogs = await fetchAllCollection(COLLECTIONS.AUDIT_LOG_ENTRIES, [], 100, effectiveLimit);
 
     // Count active users (those with audit log entries in last 30 days)
     const thirtyDaysAgo = new Date();
@@ -372,7 +430,7 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     }
     const activeUsers = activeUserIds.size;
 
-    const completionRate = totalContracts > 0 ? (completedContracts / totalContracts) * 100 : 0;
+    const completionRate = totalContracts > 0 ? (completedContractsCount / totalContracts) * 100 : 0;
 
     const data = {
       totalUsers,
@@ -381,6 +439,11 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
       totalTransactionVolume,
       activeUsers,
       completionRate: Math.round(completionRate * 10) / 10,
+      pagination: {
+        limit,
+        offset,
+        hasMore: completedContractsCount > offset + limit,
+      },
     };
 
     platformMetricsCache.set('platform_metrics', data);
@@ -675,23 +738,37 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
     const uniqueProjectIds = [...new Set(projectIds)];
     const skillMap = new Map<string, number>();
 
-    // Fetch each unique project once (Appwrite doesn't support IN queries)
+    // Batch-fetch projects by ID to avoid N+1 queries. Appwrite caps equal() at 100 values per query.
     const projectSkillMap = new Map<string, Array<string | { skill_name?: string; name?: string }>>();
-    await Promise.all(
-      uniqueProjectIds.map(async (projectId: string) => {
-        try {
-          const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
-          const requiredSkills = projectDoc.required_skills;
+    for (let i = 0; i < uniqueProjectIds.length; i += 100) {
+      const chunk = uniqueProjectIds.slice(i, i + 100);
+      try {
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTIONS.PROJECTS,
+          [Query.equal('$id', chunk), Query.limit(chunk.length)]
+        );
+        for (const doc of response.documents) {
+          const projectId = doc.$id;
+          const requiredSkills = doc.required_skills;
           const skills: Array<string | { skill_name?: string; name?: string }> = typeof requiredSkills === 'string'
             ? JSON.parse(requiredSkills)
             : requiredSkills || [];
-
           projectSkillMap.set(projectId, skills);
-        } catch {
+        }
+        // Ensure missing projects are recorded as empty arrays
+        for (const projectId of chunk) {
+          if (!projectSkillMap.has(projectId)) {
+            projectSkillMap.set(projectId, []);
+          }
+        }
+      } catch {
+        // Mark all projects in this chunk as having no skills on error
+        for (const projectId of chunk) {
           projectSkillMap.set(projectId, []);
         }
-      })
-    );
+      }
+    }
 
     for (const projectId of projectIds) {
       const skills = projectSkillMap.get(projectId) || [];
@@ -731,6 +808,11 @@ export interface MarketplaceLiquidityReport {
   balancedSkills: SkillLiquidityMetric[];
   surplusSkills: SkillLiquidityMetric[];
   generatedAt: string;
+  pagination?: {
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 function extractSkillCounts(documents: Models.DefaultDocument[], fieldName: 'required_skills' | 'skills'): Map<string, number> {
@@ -788,48 +870,61 @@ function calculateLiquidityMetric(skillName: string, demand: number, supply: num
  * 1.0 <= TDLR <= 3.5 -> 'balanced' (healthy competition and fill rate)
  * TDLR > 3.5 -> 'surplus' (excess freelancers; need employer acquisition)
  */
-export async function getMarketplaceLiquidityReport(): Promise<ServiceResult<MarketplaceLiquidityReport>> {
+export async function getMarketplaceLiquidityReport(
+  options: PaginationOptions = {}
+): Promise<ServiceResult<MarketplaceLiquidityReport>> {
+  const { limit = 100, offset = 0 } = options;
   const cached = marketplaceLiquidityCache.get('marketplace_liquidity');
   if (cached) {
     return successResult(cached);
   }
 
   try {
+    const effectiveLimit = limit + offset;
     const [projects, profiles] = await Promise.all([
-      fetchAllCollection(COLLECTIONS.PROJECTS, [Query.equal('status', 'open')]),
-      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
+      fetchAllCollection(COLLECTIONS.PROJECTS, [Query.equal('status', 'open')], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, [], 100, effectiveLimit),
     ]);
 
     const demandMap = extractSkillCounts(projects, 'required_skills');
     const supplyMap = extractSkillCounts(profiles, 'skills');
     const allSkills = new Set([...demandMap.keys(), ...supplyMap.keys()]);
 
-    const metrics: SkillLiquidityMetric[] = [];
+    const allMetrics: SkillLiquidityMetric[] = [];
     for (const skillName of allSkills) {
-      metrics.push(calculateLiquidityMetric(
+      allMetrics.push(calculateLiquidityMetric(
         skillName,
         demandMap.get(skillName) || 0,
         supplyMap.get(skillName) || 0
       ));
     }
 
-    metrics.sort((a, b) => (b.projectDemandCount + b.talentSupplyCount) - (a.projectDemandCount + a.talentSupplyCount));
+    allMetrics.sort((a, b) => (b.projectDemandCount + b.talentSupplyCount) - (a.projectDemandCount + a.talentSupplyCount));
 
-    const shortageSkills = metrics.filter(m => m.liquidityStatus === 'shortage');
-    const balancedSkills = metrics.filter(m => m.liquidityStatus === 'balanced');
-    const surplusSkills = metrics.filter(m => m.liquidityStatus === 'surplus');
+    // Apply pagination to skills
+    const paginatedMetrics = allMetrics.slice(offset, offset + limit);
+    const totalSkills = allMetrics.length;
 
-    const score = metrics.length > 0
-      ? Math.round((balancedSkills.length / metrics.length) * 100)
+    const shortageSkills = paginatedMetrics.filter(m => m.liquidityStatus === 'shortage');
+    const balancedSkills = paginatedMetrics.filter(m => m.liquidityStatus === 'balanced');
+    const surplusSkills = paginatedMetrics.filter(m => m.liquidityStatus === 'surplus');
+
+    const score = allMetrics.length > 0
+      ? Math.round((allMetrics.filter(m => m.liquidityStatus === 'balanced').length / allMetrics.length) * 100)
       : 100;
 
     const report: MarketplaceLiquidityReport = {
       overallLiquidityScore: score,
-      skillsAnalyzed: metrics.length,
+      skillsAnalyzed: paginatedMetrics.length,
       shortageSkills,
       balancedSkills,
       surplusSkills,
       generatedAt: new Date().toISOString(),
+      pagination: {
+        limit,
+        offset,
+        hasMore: totalSkills > offset + limit,
+      },
     };
 
     marketplaceLiquidityCache.set('marketplace_liquidity', report);
@@ -963,13 +1058,17 @@ function buildFunnelStages(rawStages: RawFunnelStage[], totalRegistered: number)
  * 7. Contract Completed
  * 8. Repeat Users (>= 2 completed contracts)
  */
-export async function getFunnelMetrics(): Promise<ServiceResult<FunnelMetricsReport>> {
+export async function getFunnelMetrics(
+  options: PaginationOptions = {}
+): Promise<ServiceResult<FunnelMetricsReport>> {
+  const { limit = 100, offset = 0 } = options;
   const cached = funnelMetricsCache.get('funnel_metrics');
   if (cached) {
     return successResult(cached);
   }
 
   try {
+    const effectiveLimit = limit + offset;
     const [
       allUsers,
       freelancerProfiles,
@@ -977,11 +1076,11 @@ export async function getFunnelMetrics(): Promise<ServiceResult<FunnelMetricsRep
       proposals,
       contracts,
     ] = await Promise.all([
-      fetchAllCollection(COLLECTIONS.USERS, []),
-      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
-      fetchAllCollection(COLLECTIONS.PROJECTS, []),
-      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
-      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
+      fetchAllCollection(COLLECTIONS.USERS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.PROJECTS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, [], 100, effectiveLimit),
     ]);
 
     const totalRegistered = allUsers.length;
@@ -1003,6 +1102,11 @@ export async function getFunnelMetrics(): Promise<ServiceResult<FunnelMetricsRep
       totalRegistered,
       overallConversionRate,
       generatedAt: new Date().toISOString(),
+      pagination: {
+        limit,
+        offset,
+        hasMore: totalRegistered > offset + limit,
+      },
     };
 
     funnelMetricsCache.set('funnel_metrics', report);
@@ -1176,18 +1280,22 @@ function computeCohortMonthMetrics(
  * Tracks user engagement and GMV retention by registration cohort across months.
  * Cached for 60s.
  */
-export async function getCohortRetentionReport(): Promise<ServiceResult<CohortRetentionReport>> {
+export async function getCohortRetentionReport(
+  options: PaginationOptions = {}
+): Promise<ServiceResult<CohortRetentionReport>> {
+  const { limit = 100, offset = 0 } = options;
   const cached = cohortRetentionCache.get('cohort_retention');
   if (cached) {
     return successResult(cached);
   }
 
   try {
+    const effectiveLimit = limit + offset;
     const [allUsers, allContracts, allProjects, allProposals] = await Promise.all([
-      fetchAllCollection(COLLECTIONS.USERS, []),
-      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
-      fetchAllCollection(COLLECTIONS.PROJECTS, []),
-      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
+      fetchAllCollection(COLLECTIONS.USERS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.PROJECTS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, [], 100, effectiveLimit),
     ]);
 
     const { userCohortMap, userActivityMonths, completedContractGmvByMonth } = buildUserCohortMaps(
@@ -1208,11 +1316,15 @@ export async function getCohortRetentionReport(): Promise<ServiceResult<CohortRe
     const currentMonthKey = getYearMonthKey(new Date());
     const sortedCohorts = Array.from(cohortGroups.keys()).sort();
 
+    // Apply pagination to cohorts
+    const paginatedCohorts = sortedCohorts.slice(offset, offset + limit);
+    const totalCohorts = sortedCohorts.length;
+
     const cohorts: CohortData[] = [];
     const month1Rates: number[] = [];
     const month3Rates: number[] = [];
 
-    for (const cohortMonth of sortedCohorts) {
+    for (const cohortMonth of paginatedCohorts) {
       const userIds = cohortGroups.get(cohortMonth) || [];
       if (userIds.length === 0) continue;
 
@@ -1248,6 +1360,11 @@ export async function getCohortRetentionReport(): Promise<ServiceResult<CohortRe
       averageMonth1Retention,
       averageMonth3Retention,
       generatedAt: new Date().toISOString(),
+      pagination: {
+        limit,
+        offset,
+        hasMore: totalCohorts > offset + limit,
+      },
     };
 
     cohortRetentionCache.set('cohort_retention', report);
@@ -1423,20 +1540,24 @@ function buildChurnContext(data: ChurnRawCollections): ChurnContext {
  * Provides actionable early-warning alerts and targeted retention playbooks.
  * Cached for 60s.
  */
-export async function getChurnRiskReport(): Promise<ServiceResult<ChurnRiskReport>> {
+export async function getChurnRiskReport(
+  options: PaginationOptions = {}
+): Promise<ServiceResult<ChurnRiskReport>> {
+  const { limit = 100, offset = 0 } = options;
   const cached = churnRiskCache.get('churn_risk');
   if (cached) {
     return successResult(cached);
   }
 
   try {
+    const effectiveLimit = limit + offset;
     const [allUsers, allProfiles, allProposals, allContracts, allReviews, allDisputes] = await Promise.all([
-      fetchAllCollection(COLLECTIONS.USERS, []),
-      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, []),
-      fetchAllCollection(COLLECTIONS.PROPOSALS, []),
-      fetchAllCollection(COLLECTIONS.CONTRACTS, []),
-      fetchAllCollection(COLLECTIONS.REVIEWS, []),
-      fetchAllCollection(COLLECTIONS.DISPUTES, []),
+      fetchAllCollection(COLLECTIONS.USERS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.FREELANCER_PROFILES, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.PROPOSALS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.CONTRACTS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.REVIEWS, [], 100, effectiveLimit),
+      fetchAllCollection(COLLECTIONS.DISPUTES, [], 100, effectiveLimit),
     ]);
 
     const ctx = buildChurnContext({ allProfiles, allReviews, allProposals, allContracts, allDisputes });
@@ -1454,20 +1575,28 @@ export async function getChurnRiskReport(): Promise<ServiceResult<ChurnRiskRepor
       evaluatedUsers.push(evaluation);
     }
 
-    const highRiskUsers = evaluatedUsers
+    const totalEvaluated = evaluatedUsers.length;
+
+    // Apply pagination to high risk users
+    const paginatedHighRiskUsers = evaluatedUsers
       .filter(u => u.riskLevel === 'high')
       .sort((a, b) => b.riskScore - a.riskScore)
-      .slice(0, 50);
+      .slice(offset, offset + limit);
 
     const report: ChurnRiskReport = {
-      totalEvaluated: evaluatedUsers.length,
+      totalEvaluated,
       riskDistribution: {
         low: lowCount,
         medium: mediumCount,
         high: highCount,
       },
-      highRiskUsers,
+      highRiskUsers: paginatedHighRiskUsers,
       generatedAt: new Date().toISOString(),
+      pagination: {
+        limit,
+        offset,
+        hasMore: totalEvaluated > offset + limit,
+      },
     };
 
     churnRiskCache.set('churn_risk', report);

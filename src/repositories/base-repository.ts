@@ -10,7 +10,7 @@ import type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 export type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 export { RepositoryError } from './types.js';
 
-// ── Serialization helpers ──────────────────────────────────────
+// -- Serialization helpers --------------------------------------
 
 /**
  * Attempt to deserialize a value that was JSON.stringify'd before storage.
@@ -47,7 +47,7 @@ function serializeAttributeValue(key: string, value: unknown): unknown {
   return typeof value === 'object' ? JSON.stringify(value) : value;
 }
 
-// ── Document mapping ───────────────────────────────────────────
+// -- Document mapping -------------------------------------------
 
 /**
  * Map an Appwrite document to a domain entity.
@@ -89,13 +89,36 @@ export function fromAppwriteDoc<T = Record<string, unknown>>(doc: Record<string,
 
 export class BaseRepository<T extends BaseEntity> {
   protected collectionId: string;
+  protected collectionName: string;
 
-  constructor(collectionId: string) {
+  constructor(collectionId: string, collectionName?: string) {
     this.collectionId = collectionId;
+    this.collectionName = collectionName || collectionId;
   }
 
   protected mapDoc(doc: Record<string, unknown>): T {
     return mapDocument<T>(doc);
+  }
+
+  /**
+   * Wraps a database query with timing logs to identify slow queries.
+   * Logs queries taking >100ms as warnings, others as debug.
+   */
+  protected async timedQuery<U>(
+    operationName: string,
+    fn: () => Promise<U>
+  ): Promise<U> {
+    const start = performance.now();
+    try {
+      return await fn();
+    } finally {
+      const duration = performance.now() - start;
+      if (duration > 100) {
+        logger.warn(`Slow query [${this.collectionName}.${operationName}]: ${duration.toFixed(2)}ms`);
+      } else {
+        logger.debug(`Query [${this.collectionName}.${operationName}]: ${duration.toFixed(2)}ms`);
+      }
+    }
   }
 
   async create(item: Omit<T, 'created_at' | 'updated_at' | 'id'> & { id?: string }): Promise<T> {
@@ -107,18 +130,22 @@ export class BaseRepository<T extends BaseEntity> {
       }
     }
 
-    const doc = await databases.createDocument(
-      DATABASE_ID,
-      this.collectionId,
-      (id as string) || ID.unique(),
-      attrs
+    const doc = await this.timedQuery('create', () =>
+      databases.createDocument(
+        DATABASE_ID,
+        this.collectionId,
+        (id as string) || ID.unique(),
+        attrs
+      )
     );
     return mapDocument<T>(doc);
   }
 
   async getById(id: string): Promise<T | null> {
     try {
-      const doc = await databases.getDocument(DATABASE_ID, this.collectionId, id);
+      const doc = await this.timedQuery('getById', () =>
+        databases.getDocument(DATABASE_ID, this.collectionId, id)
+      );
       return mapDocument<T>(doc);
     } catch (error) {
       logger.error(`Repository error in ${this.collectionId}.getById`, { id, error });
@@ -136,11 +163,13 @@ export class BaseRepository<T extends BaseEntity> {
         }
       }
 
-      const doc = await databases.updateDocument(
-        DATABASE_ID,
-        this.collectionId,
-        id,
-        attrs
+      const doc = await this.timedQuery('update', () =>
+        databases.updateDocument(
+          DATABASE_ID,
+          this.collectionId,
+          id,
+          attrs
+        )
       );
       return mapDocument<T>(doc);
     } catch (error) {
@@ -151,7 +180,9 @@ export class BaseRepository<T extends BaseEntity> {
 
   async delete(id: string): Promise<boolean> {
     try {
-      await databases.deleteDocument(DATABASE_ID, this.collectionId, id);
+      await this.timedQuery('delete', () =>
+        databases.deleteDocument(DATABASE_ID, this.collectionId, id)
+      );
       return true;
     } catch (error) {
       logger.error(`Repository error in ${this.collectionId}.delete`, { id, error });
@@ -161,10 +192,12 @@ export class BaseRepository<T extends BaseEntity> {
 
   async findOne(column: string, value: unknown): Promise<T | null> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        this.collectionId,
-        [Query.equal(column, value as string | number | boolean), Query.limit(1)]
+      const response = await this.timedQuery('findOne', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          this.collectionId,
+          [Query.equal(column, value as string | number | boolean), Query.limit(1)]
+        )
       );
       return response.documents.length > 0 ? mapDocument<T>(response.documents[0]!) : null;
     } catch (error) {
@@ -211,7 +244,9 @@ export class BaseRepository<T extends BaseEntity> {
         queries.push(Query.cursorAfter(lastId));
       }
 
-      const response = await databases.listDocuments(DATABASE_ID, this.collectionId, queries);
+      const response = await this.timedQuery('fetchInBatches.listDocuments', () =>
+        databases.listDocuments(DATABASE_ID, this.collectionId, queries)
+      );
       const shouldStop = await callback(response.documents);
       if (shouldStop === false) break;
 
@@ -235,10 +270,12 @@ export class BaseRepository<T extends BaseEntity> {
         Query.offset(offset),
       ];
 
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        this.collectionId,
-        queries
+      const response = await this.timedQuery('queryPaginated', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          this.collectionId,
+          queries
+        )
       );
 
       return {
@@ -252,17 +289,19 @@ export class BaseRepository<T extends BaseEntity> {
     }
   }
 
-  // ─── Query helpers ──────────────────────────────────────────
+  // --- Query helpers ------------------------------------------
 
   protected async listWithQueries<U = T>(
-    queries: string[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
+    queries: string[], // Query[] at runtime � Appwrite SDK types Query as non-string but methods return strings
     mapper?: (doc: Record<string, unknown>) => U
   ): Promise<U[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        this.collectionId,
-        queries
+      const response = await this.timedQuery('listWithQueries', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          this.collectionId,
+          queries
+        )
       );
       return mapper
         ? response.documents.map(mapper)
@@ -275,10 +314,12 @@ export class BaseRepository<T extends BaseEntity> {
 
   protected async countWithQueries(queries: string[]): Promise<number> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        this.collectionId,
-        [...queries, Query.limit(1)]
+      const response = await this.timedQuery('countWithQueries', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          this.collectionId,
+          [...queries, Query.limit(1)]
+        )
       );
       return response.total;
     } catch (error) {
@@ -288,16 +329,18 @@ export class BaseRepository<T extends BaseEntity> {
   }
 
   protected async paginatedWithQueries<U = T>(
-    queries: string[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
+    queries: string[], // Query[] at runtime � Appwrite SDK types Query as non-string but methods return strings
     limit: number,
     offset: number,
     mapper?: (doc: Record<string, unknown>) => U
   ): Promise<PaginatedResult<U>> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        this.collectionId,
-        [...queries, Query.limit(limit), Query.offset(offset)]
+      const response = await this.timedQuery('paginatedWithQueries', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          this.collectionId,
+          [...queries, Query.limit(limit), Query.offset(offset)]
+        )
       );
 
       return {

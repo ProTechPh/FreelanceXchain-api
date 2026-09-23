@@ -177,23 +177,15 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      // fetchAll (cursor pagination) + in-memory slice instead of
-      // paginatedWithQueries' Query.limit(limit): a contract past the first
-      // 1000 was unreachable (the limit(1000) truncation class) — milestone
-      // lookups reported NOT_FOUND for milestones on older contracts.
-      const all = await this.fetchAll([
-        Query.equal('freelancer_id', freelancerId),
-        Query.orderDesc('$createdAt'),
-      ]);
-
-      const total = all.length;
-      const items = all.slice(offset, offset + limit);
-
-      return {
-        items,
-        hasMore: offset + limit < total,
-        total,
-      };
+      return this.paginatedWithQueries(
+        [
+          Query.equal('freelancer_id', freelancerId),
+          Query.orderDesc('$createdAt'),
+        ],
+        limit,
+        offset,
+        mapDoc
+      );
     } catch {
       return { items: [], hasMore: false, total: 0 };
     }
@@ -204,21 +196,15 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      // fetchAll (cursor pagination) + in-memory slice — same truncation-class
-      // fix as getContractsByFreelancer.
-      const all = await this.fetchAll([
-        Query.equal('employer_id', employerId),
-        Query.orderDesc('$createdAt'),
-      ]);
-
-      const total = all.length;
-      const items = all.slice(offset, offset + limit);
-
-      return {
-        items,
-        hasMore: offset + limit < total,
-        total,
-      };
+      return this.paginatedWithQueries(
+        [
+          Query.equal('employer_id', employerId),
+          Query.orderDesc('$createdAt'),
+        ],
+        limit,
+        offset,
+        mapDoc
+      );
     } catch {
       return { items: [], hasMore: false, total: 0 };
     }
@@ -233,7 +219,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   /**
    * Count contracts by status across both of the user's roles (freelancer + employer).
-   * Uses two count queries (Appwrite has no OR) — O(1) vs materializing every
+   * Uses two count queries (Appwrite has no OR) � O(1) vs materializing every
    * contract, and never truncates.
    */
   async countContractsByUserAndStatus(userId: string, status: ContractStatus): Promise<number> {
@@ -249,29 +235,38 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      // Appwrite doesn't support OR in queries; combine both roles. Use the
-      // cursor-based fetchAll (not listWithQueries) so neither role's result is
-      // silently truncated at Appwrite's default 25-doc page size before the
-      // in-memory merge + pagination.
-      const [freelancer, employer] = await Promise.all([
-        this.fetchAll([Query.equal('freelancer_id', userId), Query.orderDesc('$createdAt')]),
-        this.fetchAll([Query.equal('employer_id', userId), Query.orderDesc('$createdAt')]),
+      // Appwrite does not support OR queries. We query both roles separately
+      // and merge results. This approach uses database-level pagination for each
+      // query rather than fetching all records.
+      const [freelancerResult, employerResult] = await Promise.all([
+        this.paginatedWithQueries(
+          [Query.equal('freelancer_id', userId), Query.orderDesc('$createdAt')],
+          limit,
+          offset,
+          mapDoc
+        ),
+        this.paginatedWithQueries(
+          [Query.equal('employer_id', userId), Query.orderDesc('$createdAt')],
+          limit,
+          offset,
+          mapDoc
+        ),
       ]);
 
-      const all = [...freelancer, ...employer]
+      // Merge and sort by created_at descending
+      const allItems = [...freelancerResult.items, ...employerResult.items]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      const total = all.length;
-      const items = all.slice(offset, offset + limit);
+      // Take only up to limit items after merging
+      const items = allItems.slice(0, limit);
+      const total = (freelancerResult.total ?? 0) + (employerResult.total ?? 0);
 
       return {
         items,
-        hasMore: offset + limit < total,
+        hasMore: offset + items.length < total,
         total,
       };
     } catch {
-      // Matches the previous listWithQueries error behavior: surface an empty
-      // page rather than throwing on a transient DB failure.
       return { items: [], hasMore: false, total: 0 };
     }
   }

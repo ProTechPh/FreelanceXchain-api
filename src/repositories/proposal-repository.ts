@@ -63,23 +63,16 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      // fetchAll + in-memory slice instead of paginatedWithQueries' Query.limit:
-      // the accept flow counted accepted proposals and rejected pending ones
-      // from a 1000-cap slice — an older accepted proposal was invisible, so a
-      // full project never transitioned to in_progress (the limit(1000)
-      // truncation class).
-      const all = await this.fetchAll([
-        Query.equal('project_id', projectId),
-        Query.notEqual('status', 'withdrawn'),
-        Query.orderDesc('$createdAt'),
-      ]);
-      const total = all.length;
-      const items = all.slice(offset, offset + limit).map(mapDoc);
-      return {
-        items,
-        hasMore: offset + limit < total,
-        total,
-      };
+      return this.paginatedWithQueries(
+        [
+          Query.equal('project_id', projectId),
+          Query.notEqual('status', 'withdrawn'),
+          Query.orderDesc('$createdAt'),
+        ],
+        limit,
+        offset,
+        mapDoc
+      );
     } catch {
       return { items: [], hasMore: false, total: 0 };
     }
