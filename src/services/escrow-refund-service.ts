@@ -1,4 +1,4 @@
-import { logger } from '../config/logger.js';
+﻿import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import type {
@@ -27,7 +27,9 @@ async function computeRemainingEscrow(projectId: string, totalAmount: number): P
     releasedAmount = ((contractMilestones ?? []) as Array<{ status: string; amount?: number }>)
       .filter(m => m.status === 'approved')
       .reduce((sum, m) => sum + (m.amount ?? 0), 0);
-  } catch {}
+  } catch {
+    // Expected - no action needed: releasedAmount defaults to 0
+  }
   return Math.max(0, totalAmount - releasedAmount);
 }
 
@@ -46,7 +48,7 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
     return { error: errorResult('CONTRACT_NOT_FOUND', 'Contract not found') };
   }
   if (contract.status !== 'active') {
-    return { error: errorResult('INVALID_STATUS', `Cannot request refund on a ${contract.status} contract`) };
+    return { error: errorResult('INVALID_STATUS', `Cannot request refund on a  contract`) };
   }
   const isInvolved = contract.freelancer_id === input.requestedBy || contract.employer_id === input.requestedBy;
   if (!isInvolved) {
@@ -62,7 +64,7 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
       return { error: errorResult('VALIDATION_ERROR', 'Refund amount must be a positive number') };
     }
     if (input.amount > remainingEscrow) {
-      return { error: errorResult('VALIDATION_ERROR', `Refund amount (${input.amount}) exceeds remaining escrow balance (${remainingEscrow})`) };
+      return { error: errorResult('VALIDATION_ERROR', `Refund amount () exceeds remaining escrow balance ()`) };
     }
   }
   const requestedAmount = input.amount ?? remainingEscrow;
@@ -82,7 +84,7 @@ async function withMilestoneLocks<T>(milestoneIds: string[], fn: () => Promise<T
 }
 
 export async function createRefundRequest(input: CreateRefundRequestInput): Promise<ServiceResult<RefundRequest>> {
-  return withLock(`refund-create:${input.contractId}`, async () => {
+  return withLock(`refund-create:`, async () => {
     try {
       const validated = await validateRefundRequestCreation(input);
       if ('error' in validated) return validated.error;
@@ -93,7 +95,9 @@ export async function createRefundRequest(input: CreateRefundRequestInput): Prom
         milestoneLockIds = (project?.milestones ?? [])
           .map(m => m.id)
           .filter((id): id is string => typeof id === 'string' && id.length > 0);
-      } catch {}
+      } catch {
+        // Expected - no action needed: milestoneLockIds defaults to empty array
+      }
       return await withMilestoneLocks(milestoneLockIds, async () => {
         const refund = await refundRequestRepository.create({
           id: '',
@@ -110,11 +114,11 @@ export async function createRefundRequest(input: CreateRefundRequestInput): Prom
           userId: otherPartyId,
           type: 'refund_requested',
           title: 'Refund Requested',
-          message: `A refund has been requested for contract. Reason: ${input.reason}`,
+          message: `A refund has been requested for contract. Reason: `,
           data: { relatedId: input.contractId, relatedType: 'contract' },
         });
         if (notificationResult.success) await sendNotificationToUser(otherPartyId, notificationResult.data);
-        logger.info(`Refund request created for contract ${input.contractId}`);
+        logger.info(`Refund request created for contract `);
         return successResult(refund as unknown as RefundRequest);
       });
     } catch (error) {
@@ -215,13 +219,18 @@ function computeRefundTargets(refund: RefundRequestEntity, pendingMilestones: Ar
   return pendingMilestones.map(m => ({ index: m.index, amount: Number((m as { amount?: unknown }).amount ?? 0) }));
 }
 
+interface ExecuteBlockchainRefundOptions {
+  escrowAddress: string;
+  refundTargets: RefundTarget[];
+  isPartialRefund: boolean;
+  refundId: string;
+  contract: ContractEntity;
+}
+
 async function executeBlockchainRefund(
-  escrowAddress: string,
-  refundTargets: RefundTarget[],
-  isPartialRefund: boolean,
-  refundId: string,
-  contract: ContractEntity
+  options: ExecuteBlockchainRefundOptions
 ): Promise<ServiceResult<Record<number, string | null>>> {
+  const { escrowAddress, refundTargets, isPartialRefund, refundId, contract } = options;
   const refundTxHashes: Record<number, string | null> = {};
   try {
     const adapter = getBlockchainAdapter();
@@ -234,7 +243,7 @@ async function executeBlockchainRefund(
           continue;
         }
         if (onChainStatus.status !== 'Pending') {
-          throw new Error(`Milestone ${target.index} is ${onChainStatus.status} on-chain; expected Pending for refund`);
+          throw new Error(`Milestone  is  on-chain; expected Pending for refund`);
         }
         const refundResult = await adapter.refundMilestone(escrowAddress, target.index);
         refundTxHashes[target.index] = refundResult.transactionHash ?? null;
@@ -259,13 +268,18 @@ async function executeBlockchainRefund(
   }
 }
 
+interface UpdateRefundedMilestonesOptions {
+  projectId: string;
+  milestones: MilestoneEntity[];
+  refundTargets: RefundTarget[];
+  refundsAllPending: boolean;
+  contractId: string;
+}
+
 async function updateRefundedMilestones(
-  projectId: string,
-  milestones: MilestoneEntity[],
-  refundTargets: RefundTarget[],
-  refundsAllPending: boolean,
-  contractId: string
+  options: UpdateRefundedMilestonesOptions
 ): Promise<void> {
+  const { projectId, milestones, refundTargets, refundsAllPending, contractId } = options;
   const refundedAt = new Date().toISOString();
   const refundedIndices = new Set(refundTargets.map(t => t.index));
   const updatedMilestones = milestones.map((m, i) =>
@@ -277,14 +291,19 @@ async function updateRefundedMilestones(
   }
 }
 
+interface RecordRefundPaymentsOptions {
+  refund: RefundRequestEntity;
+  contract: ContractEntity;
+  refundTargets: RefundTarget[];
+  projectMilestones: MilestoneEntity[];
+  refundTxHashes: Record<number, string | null>;
+  refundId: string;
+}
+
 async function recordRefundPayments(
-  refund: RefundRequestEntity,
-  contract: ContractEntity,
-  refundTargets: RefundTarget[],
-  projectMilestones: MilestoneEntity[],
-  refundTxHashes: Record<number, string | null>,
-  refundId: string
+  options: RecordRefundPaymentsOptions
 ): Promise<void> {
+  const { refund, contract, refundTargets, projectMilestones, refundTxHashes, refundId } = options;
   try {
     for (const target of refundTargets) {
       if (!(target.amount > 0)) continue;
@@ -325,13 +344,18 @@ async function notifyRefundApproved(refund: RefundRequestEntity): Promise<void> 
   if (notificationResult.success) await sendNotificationToUser(refund.requested_by, notificationResult.data);
 }
 
+interface PersistRefundAuditEntryOptions {
+  refund: RefundRequestEntity;
+  approvedBy: string;
+  refundId: string;
+  contract: ContractEntity;
+  refundTargets: RefundTarget[];
+}
+
 async function persistRefundAuditEntry(
-  refund: RefundRequestEntity,
-  approvedBy: string,
-  refundId: string,
-  contract: ContractEntity,
-  refundTargets: RefundTarget[]
+  options: PersistRefundAuditEntryOptions
 ): Promise<void> {
+  const { refund, approvedBy, refundId, contract, refundTargets } = options;
   await persistAuditEntry({
     user_id: refund.requested_by,
     actor_id: approvedBy,
@@ -353,7 +377,7 @@ async function persistRefundAuditEntry(
 }
 
 export async function approveRefund(input: ApproveRefundInput): Promise<ServiceResult<RefundRequest>> {
-  return withLock(`refund-approve:${input.refundId}`, async () => {
+  return withLock(`refund-approve:`, async () => {
     try {
       const validated = await validateRefundApproval(input);
       if ('error' in validated) return validated.error;
@@ -385,40 +409,40 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
         const refundsAllPending = refundTargets.length === pendingMilestones.length;
         const isPartialRefund = refund.is_partial === true && (refund.amount ?? 0) > 0;
 
-        const blockchainResult = await executeBlockchainRefund(
-          contract.escrow_address,
+        const blockchainResult = await executeBlockchainRefund({
+          escrowAddress: contract.escrow_address,
           refundTargets,
           isPartialRefund,
-          input.refundId,
+          refundId: input.refundId,
           contract
-        );
+        });
 
         if (!blockchainResult.success) return blockchainResult;
 
-        await updateRefundedMilestones(
-          contract.project_id,
-          projectMilestones,
+        await updateRefundedMilestones({
+          projectId: contract.project_id,
+          milestones: projectMilestones,
           refundTargets,
           refundsAllPending,
-          refund.contract_id
-        );
+          contractId: refund.contract_id
+        });
 
-        await recordRefundPayments(
+        await recordRefundPayments({
           refund,
           contract,
           refundTargets,
           projectMilestones,
-          blockchainResult.data,
-          input.refundId
-        );
+          refundTxHashes: blockchainResult.data,
+          refundId: input.refundId
+        });
 
         await cancelOtherPendingRefunds(refund.contract_id, input.refundId);
 
         await notifyRefundApproved(refund);
 
-        await persistRefundAuditEntry(refund, input.approvedBy, input.refundId, contract, refundTargets);
+        await persistRefundAuditEntry({ refund, approvedBy: input.approvedBy, refundId: input.refundId, contract, refundTargets });
 
-        logger.info(`Refund ${input.refundId} approved by ${input.approvedBy}`);
+        logger.info(`Refund  approved by `);
 
         return successResult(updated as unknown as RefundRequest);
       });
@@ -430,7 +454,7 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
 }
 
 export async function rejectRefund(input: RejectRefundInput): Promise<ServiceResult<RefundRequest>> {
-  return withLock(`refund-approve:${input.refundId}`, async () => {
+  return withLock(`refund-approve:`, async () => {
     try {
       const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
@@ -469,7 +493,7 @@ export async function rejectRefund(input: RejectRefundInput): Promise<ServiceRes
         userId: refundData.requested_by,
         type: 'refund_rejected',
         title: 'Refund Rejected',
-        message: `Your refund request was rejected. Reason: ${input.reason}`,
+        message: `Your refund request was rejected. Reason: `,
         data: {
           relatedId: refundData.contract_id,
           relatedType: 'contract',
@@ -498,7 +522,7 @@ export async function rejectRefund(input: RejectRefundInput): Promise<ServiceRes
         error_message: null,
       });
 
-      logger.info(`Refund ${input.refundId} rejected by ${input.rejectedBy}`);
+      logger.info(`Refund  rejected by `);
 
       return successResult(updated as unknown as RefundRequest);
     } catch (error) {
