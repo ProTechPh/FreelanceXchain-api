@@ -329,7 +329,7 @@ export class BaseRepository<T extends BaseEntity> {
   }
 
   protected async paginatedWithQueries<U = T>(
-    queries: string[], // Query[] at runtime � Appwrite SDK types Query as non-string but methods return strings
+    queries: string[],
     limit: number,
     offset: number,
     mapper?: (doc: Record<string, unknown>) => U
@@ -343,11 +343,16 @@ export class BaseRepository<T extends BaseEntity> {
         )
       );
 
+      const items = (mapper
+        ? response.documents.map(mapper)
+        : mapDocuments<T>(response.documents) as unknown as U[]
+      ).slice(0, limit);
+
+      const hasMore = offset + items.length < response.total;
+
       return {
-        items: mapper
-          ? response.documents.map(mapper)
-          : mapDocuments<T>(response.documents) as unknown as U[],
-        hasMore: response.documents.length === limit,
+        items,
+        hasMore,
         total: response.total,
       };
     } catch (error) {

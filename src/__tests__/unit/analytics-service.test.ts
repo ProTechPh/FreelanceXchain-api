@@ -103,10 +103,11 @@ describe('analytics-service – branch coverage', () => {
       .mockResolvedValueOnce({ documents: [], total: 250 }) // completed count
       .mockResolvedValueOnce({ documents: contracts.slice(0, 100), total: 250 })
       .mockResolvedValueOnce({ documents: contracts.slice(100, 200), total: 250 })
-      .mockResolvedValueOnce({ documents: contracts.slice(200), total: 250 });
+      .mockResolvedValueOnce({ documents: contracts.slice(200), total: 250 })
+      .mockResolvedValueOnce({ documents: [], total: 0 }); // audit_log_entries
 
     const { getPlatformMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
-    const result = await getPlatformMetrics();
+    const result = await getPlatformMetrics({ limit: 250 });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.totalTransactionVolume).toBe(250);
@@ -116,14 +117,18 @@ describe('analytics-service – branch coverage', () => {
   it('should include admin user growth beyond the old 1000-cap (no truncation)', async () => {
     const now = new Date().toISOString();
     const users = Array.from({ length: 250 }, (_, i) => ({ $id: `u${i}`, created_at: now }));
+    const completedContracts = Array.from({ length: 10 }, (_, i) => ({ $id: `c${i}`, total_amount: 0 }));
+    const projects = Array.from({ length: 10 }, (_, i) => ({ $id: `p${i}`, created_at: now }));
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [], total: 5 }) // users count
       .mockResolvedValueOnce({ documents: [], total: 3 }) // projects count
-      .mockResolvedValueOnce({ documents: [], total: 1 }) // active count
-      .mockResolvedValueOnce({ documents: [], total: 250 }) // completed (empty)
-      .mockResolvedValueOnce({ documents: users.slice(0, 100), total: 250 })
-      .mockResolvedValueOnce({ documents: users.slice(100, 200), total: 250 })
-      .mockResolvedValueOnce({ documents: users.slice(200), total: 250 });
+      .mockResolvedValueOnce({ documents: [], total: 1 }) // active contracts count
+      .mockResolvedValueOnce({ documents: completedContracts, total: 10 }) // completed contracts
+      .mockResolvedValueOnce({ documents: users.slice(0, 100), total: 250 }) // users page 1
+      .mockResolvedValueOnce({ documents: users.slice(100, 200), total: 250 }) // users page 2
+      .mockResolvedValueOnce({ documents: users.slice(200), total: 250 }) // users page 3
+      .mockResolvedValueOnce({ documents: projects, total: 10 }) // projects (for growth)
+      .mockResolvedValueOnce({ documents: [], total: 0 }); // subscriptions
 
     const { getAdminAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
     const result = await getAdminAnalytics();
@@ -1329,11 +1334,14 @@ describe('Analytics Service - Integration Coverage', () => {
       documents: [{ $id: 'c1', project_id: 'proj1' }],
       total: 1,
     });
-    // getDocument for project with skills using 'name' instead of 'skill_name'
-    mockDatabasesInt.getDocument.mockResolvedValueOnce({
-      $id: 'proj1',
-      required_skills: [{ name: 'React' }, { skill_name: 'Node.js' }],
-      created_at: '2025-01-15',
+    // 5th listDocuments: projects batch fetch (calculateTopSkills uses listDocuments, not getDocument)
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'proj1',
+        required_skills: [{ name: 'React' }, { skill_name: 'Node.js' }],
+        created_at: '2025-01-15',
+      }],
+      total: 1,
     });
 
     const result = await getFreelancerAnalytics('user-1');

@@ -8,6 +8,7 @@ const mockLogger = {
   error: jest.fn(),
   info: jest.fn(),
   warn: jest.fn(),
+  debug: jest.fn(),
 };
 
 const mockCronSchedule = jest.fn();

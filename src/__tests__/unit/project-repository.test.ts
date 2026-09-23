@@ -201,14 +201,15 @@ describe('ProjectRepository', () => {
       // Skill filtering happens in the database (Query.equal on the
       // required_skill_ids array attribute), so one call with limit/offset is
       // all the hot path needs — no full scan per request.
-      const projects = Array.from({ length: 100 }, (_, i) =>
+      const projects = Array.from({ length: 20 }, (_, i) =>
         toAppwriteDoc({ id: `p-${i}`, required_skills: [{ skill_id: 's1' }], status: 'open' })
       );
       mockListDocuments.mockResolvedValueOnce({ documents: projects, total: 120 });
 
       const result = await repo.getProjectsBySkills(['s1']);
       expect(result.total).toBe(120);
-      expect(result.items).toHaveLength(100);
+      expect(result.items).toHaveLength(20);
+      expect(result.hasMore).toBe(true);
       expect(mockListDocuments).toHaveBeenCalledTimes(1);
       const queries = mockListDocuments.mock.calls[0][2] as any[];
       expect(queries.some(q => q.type === 'limit' && q.args[0] === 20)).toBe(true); // default page limit
@@ -448,7 +449,7 @@ describe('Project Repository - Extended Coverage', () => {
         documents: [
           { $id: 'p-1', title: 'Project 1', status: 'open', required_skills: '[]', milestones: '[]', tags: '[]', attachments: '[]' },
         ],
-        total: 20,
+        total: 1,
       });
       const result = await repo_ext.getAllOpenProjects({ limit: 10, offset: 0 });
       expect(result.hasMore).toBe(false);
