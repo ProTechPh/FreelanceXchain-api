@@ -17,7 +17,7 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "test:ci": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --passWithNoTests",
+    "test:ci": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --passWithNoTests --forceExit",
     "test:plat": "node PLAT/run-plat-test-cases.cjs",
     "lint": "eslint src/**/*.ts",
     "security:audit": "pnpm audit --audit-level=moderate",

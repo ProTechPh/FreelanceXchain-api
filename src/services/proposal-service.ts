@@ -44,6 +44,17 @@ type RejectProposalResult = {
   proposal: Proposal;
 };
 
+type ValidatedProposal = {
+  proposal: ProposalEntity;
+  project: Project;
+  projectEntity: ProjectEntity;
+  proposalRate: number;
+  totalAmount: number;
+  rushFee: number;
+  isRush: boolean;
+  rushFeePercentage: number;
+};
+
 
 export async function submitProposal(
   freelancerId: string,
@@ -224,16 +235,7 @@ async function validateProposalAcceptance(
   proposalEntity: ProposalEntity,
 ): Promise<
   | { error: ServiceResult<AcceptProposalResult> }
-  | {
-      proposalEntity: ProposalEntity;
-      project: Project;
-      projectEntity: ProjectEntity;
-      proposalRate: number;
-      totalAmount: number;
-      rushFee: number;
-      isRush: boolean;
-      rushFeePercentage: number;
-    }
+  | ValidatedProposal
 > {
   // NOTE: Caller (acceptProposal) is responsible for verifying proposal existence
   // and passing a valid proposalEntity. The NOT_FOUND check was removed to avoid
@@ -280,7 +282,7 @@ async function validateProposalAcceptance(
     return { error: errorResult('FREELANCER_LIMIT_REACHED', `This project has already filled all ${freelancerLimit} freelancer slot${freelancerLimit === 1 ? '' : 's'} and is no longer accepting proposals.`) };
   }
 
-  return { proposalEntity, project, projectEntity, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage };
+  return { proposal: proposalEntity, project, projectEntity, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage };
 }
 
 /**
@@ -319,7 +321,7 @@ type CreateContractFromProposalInput = {
   totalAmount: number;
 };
 
-async function createContractFromProposal(
+async function createContractFromAcceptedProposal(
   input: CreateContractFromProposalInput
 ): Promise<
   | { error: ServiceResult<AcceptProposalResult> }
@@ -360,8 +362,125 @@ async function createContractFromProposal(
 }
 
 /**
- * Deploy blockchain agreement, initialize escrow, and activate contract.
- * Also updates project status when all freelancer slots are filled.
+ * Updates project status after proposal acceptance.
+ * Transitions project to in_progress when all freelancer slots are filled,
+ * and activates the first milestone.
+ */
+async function updateProjectAfterAcceptance(
+  projectId: string,
+  _proposalId: string,
+): Promise<void> {
+  const projectEntity = await projectRepository.findProjectById(projectId);
+  if (!projectEntity) return;
+
+  const project = mapProjectFromEntity(projectEntity);
+  const maxFreelancers = project.freelancerLimit ?? 1;
+  const acceptedProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
+  const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
+  const limitReached = acceptedCount >= maxFreelancers;
+
+  if (limitReached && project.milestones && project.milestones.length > 0) {
+    const updatedMilestones: MilestoneEntity[] = project.milestones.map((milestone, index): MilestoneEntity => ({
+      ...milestone,
+      status: (index === 0 ? 'in_progress' : milestone.status) as MilestoneStatus,
+      due_date: milestone.dueDate,
+    }));
+
+    await projectRepository.updateProject(projectId, {
+      status: 'in_progress',
+      milestones: updatedMilestones,
+    });
+  }
+}
+
+/**
+ * Notifies relevant parties of proposal acceptance.
+ * Non-blocking: fires and forgets notifications and emails.
+ */
+async function notifyProposalAccepted(
+  proposal: ProposalEntity,
+  contract: Contract,
+  project: Project,
+): Promise<void> {
+  try {
+    await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: proposal.freelancer_id,
+      type: 'proposal_accepted',
+      title: 'Proposal Accepted',
+      message: `Your proposal for "${project.title}" has been accepted!`,
+      data: {
+        proposalId: proposal.id,
+        projectId: project.id,
+        projectTitle: project.title,
+        contractId: contract.id,
+      },
+      is_read: false,
+    });
+  } catch (error) {
+    logger.error('Failed to create notification', { error });
+  }
+
+  await sendGatedEmail(proposal.freelancer_id, 'proposal_accepted', (recipient) =>
+    sendProposalAcceptedEmail(recipient.email, {
+      recipientName: recipient.name,
+      freelancerName: recipient.name,
+      projectTitle: project.title,
+      projectUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${project.id}`,
+    })
+  );
+
+  await sendGatedEmail(proposal.freelancer_id, 'contract_created', (recipient) =>
+    sendContractCreatedEmail(recipient.email, {
+      recipientName: recipient.name,
+      projectTitle: project.title,
+      contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${contract.id}`,
+    })
+  );
+}
+
+/**
+ * Records audit trail for proposal acceptance.
+ * Non-blocking: fires and forgets audit log.
+ */
+type AuditProposalAcceptanceInput = {
+  proposal: ProposalEntity;
+  contract: Contract;
+  employerId: string;
+  project: Project;
+  totalAmount: number;
+  rushFee: number;
+  isRush: boolean;
+};
+
+async function auditProposalAcceptance(input: AuditProposalAcceptanceInput): Promise<void> {
+  const { proposal, contract, employerId, project, totalAmount, rushFee, isRush } = input;
+  try {
+    await persistAuditEntry({
+      user_id: proposal.freelancer_id,
+      actor_id: employerId,
+      action: 'contract.created',
+      resource_type: 'contract',
+      resource_id: contract.id,
+      payload: {
+        projectId: project.id,
+        proposalId: proposal.id,
+        totalAmount,
+        rushFee,
+        isRush,
+      },
+      ip_address: null,
+      user_agent: null,
+      status: 'success',
+      error_message: null,
+    });
+  } catch (error) {
+    logger.error('Failed to persist audit entry for proposal acceptance', { error });
+  }
+}
+
+/**
+ * Deploy blockchain agreement and initialize escrow.
  * Non-critical: logs errors and continues on blockchain failures.
  */
 type InitializeEscrowForContractInput = {
@@ -374,6 +493,32 @@ type InitializeEscrowForContractInput = {
   rushFeePercentage: number;
 };
 
+async function applyRushMilestoneScaling(
+  project: Project,
+  proposalRate: number,
+  rushFee: number
+): Promise<Project> {
+  if (project.milestones.length === 0) return project;
+  const scaledAmounts = rescaleMilestoneAmounts(
+    project.milestones.map(m => m.amount),
+    proposalRate,
+    rushFee,
+  );
+  const scaledMilestones = project.milestones.map((m, i) => ({
+    ...m,
+    amount: scaledAmounts[i] ?? m.amount,
+  }));
+  const scaledEntityMilestones: MilestoneEntity[] = project.milestones.map((m, i) => ({
+    ...m,
+    due_date: m.dueDate,
+    amount: scaledAmounts[i] ?? m.amount,
+  }));
+  if ((project.freelancerLimit ?? 1) <= 1) {
+    await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
+  }
+  return { ...project, milestones: scaledMilestones };
+}
+
 async function initializeEscrowForContract(
   input: InitializeEscrowForContractInput
 ): Promise<void> {
@@ -383,7 +528,7 @@ async function initializeEscrowForContract(
     const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
 
     if (employer?.wallet_address && freelancer?.wallet_address) {
-      /* istanbul ignore next -- ProjectEntity type defines description/deadline as string; null is unreachable */
+      /* istanbul ignore next */
       const description = project.description != null ? project.description : '';
       /* istanbul ignore next */
       const deadline = project.deadline != null ? project.deadline : '';
@@ -401,39 +546,10 @@ async function initializeEscrowForContract(
           ...(isRush ? { isRush: true, rushFee, rushFeePercentage } : {}),
         },
       });
-
-      // The agreement is created on-chain with pending status.
-      // The contract remains in pending status until the employer funds the escrow from their wallet (client-side MetaMask).
     }
   } catch (error) {
     logger.error('Failed to create blockchain agreement for contract', { error });
-    // Continue - blockchain agreement is non-critical, contract remains pending
   }
-
-  // Update project status based on freelancer limit
-  // Only transition to in_progress when all freelancer slots are filled
-  /* istanbul ignore next -- mapProjectFromEntity always defaults freelancerLimit=1 */
-  const maxFreelancers = project.freelancerLimit != null ? project.freelancerLimit : 1;
-  const acceptedProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
-  const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
-  const limitReached = acceptedCount >= maxFreelancers;
-
-  if (limitReached) {
-    // All freelancer slots filled — transition project to in_progress and activate first milestone
-    /* istanbul ignore next -- mapProjectFromEntity always returns milestones array; ?. is dead code */
-    const updatedMilestones = project.milestones?.map((milestone, index): MilestoneEntity => ({
-      ...milestone,
-      // Automatically set the first milestone to in_progress so the freelancer can begin
-      status: (index === 0 ? 'in_progress' : milestone.status) as MilestoneStatus,
-      due_date: milestone.dueDate,
-    })) || [];
-
-    await projectRepository.updateProject(project.id, {
-      status: 'in_progress',
-      milestones: updatedMilestones,
-    });
-  }
-  // If limit is not reached, project stays 'open' so more freelancers can be accepted
 }
 
 // Accept a proposal - creates a contract
@@ -441,7 +557,6 @@ async function initializeEscrowForContract(
 // - Uses freelancer's proposedRate for contract amount (not project.budget)
 // - Rejects all other pending proposals for the same project
 // - Checks that project has milestones before creating contract
-/* eslint-disable max-lines-per-function -- accept-proposal flow; refactor follow-up */
 export async function acceptProposal(
   proposalId: string,
   employerId: string
@@ -456,64 +571,39 @@ export async function acceptProposal(
     const validated = await validateProposalAcceptance(proposalId, employerId, proposalEntity);
     if ('error' in validated) return validated.error;
 
-    const { proposalEntity: validatedProposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
+    const { proposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
 
     // Rush proposals carry a fee on top of the proposal rate. Fold that fee into
     // the project milestone amounts BEFORE the contract is created, so the escrow
     // (deployed from project milestones) is funded with base + fee and the DB read
     // model matches the on-chain ledger. Without this, validateEscrowAmounts fails
     // with AMOUNT_MISMATCH and a rush contract can never be activated.
-    let rushProject = project;
-    if (isRush && rushFee > 0 && project.milestones.length > 0) {
-      const scaledAmounts = rescaleMilestoneAmounts(
-        project.milestones.map(m => m.amount),
-        proposalRate,
-        rushFee,
-      );
-      const scaledMilestones = project.milestones.map((m, i) => ({
-        ...m,
-        amount: scaledAmounts[i] ?? m.amount,
-      }));
-      const scaledEntityMilestones: MilestoneEntity[] = project.milestones.map((m, i) => ({
-        ...m,
-        due_date: m.dueDate,
-        amount: scaledAmounts[i] ?? m.amount,
-      }));
-      // Only mutate the project's milestones if it is a single-freelancer project.
-      // For multi-freelancer projects, the project document serves as a shared template
-      // and must not be mutated, avoiding template corruption for other proposals.
-      if ((project.freelancerLimit ?? 1) <= 1) {
-        await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
-      }
-      rushProject = { ...project, milestones: scaledMilestones };
-    }
+    const rushProject = (isRush && rushFee > 0) ? await applyRushMilestoneScaling(project, proposalRate, rushFee) : project;
 
-    const created = await createContractFromProposal({
+    const contractResult = await createContractFromAcceptedProposal({
       proposalId,
-      proposalEntity: validatedProposal,
+      proposalEntity: proposal,
       project: rushProject,
       employerId,
       proposalRate,
       rushFee,
       totalAmount,
     });
-    if ('error' in created) return created.error;
+    if ('error' in contractResult) return contractResult.error;
 
-    const { updatedProposalEntity, contractEntity } = created;
-    const createdContract = mapContractFromEntity(contractEntity);
+    const { updatedProposalEntity, contractEntity } = contractResult;
+    const contract = mapContractFromEntity(contractEntity);
 
     // BLF-6.2: Only reject the remaining pending proposals once the project's
     // freelancer slots are full; otherwise multi-freelancer projects could never
     // fill their other slots.
-    const maxFreelancers = project.freelancerLimit != null ? project.freelancerLimit : 1;
-    await rejectOtherProposals(project.id, proposalId, maxFreelancers);
+    await rejectOtherProposals(project.id, proposalId, project.freelancerLimit ?? 1);
 
-    // H12: Log non-critical failures but don't silently swallow them
     try {
       await initializeEscrowForContract({
-        contract: createdContract,
+        contract: contract,
         project: rushProject,
-        proposalEntity: validatedProposal,
+        proposalEntity: proposal,
         totalAmount,
         rushFee,
         isRush,
@@ -521,77 +611,28 @@ export async function acceptProposal(
       });
     } catch (escrowError) {
       logger.error('Escrow initialization failed after contract creation — contract remains pending', {
-        contractId: createdContract.id,
+        contractId: contract.id,
         error: escrowError,
       });
     }
 
-    // Create notification for freelancer
     try {
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: validatedProposal.freelancer_id,
-        type: 'proposal_accepted',
-        title: 'Proposal Accepted',
-        message: `Your proposal for "${project.title}" has been accepted!`,
-        data: {
-          proposalId: proposalEntity.id,
-          projectId: project.id,
-          projectTitle: project.title,
-          contractId: createdContract.id,
-        },
-        is_read: false,
+      await updateProjectAfterAcceptance(project.id, proposalId);
+    } catch (updateError) {
+      logger.error('Failed to update project status after acceptance � proposal accepted but project status may be stale', {
+        projectId: project.id,
+        proposalId: proposal.id,
+        error: updateError,
       });
-    } catch (error) {
-      logger.error('Failed to create notification', { error });
-      // Continue - notification is secondary
     }
 
-    // Transactional emails gated by the freelancer's email preferences.
-    // Best-effort: a preference lookup or send failure must not roll back the acceptance.
-    await sendGatedEmail(validatedProposal.freelancer_id, 'proposal_accepted', (recipient) =>
-      sendProposalAcceptedEmail(recipient.email, {
-        recipientName: recipient.name,
-        freelancerName: recipient.name,
-        projectTitle: project.title,
-        projectUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${project.id}`,
-      })
-    );
+    void notifyProposalAccepted(proposal, contract, project);
 
-    // The accepted proposal also produced a contract record — tell the freelancer.
-    await sendGatedEmail(validatedProposal.freelancer_id, 'contract_created', (recipient) =>
-      sendContractCreatedEmail(recipient.email, {
-        recipientName: recipient.name,
-        projectTitle: project.title,
-        contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${createdContract.id}`,
-      })
-    );
-
-    // BLF-12.2: durable audit trail — contract creation from an accepted proposal
-    // is recorded with the employer as actor and the freelancer as target user.
-    // Written after the contract record commits; best-effort by design.
-    await persistAuditEntry({
-      user_id: validatedProposal.freelancer_id,
-      actor_id: employerId,
-      action: 'contract.created',
-      resource_type: 'contract',
-      resource_id: createdContract.id,
-      payload: {
-        projectId: project.id,
-        proposalId: proposalEntity.id,
-        totalAmount,
-        rushFee,
-        isRush,
-      },
-      ip_address: null,
-      user_agent: null,
-      status: 'success',
-      error_message: null,
-    });
+    void auditProposalAcceptance({ proposal, contract, employerId, project, totalAmount, rushFee, isRush });
 
     return successResult({
       proposal: mapProposalFromEntity(updatedProposalEntity),
-      contract: createdContract,
+      contract: contract,
     });
       });
     }

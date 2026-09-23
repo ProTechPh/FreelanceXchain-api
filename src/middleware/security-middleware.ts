@@ -136,3 +136,79 @@ export function getAllowedOrigins(): string[] {
 
     return corsOrigin.split(',').map(o => o.trim()).filter(Boolean);
 }
+
+/**
+ * Direct access guard middleware.
+ * Prevents unauthorized or direct browser navigation access to API routes.
+ */
+export function directAccessGuard(req: Request, res: Response, next: NextFunction): void {
+    const path = req.path || req.url;
+
+    // 1. Whitelisted static & health routes
+    if (
+        path === '/' ||
+        path === '/robots.txt' ||
+        path === '/sitemap.xml' ||
+        path === '/security.txt' ||
+        path === '/.well-known/security.txt' ||
+        path === '/api/health' ||
+        path.startsWith('/api/health/')
+    ) {
+        next();
+        return;
+    }
+
+    // 2. External webhooks (Stripe, Didit KYC, Opencore email inbox)
+    if (
+        path.startsWith('/api/webhooks') ||
+        path.startsWith('/api/kyc/webhook') ||
+        path.startsWith('/api/inbox/webhook')
+    ) {
+        next();
+        return;
+    }
+
+    // 3. OAuth provider redirect flow (browser navigation is expected here)
+    if (
+        path.startsWith('/api/auth/callback') ||
+        path.startsWith('/api/auth/oauth/')
+    ) {
+        next();
+        return;
+    }
+
+    // 4. Swagger UI if enabled
+    if (config.server.enableApiDocs && (path.startsWith('/api-docs') || path === '/openapi.json')) {
+        next();
+        return;
+    }
+
+    // 5. Block direct browser navigation to API endpoints
+    const secFetchDest = req.headers['sec-fetch-dest'];
+    const secFetchMode = req.headers['sec-fetch-mode'];
+    if (secFetchDest === 'document' || secFetchMode === 'navigate') {
+        res.status(403).json({
+            success: false,
+            code: 'DIRECT_ACCESS_BLOCKED',
+            message: 'Direct browser navigation to the API is disabled. Access via the application interface.',
+        });
+        return;
+    }
+
+    // 6. Enforce internal secret if configured
+    const internalSecret = config.server.internalApiSecret;
+    if (internalSecret) {
+        const incomingSecret = req.headers['x-internal-secret'];
+        if (!incomingSecret || incomingSecret !== internalSecret) {
+            res.status(403).json({
+                success: false,
+                code: 'ACCESS_DENIED',
+                message: 'Direct API access forbidden. Requests must originate from the authorized application.',
+            });
+            return;
+        }
+    }
+
+    next();
+}
+
