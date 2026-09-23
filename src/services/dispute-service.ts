@@ -24,6 +24,15 @@ import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendDisputeCreatedEmail } from './email-delivery-service.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
+function calculateDisputeShare(milestoneAmount: number, bps: number): number {
+  // Use precise calculation to avoid floating-point precision loss
+  // Convert to integer arithmetic: (amount * bps) / 10000 with proper rounding
+  const amountCents = Math.round(milestoneAmount * 100);
+  const shareCents = Math.round((amountCents * bps) / 10000);
+  return shareCents / 100;
+}
+
+
 
 type DisputeServiceResult<T> = ServiceResult<T>;
 
@@ -479,7 +488,8 @@ async function recordDisputeResolutionPayments(params: {
   txHash: string | null;
 }): Promise<void> {
   try {
-    const freelancerShare = Math.round((params.milestoneAmount * params.resolvedBps) / 100) / 100;
+    // CRITICAL-3: Use precise calculation to avoid floating-point precision loss
+    const freelancerShare = calculateDisputeShare(params.milestoneAmount, params.resolvedBps);
     const employerShare = Math.round((params.milestoneAmount - freelancerShare) * 100) / 100;
     if (freelancerShare > 0) {
       await createPaymentRecord({
@@ -553,14 +563,16 @@ async function processDisputeEscrowPayment(
     //   freelancer_favor -> 10000 (full to freelancer / release)
     //   employer_favor   -> 0     (full to employer / refund)
     //   split            -> freelancerBps ?? 5000 (default 50/50)
+    // Validate freelancerBps first (before applying default) to reject invalid explicit values
+    if (decision === 'split' && freelancerBps !== undefined && (freelancerBps <= 0 || freelancerBps >= 10000)) {
+      return { error: errorResult('INVALID_SPLIT_BPS', 'freelancerBps must be between 0 and 10000 (exclusive) for a split decision.') };
+    }
+
     const resolvedBps =
       decision === 'freelancer_favor' ? 10000
       : decision === 'employer_favor' ? 0
       : freelancerBps ?? 5000;
 
-    if (decision === 'split' && (resolvedBps <= 0 || resolvedBps >= 10000)) {
-      return { error: errorResult('INVALID_SPLIT_BPS', 'freelancerBps must be between 1 and 9999 for a split decision.') };
-    }
 
     const resolutionResult = await adapter.resolveDispute(escrowAddress, milestoneIndex, resolvedBps);
 

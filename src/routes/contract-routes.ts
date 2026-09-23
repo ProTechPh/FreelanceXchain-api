@@ -21,6 +21,12 @@ import { getDisputesByContract } from '../services/dispute-service.js';
 import { withLock } from '../utils/async-lock.js';
 import type { Contract } from '../utils/entity-mapper.js';
 
+
+// Type definition for ensureContractEscrow return value
+type EnsureEscrowResult =
+  | { escrowAddress: string }
+  | { error: { statusCode: number; code: string; message: string } };
+
 const router = Router();
 
 /**
@@ -157,6 +163,12 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
   const requestId = getRequestId(req);
   const userId = req.user?.userId;
 
+  // HIGH-2: Check authorization BEFORE database fetch to prevent information leakage
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
   const result = await getContractById(id);
 
   if (!result.success) {
@@ -165,7 +177,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
   }
 
   const contract = result.data;
-  if (userId && contract.freelancerId !== userId && contract.employerId !== userId) {
+  if (contract.freelancerId !== userId && contract.employerId !== userId) {
     // Check if user is admin (admins can view all contracts)
     if (req.user?.role !== 'admin') {
       sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', { requestId });
@@ -205,76 +217,6 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
  *       404:
  *         description: Contract not found
  */
-type EnsureEscrowResult = { escrowAddress: string } | { error: { statusCode: number; code: string; message: string } };
-
-async function verifyClientEscrowOnChain(
-  escrowAddress: string,
-  contract: Contract,
-  employerWallet: string,
-  freelancerWallet: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { ethers } = await import('ethers');
-    if (!ethers.isAddress(escrowAddress)) {
-      return { success: false, error: 'Target escrow address is not a valid Ethereum address' };
-    }
-
-    const { getProvider, isWeb3Available } = await import('../services/web3-client.js');
-    const { getBlockchainMode } = await import('../services/blockchain/factory.js');
-    if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
-      return { success: true };
-    }
-
-    const provider = getProvider();
-    const code = await provider.getCode(escrowAddress);
-    if (!code || code === '0x' || code === '0x0') {
-      return { success: false, error: 'Target address is not a deployed contract on chain' };
-    }
-
-    const { FreelanceEscrowABI } = await import('../services/contract-abis.js');
-
-    const escrowContract = new ethers.Contract(escrowAddress, FreelanceEscrowABI, provider);
-
-    const callString = (name: string): Promise<string | null> =>
-      ((escrowContract[name] as (() => Promise<string>) | undefined)?.().catch(() => null)) ?? Promise.resolve(null);
-    const callBigInt = (name: string): Promise<bigint> =>
-      ((escrowContract[name] as (() => Promise<bigint>) | undefined)?.().catch(() => 0n)) ?? Promise.resolve(0n);
-
-    const [onChainEmployer, onChainFreelancer, onChainBalance, onChainTotalAmount, onChainContractId] = await Promise.all([
-      callString('employer'),
-      callString('freelancer'),
-      provider.getBalance(escrowAddress).catch(() => 0n),
-      callBigInt('totalAmount'),
-      callString('contractId'),
-    ]);
-
-    if (!onChainEmployer || !onChainFreelancer) {
-      return { success: false, error: 'Target address is not a valid FreelanceEscrow contract on chain' };
-    }
-
-    if (onChainEmployer.toLowerCase() !== employerWallet.toLowerCase()) {
-      return { success: false, error: `Escrow employer (${onChainEmployer}) does not match expected employer (${employerWallet})` };
-    }
-
-    if (onChainFreelancer.toLowerCase() !== freelancerWallet.toLowerCase()) {
-      return { success: false, error: `Escrow freelancer (${onChainFreelancer}) does not match expected freelancer (${freelancerWallet})` };
-    }
-
-    if (onChainContractId && onChainContractId !== contract.id) {
-      return { success: false, error: 'Escrow contract ID mismatch' };
-    }
-
-    const expectedTotal = ethers.parseEther(contract.totalAmount.toString());
-    if (onChainTotalAmount < expectedTotal || onChainBalance < expectedTotal) {
-      return { success: false, error: `Escrow on-chain balance (${ethers.formatEther(onChainBalance)} ETH) is less than required (${contract.totalAmount} ETH)` };
-    }
-
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Failed to verify on-chain escrow' };
-  }
-}
-
 /**
  * Deploy the escrow server-side for a contract that has none yet.
  */
@@ -306,58 +248,6 @@ async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowRes
   }
 
   return { escrowAddress: escrowResult.data.escrowAddress };
-}
-
-interface ClientEscrowFundingParams {
-  clientEscrowAddress: string;
-  clientTxHash?: string | undefined;
-  contract: Contract;
-  requestId: string;
-  res: Response;
-}
-
-async function handleClientEscrowFunding({
-  clientEscrowAddress,
-  clientTxHash,
-  contract,
-  requestId,
-  res,
-}: ClientEscrowFundingParams): Promise<string | null> {
-  const { ethers } = await import('ethers');
-  if (!ethers.isAddress(clientEscrowAddress)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'clientEscrowAddress must be a valid Ethereum address', { requestId });
-    return null;
-  }
-
-  const walletResult = await getContractWalletAddresses(contract.id);
-  if (!walletResult.success) {
-    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
-    return null;
-  }
-  const { employerWallet, freelancerWallet } = walletResult.data;
-  const verification = await verifyClientEscrowOnChain(clientEscrowAddress, contract, employerWallet, freelancerWallet);
-  if (!verification.success) {
-    sendErrorResponse(res, 400, 'ESCROW_VERIFICATION_FAILED', verification.error || 'Escrow verification failed', { requestId });
-    return null;
-  }
-
-  try {
-    const { createPaymentRecord } = await import('../utils/payment-records.js');
-    await createPaymentRecord({
-      contractId: contract.id,
-      milestoneId: null,
-      payerId: contract.employerId,
-      payeeId: contract.freelancerId,
-      amount: contract.totalAmount,
-      paymentType: 'escrow_deposit',
-      txHash: clientTxHash || null,
-      status: 'completed',
-    });
-  } catch (recordError) {
-    logger.error('Failed to record client escrow deposit payment', { error: recordError, contractId: contract.id });
-  }
-
-  return clientEscrowAddress;
 }
 
 router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(fundContractSchema), asyncHandler(async (req: Request, res: Response) => {
@@ -400,16 +290,11 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
       return;
     }
 
-    const clientEscrowAddress = typeof req.body?.['escrowAddress'] === 'string' && req.body['escrowAddress'] ? req.body['escrowAddress'] : undefined;
-    const clientTxHash = typeof req.body?.['transactionHash'] === 'string' && req.body['transactionHash'] ? req.body['transactionHash'] : undefined;
-
+    // CRITICAL-6: Removed client-provided escrow address for security
+    // Escrow is always deployed server-side to prevent address manipulation attacks
     let escrowAddress = contract.escrowAddress;
 
-    if (clientEscrowAddress) {
-      const address = await handleClientEscrowFunding({ clientEscrowAddress, clientTxHash, contract, requestId, res });
-      if (!address) return;
-      escrowAddress = address;
-    } else if (!escrowAddress) {
+    if (!escrowAddress) {
       // No escrow yet — deploy server-side fallback
       const escrowResult = await ensureContractEscrow(contract);
       if ('error' in escrowResult) {
@@ -700,17 +585,20 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
     return;
   }
 
-  try {
-    const { withdrawFromEscrow } = await import('../services/escrow-blockchain.js');
-    const result = await withdrawFromEscrow(contract.escrowAddress);
-    sendSuccessResponse(res, 200, {
-      message: 'Escrow withdrawal processed',
-      transactionHash: result.transactionHash,
-    }, requestId);
-  } catch (error) {
-    logger.error('Error withdrawing from escrow', error);
-    sendErrorResponse(res, 500, 'WITHDRAW_FAILED', 'Failed to withdraw from escrow', { requestId });
-  }
+  // HIGH-1: Add distributed lock to prevent concurrent withdrawals
+  await withLock('escrow-withdraw:' + contractId, async () => {
+    try {
+      const { withdrawFromEscrow } = await import('../services/escrow-blockchain.js');
+      const result = await withdrawFromEscrow(contract.escrowAddress);
+      sendSuccessResponse(res, 200, {
+        message: 'Escrow withdrawal processed',
+        transactionHash: result.transactionHash,
+      }, requestId);
+    } catch (error) {
+      logger.error('Error withdrawing from escrow', error);
+      sendErrorResponse(res, 500, 'WITHDRAW_FAILED', 'Failed to withdraw from escrow', { requestId });
+    }
+  });
 }));
 
 /**
@@ -818,3 +706,4 @@ router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID
 }));
 
 export default router;
+

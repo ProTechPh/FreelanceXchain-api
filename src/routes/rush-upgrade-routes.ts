@@ -17,6 +17,12 @@ import {
 import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
+function hasMoreThanTwoDecimals(value: number): boolean {
+  const decimalStr = value.toString().split('.')[1];
+  return decimalStr !== undefined && decimalStr.length > 2;
+}
+
+
 
 /**
  * @swagger
@@ -77,7 +83,7 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
       return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     }
 
-    if (!proposedPercentage || typeof proposedPercentage !== 'number' || proposedPercentage <= 0 || proposedPercentage > 100) {
+    if (!proposedPercentage || typeof proposedPercentage !== 'number' || proposedPercentage <= 0 || proposedPercentage > 100 || hasMoreThanTwoDecimals(proposedPercentage)) {
       return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100', { requestId });
     }
 
@@ -164,7 +170,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
       return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Action must be accept, decline, or counter_offer', { requestId: xRequestId });
     }
 
-    if (action === 'counter_offer' && (!counterPercentage || typeof counterPercentage !== 'number' || counterPercentage <= 0 || counterPercentage > 100)) {
+    if (action === 'counter_offer' && (!counterPercentage || typeof counterPercentage !== 'number' || counterPercentage <= 0 || counterPercentage > 100 || hasMoreThanTwoDecimals(counterPercentage))) {
       return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Counter percentage must be between 0.01 and 100', { requestId: xRequestId });
     }
 

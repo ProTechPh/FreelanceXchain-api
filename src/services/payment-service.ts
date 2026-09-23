@@ -37,6 +37,10 @@ import { refundRequestRepository } from '../repositories/refund-request-reposito
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
 import { paymentSummaryCache } from '../utils/cache.js';
+const MIN_MILESTONE_AMOUNT = 0.0001; // Minimum milestone amount in ETH
+const MAX_CONTRACT_AMOUNT = 1000; // Maximum contract amount in ETH
+
+
 
 const escrowOps = {
   deployEscrow,
@@ -1119,12 +1123,38 @@ type EscrowDeploymentInput = {
  * contract total. When the DB milestones already include the fee (rush accepted
  * before deployment), they are used as-is — never scaled twice.
  */
+function validateMilestoneAmounts(amounts: number[]): { valid: boolean; error?: string } {
+  for (const amount of amounts) {
+    if (amount <= 0) {
+      return { valid: false, error: 'Milestone amount must be greater than zero' };
+    }
+    if (amount < MIN_MILESTONE_AMOUNT) {
+      return { valid: false, error: `Milestone amount must be at least ${MIN_MILESTONE_AMOUNT} ETH` };
+    }
+    if (hasMoreThanTwoDecimals(amount)) {
+      return { valid: false, error: 'Milestone amount must have maximum 2 decimal places' };
+    }
+  }
+  return { valid: true };
+}
+
+function hasMoreThanTwoDecimals(value: number): boolean {
+  const decimalStr = value.toString().split('.')[1];
+  return decimalStr !== undefined && decimalStr.length > 2;
+}
+
 function buildEscrowMilestones(project: Project, contract: Contract): {
   milestones: EscrowMilestone[];
   amounts: number[];
   scaled: boolean;
 } {
   const baseAmounts = project.milestones.map(m => m.amount ?? 0);
+
+  // CRITICAL-2: Validate milestone amounts before building escrow
+  const validation = validateMilestoneAmounts(baseAmounts);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
   let amounts = baseAmounts;
   let scaled = false;
 
@@ -1253,8 +1283,12 @@ export async function initializeContractEscrow(
   freelancerWalletAddress: string
 ): Promise<ServiceResult<{ escrowAddress: string }>> {
   try {
+    // CRITICAL-4: Validate contract amount bounds
     if (contract.totalAmount <= 0) {
       return errorResult('INVALID_CONTRACT_AMOUNT', 'Contract total amount must be greater than zero');
+    }
+    if (contract.totalAmount > MAX_CONTRACT_AMOUNT) {
+      return errorResult('CONTRACT_AMOUNT_TOO_LARGE', 'Contract total amount cannot exceed ' + MAX_CONTRACT_AMOUNT + ' ETH');
     }
 
     const { milestones: escrowMilestones, amounts: scaledAmounts, scaled } = buildEscrowMilestones(project, contract);
@@ -1329,3 +1363,6 @@ export async function initializeContractEscrow(
     return errorResult('ESCROW_DEPLOYMENT_FAILED', error instanceof Error ? error.message : 'Failed to deploy escrow');
   }
 }
+
+
+
