@@ -1,6 +1,6 @@
 // @ts-nocheck
 // @ts-nocheck
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
 import {
@@ -603,6 +603,8 @@ describe('Proposal Service - Unit Tests', () => {
 // Coverage Tests - Error paths and branch conditions
 // =============================================================================
 describe('Proposal Service - Coverage Tests', () => {
+  const originalMocks: Record<string, any> = {};
+
   beforeEach(() => {
     mockProposalRepo.clear();
     mockProjectRepo.clear();
@@ -612,7 +614,17 @@ describe('Proposal Service - Coverage Tests', () => {
     mockReviewRepo.clear();
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
+  });
 
+  afterEach(() => {
+    Object.entries(originalMocks).forEach(([key, value]) => {
+      const [repo, method] = key.split('.');
+      if (repo === 'mockProposalRepo') mockProposalRepo[method] = value;
+      else if (repo === 'mockContractRepo') mockContractRepo[method] = value;
+      else if (repo === 'mockUserRepo') mockUserRepo[method] = value;
+      else if (repo === 'mockNotificationRepo') mockNotificationRepo[method] = value;
+    });
+    Object.keys(originalMocks).forEach(key => delete originalMocks[key]);
   });
 
   // --- submitProposal error paths ---
@@ -684,7 +696,7 @@ describe('Proposal Service - Coverage Tests', () => {
     const project = createTestProject({ status: 'open' });
     projectStore.set(project.id, project);
 
-    const origCreateNotification = mockNotificationRepo.createNotification;
+    originalMocks['mockNotificationRepo.createNotification'] = mockNotificationRepo.createNotification;
     mockNotificationRepo.createNotification = jest.fn<any>().mockRejectedValue(new Error('Notification error'));
 
     const result = await submitProposal('freelancer-123', {
@@ -695,7 +707,7 @@ describe('Proposal Service - Coverage Tests', () => {
     });
 
     expect(result.success).toBe(true);
-    mockNotificationRepo.createNotification = origCreateNotification;
+    
   });
 
   // --- getProposalsByProject error path ---
@@ -902,13 +914,13 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origGetProposalsByProject = mockProposalRepo.getProposalsByProject;
-    mockProposalRepo.getProposalsByProject = jest.fn<any>().mockRejectedValue(new Error('DB error'));
+    originalMocks['mockProposalRepo.getProposalsByProject'] = mockProposalRepo.getProposalsByProject;
+    mockProposalRepo.getProposalsByProject = jest.fn<any>().mockImplementation(() => Promise.reject(new Error('DB error')));
 
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    mockProposalRepo.getProposalsByProject = origGetProposalsByProject;
+    
   });
 
   it('should return UPDATE_FAILED when updateProposal returns null during acceptance (lines 364-365)', async () => {
@@ -931,7 +943,7 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origUpdateProposal = mockProposalRepo.updateProposal;
+    originalMocks['mockProposalRepo.updateProposal'] = mockProposalRepo.updateProposal;
     mockProposalRepo.updateProposal = jest.fn<any>().mockResolvedValue(null);
 
     const result = await acceptProposal(proposal.id, employerId);
@@ -940,7 +952,7 @@ describe('Proposal Service - Coverage Tests', () => {
     if (!result.success) {
       expect(result.error.code).toBe('UPDATE_FAILED');
     }
-    mockProposalRepo.updateProposal = origUpdateProposal;
+    
   });
 
   it('should return UPDATE_FAILED when contract creation returns null (line 382)', async () => {
@@ -963,7 +975,7 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origCreate = mockContractRepo.create;
+    originalMocks['mockContractRepo.create'] = mockContractRepo.create;
     mockContractRepo.create = jest.fn<any>().mockResolvedValue(null);
 
     const result = await acceptProposal(proposal.id, employerId);
@@ -972,7 +984,7 @@ describe('Proposal Service - Coverage Tests', () => {
     if (!result.success) {
       expect(result.error.code).toBe('UPDATE_FAILED');
     }
-    mockContractRepo.create = origCreate;
+    
   });
 
   it('should handle blockchain initialization failure gracefully (line 442)', async () => {
@@ -995,13 +1007,13 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origGetUserById = mockUserRepo.getUserById;
+    originalMocks['mockUserRepo.getUserById'] = mockUserRepo.getUserById;
     mockUserRepo.getUserById = jest.fn<any>().mockRejectedValue(new Error('DB error'));
 
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    mockUserRepo.getUserById = origGetUserById;
+    
   });
 
   it('should continue when notification creation fails in acceptProposal (line 533)', async () => {
@@ -1024,13 +1036,13 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origCreateNotification = mockNotificationRepo.createNotification;
+    originalMocks['mockNotificationRepo.createNotification'] = mockNotificationRepo.createNotification;
     mockNotificationRepo.createNotification = jest.fn<any>().mockRejectedValue(new Error('Notification error'));
 
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    mockNotificationRepo.createNotification = origCreateNotification;
+    
   });
 
   // BLF-6.2: Only reject the remaining pending proposals once the project's
@@ -1161,7 +1173,7 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origUpdateProposal = mockProposalRepo.updateProposal;
+    originalMocks['mockProposalRepo.updateProposal'] = mockProposalRepo.updateProposal;
     mockProposalRepo.updateProposal = jest.fn<any>().mockResolvedValue(null);
 
     const result = await rejectProposal(proposal.id, employerId);
@@ -1170,7 +1182,7 @@ describe('Proposal Service - Coverage Tests', () => {
     if (!result.success) {
       expect(result.error.code).toBe('UPDATE_FAILED');
     }
-    mockProposalRepo.updateProposal = origUpdateProposal;
+    
   });
 
   it('should continue when notification creation fails in rejectProposal (line 615)', async () => {
@@ -1184,13 +1196,13 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origCreateNotification = mockNotificationRepo.createNotification;
+    originalMocks['mockNotificationRepo.createNotification'] = mockNotificationRepo.createNotification;
     mockNotificationRepo.createNotification = jest.fn<any>().mockRejectedValue(new Error('Notification error'));
 
     const result = await rejectProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    mockNotificationRepo.createNotification = origCreateNotification;
+    
   });
 
   // --- withdrawProposal error paths ---
@@ -1228,7 +1240,7 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    const origUpdateProposal = mockProposalRepo.updateProposal;
+    originalMocks['mockProposalRepo.updateProposal'] = mockProposalRepo.updateProposal;
     mockProposalRepo.updateProposal = jest.fn<any>().mockResolvedValue(null);
 
     const result = await withdrawProposal(proposal.id, freelancerId);
@@ -1237,7 +1249,7 @@ describe('Proposal Service - Coverage Tests', () => {
     if (!result.success) {
       expect(result.error.code).toBe('UPDATE_FAILED');
     }
-    mockProposalRepo.updateProposal = origUpdateProposal;
+    
   });
 
   // --- getProposalWithEmployerHistory error paths ---

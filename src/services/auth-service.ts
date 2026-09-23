@@ -1,4 +1,4 @@
-import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
+﻿import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
 import type { Models } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
@@ -331,26 +331,6 @@ function toAuthError(error: unknown): AuthError {
   };
 }
 
-async function withCompensation<T, R>(
-  factory: () => Promise<T>,
-  onSuccess: (t: T) => Promise<R>,
-  compensate: (t: T) => Promise<void>
-): Promise<R | AuthError> {
-  let resource: T | undefined;
-  try {
-    resource = await factory();
-    return await onSuccess(resource);
-  } catch (error) {
-    if (resource) {
-      try {
-        await compensate(resource);
-      } catch (compensationError) {
-        logger.error('Compensation failed', { error: compensationError });
-      }
-    }
-    return toAuthError(error);
-  }
-}
 
 async function createAppwriteUser(
   email: string,
@@ -366,16 +346,17 @@ async function createAppwriteUser(
 }
 
 async function createPublicUserRecord(
-  appwriteUser: Models.User<Models.Preferences>,
+  appwriteUserId: string,
+  email: string,
   role: UserRole
 ): Promise<UserEntity> {
   const publicUser = await userRepository.createUser({
-    id: appwriteUser.$id,
-    email: appwriteUser.email,
+    id: appwriteUserId,
+    email: email,
     password_hash: '',
     role: role,
     wallet_address: '',
-    name: appwriteUser.email.split('@')[0] || 'User',
+    name: email.split('@')[0] || 'User',
     is_suspended: false,
     suspension_reason: null,
     mfa_enabled: false,
@@ -424,18 +405,36 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
 
   logger.info('Registration attempt', { email: normalizedEmail, role: input.role });
 
-  return withCompensation(
-    () => createAppwriteUser(normalizedEmail, input.password),
-    async (appwriteUser) => {
-      logger.info('Appwrite user created', { userId: appwriteUser.$id });
-      const publicUser = await createPublicUserRecord(appwriteUser, input.role);
-      logger.info('Public user record created', { userId: publicUser.id });
-      const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
-      await sendVerificationEmail(sessionSecret, publicUser.id, normalizedEmail);
-      return buildAuthResult(publicUser, sessionSecret);
-    },
-    async (appwriteUser) => { await users.delete(appwriteUser.$id); }
-  );
+  let appwriteUserId: string | undefined;
+  try {
+    const appwriteUser = await createAppwriteUser(normalizedEmail, input.password);
+    appwriteUserId = appwriteUser.$id;
+    logger.info('Appwrite user created', { userId: appwriteUserId });
+    const publicUser = await createPublicUserRecord(appwriteUserId, normalizedEmail, input.role);
+    logger.info('Public user record created', { userId: publicUser.id });
+    const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
+    await sendVerificationEmail(sessionSecret, publicUser.id, normalizedEmail);
+    return buildAuthResult(publicUser, sessionSecret);
+  } catch (error: unknown) {
+    if (appwriteUserId) {
+      try {
+        await users.delete(appwriteUserId);
+        logger.warn(
+          'Compensated: deleted orphaned Appwrite user after registration failure',
+          { appwriteUserId }
+        );
+      } catch (deleteError: unknown) {
+        logger.error(
+          'CRITICAL: Failed to delete orphaned Appwrite user',
+          {
+            appwriteUserId: appwriteUserId,
+            deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
+          }
+        );
+      }
+    }
+    return toAuthError(error);
+  }
 }
 
 export async function login(input: LoginInput): Promise<AuthResponse> {
@@ -792,7 +791,7 @@ export async function logout(accessToken?: string): Promise<{ success: boolean }
     
     return {
       code: 'INTERNAL_ERROR',
-      message: getErrorMessage(error) ?? 'Failed to logout',
+      message: getErrorMessage(error) || 'Failed to logout',
     };
   }
 }
@@ -1002,7 +1001,7 @@ export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email
     logger.error('MFA enrollment failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_ENROLLMENT_FAILED',
-      message: getErrorMessage(error) ?? 'Failed to enroll in MFA',
+      message: getErrorMessage(error) || 'Failed to enroll in MFA',
     };
   }
 }
@@ -1029,7 +1028,7 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
     logger.error('MFA verification failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_VERIFY_FAILED',
-      message: getErrorMessage(error) ?? 'Invalid MFA code',
+      message: getErrorMessage(error) || 'Invalid MFA code',
     };
   }
 }
@@ -1067,7 +1066,7 @@ export async function verifyMFAChallenge(accessToken: string, factorId: string, 
     logger.error('MFA challenge verification failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_CHALLENGE_FAILED',
-      message: getErrorMessage(error) ?? 'Invalid MFA code',
+      message: getErrorMessage(error) || 'Invalid MFA code',
     };
   }
 }
@@ -1426,5 +1425,9 @@ export async function disconnectUserWallet(userId: string): Promise<{ success: b
     };
   }
 }
+
+
+
+
 
 

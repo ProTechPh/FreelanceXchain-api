@@ -616,7 +616,15 @@ export async function acceptProposal(
     }
 
     // Phase: Update project status
-    await updateProjectAfterAcceptance(project.id, proposalId);
+    try {
+      await updateProjectAfterAcceptance(project.id, proposalId);
+    } catch (updateError) {
+      logger.error('Failed to update project status after acceptance — proposal accepted but project status may be stale', {
+        projectId: project.id,
+        proposalId: proposal.id,
+        error: updateError,
+      });
+    }
 
     // Phase: Notify (non-blocking)
     void notifyProposalAccepted(proposal, contract, project);
