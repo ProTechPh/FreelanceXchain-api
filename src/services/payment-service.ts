@@ -38,7 +38,7 @@ import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
 import { paymentSummaryCache } from '../utils/cache.js';
 const MIN_MILESTONE_AMOUNT = 0.0001; // Minimum milestone amount in ETH
-const MAX_CONTRACT_AMOUNT = 1000; // Maximum contract amount in ETH
+const MAX_CONTRACT_AMOUNT = 1_000_000; // Maximum contract amount in ETH
 
 
 
