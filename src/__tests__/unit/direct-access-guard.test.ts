@@ -16,8 +16,13 @@ describe('directAccessGuard middleware', () => {
     } as unknown as Request;
   }
 
+  let originalNodeEnv: string;
+
   beforeEach(() => {
+    originalNodeEnv = config.server.nodeEnv;
     originalInternalSecret = config.server.internalApiSecret;
+    // @ts-expect-error test override
+    config.server.nodeEnv = 'production';
     // @ts-expect-error test override
     config.server.internalApiSecret = undefined;
 
@@ -31,7 +36,18 @@ describe('directAccessGuard middleware', () => {
 
   afterEach(() => {
     // @ts-expect-error test restore
+    config.server.nodeEnv = originalNodeEnv;
+    // @ts-expect-error test restore
     config.server.internalApiSecret = originalInternalSecret;
+  });
+
+  it('bypasses guard in development environment', () => {
+    // @ts-expect-error test override
+    config.server.nodeEnv = 'development';
+    // @ts-expect-error test override
+    config.server.internalApiSecret = 'test-secret';
+    directAccessGuard(createMockReq('/api/freelancers', {}), mockRes as Response, nextFn);
+    expect(nextFn).toHaveBeenCalled();
   });
 
   it('allows health check and root endpoints without checks', () => {

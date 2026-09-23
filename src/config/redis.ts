@@ -57,6 +57,7 @@ function createRedisClient(): Redis {
 }
 
 export const redis = createRedisClient();
+redis.setMaxListeners(30);
 
 redis.on('error', (err: Error) => {
   if (config?.server?.nodeEnv !== 'test') {
