@@ -215,4 +215,11 @@ describe('utils/cache.ts - Branch Coverage', () => {
       expect(() => stopAllCacheCleanups()).not.toThrow();
     });
   });
+
+  describe('warmAllCaches', () => {
+    it('should return early when useRedis is false', async () => {
+      const { warmAllCaches } = await import(resolveModule('src/utils/cache.ts'));
+      await expect(warmAllCaches()).resolves.toBeUndefined();
+    });
+  });
 });
