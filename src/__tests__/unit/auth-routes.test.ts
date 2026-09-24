@@ -31,6 +31,9 @@ const mockValidatePasswordStrength = jest.fn<any>();
 const mockUpdateUserWallet = jest.fn<any>();
 const mockVerifyAuthToken = jest.fn<any>();
 const mockVerifyEmail = jest.fn<any>();
+const mockDeleteUserAccount = jest.fn<any>();
+const mockRequestAccountDeletion = jest.fn<any>();
+const mockVerifyAccountDeletionCode = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
@@ -63,7 +66,9 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   requestEmailOtp: jest.fn(),
   requestMagicUrl: jest.fn(),
   verifyAuthToken: mockVerifyAuthToken,
-  deleteUserAccount: jest.fn().mockResolvedValue({ success: true, message: 'Account deleted' }),
+  deleteUserAccount: mockDeleteUserAccount,
+  requestAccountDeletion: mockRequestAccountDeletion,
+  verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
   disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
 }));
 
@@ -104,6 +109,9 @@ describe('Auth Routes', () => {
     app.use(express.json());
     app.use('/api/auth', authRouter);
     mockValidatePasswordStrength.mockReturnValue({ valid: true, errors: [] });
+    mockDeleteUserAccount.mockResolvedValue({ success: true, message: 'Account deleted' });
+    mockRequestAccountDeletion.mockResolvedValue({ success: true, message: 'Code sent' });
+    mockVerifyAccountDeletionCode.mockReturnValue(true);
   });
 
   describe('POST /register', () => {
@@ -770,7 +778,9 @@ describe('auth-routes.ts - Branch Coverage', () => {
       requestEmailOtp: jest.fn(),
       requestMagicUrl: jest.fn(),
       verifyAuthToken: jest.fn(),
-      deleteUserAccount: jest.fn().mockResolvedValue({ success: true, message: 'Account deleted' }),
+      deleteUserAccount: mockDeleteUserAccount,
+      requestAccountDeletion: mockRequestAccountDeletion,
+      verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
       disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
     }));
     jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
@@ -1089,7 +1099,9 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       requestEmailOtp: mockRequestEmailOtp,
       requestMagicUrl: mockRequestMagicUrl,
       verifyAuthToken: mockVerifyAuthToken,
-      deleteUserAccount: jest.fn().mockResolvedValue({ success: true, message: 'Account deleted' }),
+      deleteUserAccount: mockDeleteUserAccount,
+      requestAccountDeletion: mockRequestAccountDeletion,
+      verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
       disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
     }));
     jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
@@ -1106,6 +1118,9 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
     app.use(express.json());
     app.use('/api/auth', authRouter);
     jest.clearAllMocks();
+    mockDeleteUserAccount.mockResolvedValue({ success: true, message: 'Account deleted' });
+    mockRequestAccountDeletion.mockResolvedValue({ success: true, message: 'Code sent' });
+    mockVerifyAccountDeletionCode.mockReturnValue(true);
   });
 
   // Lines 708-718: POST /login/email-otp
@@ -1213,6 +1228,120 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       const res = await request(app).post('/api/auth/login/verify-token').send({ userId: 'user-1', secret: 'otp-code' });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('AUTH_INVALID_TOKEN');
+    });
+  });
+
+  describe('Account Deletion Endpoints', () => {
+    describe('POST /api/auth/account/delete-request', () => {
+      it('should request deletion confirmation code successfully', async () => {
+        const request = (await import('supertest')).default;
+        mockRequestAccountDeletion.mockResolvedValue({
+          success: true,
+          message: 'A 6-digit confirmation code has been sent to your registered email.',
+          email: 'u***r@example.com',
+        });
+
+        const res = await request(app).post('/api/auth/account/delete-request');
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.message).toContain('confirmation code has been sent');
+        expect(mockRequestAccountDeletion).toHaveBeenCalledWith('user-1');
+      });
+
+      it('should return 400 when active contracts exist', async () => {
+        const request = (await import('supertest')).default;
+        mockRequestAccountDeletion.mockResolvedValue({
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: 'Cannot delete account while you have active contracts.',
+        });
+
+        const res = await request(app).post('/api/auth/account/delete-request');
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('ACTIVE_CONTRACTS_EXIST');
+      });
+
+      it('should return 404 when user not found', async () => {
+        const request = (await import('supertest')).default;
+        mockRequestAccountDeletion.mockResolvedValue({
+          code: 'USER_NOT_FOUND',
+          message: 'User not found',
+        });
+
+        const res = await request(app).post('/api/auth/account/delete-request');
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('USER_NOT_FOUND');
+      });
+    });
+
+    describe('DELETE /api/auth/account', () => {
+      it('should return 400 when confirmation text is missing or not DELETE', async () => {
+        const request = (await import('supertest')).default;
+        const res = await request(app)
+          .delete('/api/auth/account')
+          .send({ code: '123456' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('CONFIRMATION_REQUIRED');
+      });
+
+      it('should return 400 when confirmation code is missing', async () => {
+        const request = (await import('supertest')).default;
+        const res = await request(app)
+          .delete('/api/auth/account')
+          .send({ confirmation: 'DELETE' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('CONFIRMATION_CODE_REQUIRED');
+      });
+
+      it('should return 400 when confirmation code is invalid', async () => {
+        const request = (await import('supertest')).default;
+        mockVerifyAccountDeletionCode.mockReturnValue({
+          code: 'INVALID_CONFIRMATION_CODE',
+          message: 'Invalid confirmation code. Please check your email and try again.',
+        });
+
+        const res = await request(app)
+          .delete('/api/auth/account')
+          .send({ confirmation: 'DELETE', code: '999999' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('INVALID_CONFIRMATION_CODE');
+      });
+
+      it('should return 200 and delete account on valid confirmation and code', async () => {
+        const request = (await import('supertest')).default;
+        mockVerifyAccountDeletionCode.mockReturnValue(true);
+        mockDeleteUserAccount.mockResolvedValue({
+          success: true,
+          message: 'Account and associated data have been permanently deleted.',
+        });
+
+        const res = await request(app)
+          .delete('/api/auth/account')
+          .send({ confirmation: 'DELETE', code: '123456' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toContain('permanently deleted');
+        expect(mockVerifyAccountDeletionCode).toHaveBeenCalledWith('user-1', '123456');
+        expect(mockDeleteUserAccount).toHaveBeenCalledWith('user-1');
+      });
+
+      it('should return 400 when deletion service returns ACTIVE_CONTRACTS_EXIST', async () => {
+        const request = (await import('supertest')).default;
+        mockVerifyAccountDeletionCode.mockReturnValue(true);
+        mockDeleteUserAccount.mockResolvedValue({
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: 'Cannot delete account with active contracts.',
+        });
+
+        const res = await request(app)
+          .delete('/api/auth/account')
+          .send({ confirmation: 'DELETE', code: '123456' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('ACTIVE_CONTRACTS_EXIST');
+      });
     });
   });
 });

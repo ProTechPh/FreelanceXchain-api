@@ -1,4 +1,5 @@
-﻿import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
+import { randomInt } from 'crypto';
+import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
 import type { Models } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
@@ -12,6 +13,10 @@ import { getErrorMessage } from '../utils/index.js';
 import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
+import {
+  sendAccountDeletionCodeEmail,
+  sendAccountDeletedEmail,
+} from './email-delivery-service.js';
 import {
   RegisterInput,
   LoginInput,
@@ -1343,6 +1348,132 @@ async function cleanupUserData(userId: string, role: string): Promise<void> {
   }
 }
 
+interface DeletionCodeEntry {
+  code: string;
+  expiresAt: number;
+  attempts: number;
+}
+
+const accountDeletionCodes = new Map<string, DeletionCodeEntry>();
+
+function cleanExpiredDeletionCodes(): void {
+  const now = Date.now();
+  for (const [userId, entry] of accountDeletionCodes.entries()) {
+    if (now > entry.expiresAt) {
+      accountDeletionCodes.delete(userId);
+    }
+  }
+}
+
+function maskEmail(email: string): string {
+  const parts = email.split('@');
+  const local = parts[0] ?? '';
+  const domain = parts[1];
+  if (!domain || !local) return email;
+  if (local.length <= 2) {
+    const first = local[0] ?? '*';
+    return `${first}***@${domain}`;
+  }
+  const first = local[0] ?? '*';
+  const last = local[local.length - 1] ?? '*';
+  return `${first}***${last}@${domain}`;
+}
+
+export async function requestAccountDeletion(userId: string): Promise<{ success: boolean; message: string; email?: string } | AuthError> {
+  try {
+    const user = await userRepository.getUserById(userId);
+    if (!user) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    try {
+      await ensureNoActiveContracts(userId);
+    } catch (error) {
+      if (error instanceof ActiveContractsError) {
+        return {
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: error.message,
+        };
+      }
+      throw error;
+    }
+
+    cleanExpiredDeletionCodes();
+
+    // Generate cryptographically secure 6-digit confirmation code
+    const code = randomInt(100000, 1000000).toString();
+    accountDeletionCodes.set(userId, {
+      code,
+      expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutes
+      attempts: 0,
+    });
+
+    if (user.email) {
+      sendAccountDeletionCodeEmail(user.email, {
+        recipientName: user.name || user.email.split('@')[0] || 'User',
+        confirmationCode: code,
+        expiresMinutes: 15,
+      }).catch((emailErr) => {
+        logger.warn('Failed to send account deletion confirmation code email', {
+          userId,
+          email: user.email,
+          error: getErrorMessage(emailErr),
+        });
+      });
+      logger.info('Account deletion confirmation code dispatched to email', { userId, email: user.email });
+    }
+
+    const masked = user.email ? maskEmail(user.email) : undefined;
+    return {
+      success: true,
+      message: `A 6-digit confirmation code has been sent to ${masked || 'your registered email'}.`,
+      ...(masked ? { email: masked } : {}),
+    };
+  } catch (error: unknown) {
+    logger.error('Account deletion request failed', { error: getErrorMessage(error), userId });
+    return {
+      code: 'REQUEST_FAILED',
+      message: 'Failed to request account deletion code. Please try again.',
+    };
+  }
+}
+
+export function verifyAccountDeletionCode(userId: string, code: string): true | AuthError {
+  cleanExpiredDeletionCodes();
+  const entry = accountDeletionCodes.get(userId);
+
+  if (!entry || Date.now() > entry.expiresAt) {
+    accountDeletionCodes.delete(userId);
+    return {
+      code: 'INVALID_CONFIRMATION_CODE',
+      message: 'Confirmation code has expired or was not requested. Please request a new code.',
+    };
+  }
+
+  if (entry.attempts >= 5) {
+    accountDeletionCodes.delete(userId);
+    return {
+      code: 'MAX_ATTEMPTS_EXCEEDED',
+      message: 'Too many invalid attempts. Please request a new confirmation code.',
+    };
+  }
+
+  if (entry.code !== code.trim()) {
+    entry.attempts += 1;
+    return {
+      code: 'INVALID_CONFIRMATION_CODE',
+      message: 'Invalid confirmation code. Please check your email and try again.',
+    };
+  }
+
+  // Code verified successfully - remove from store so it cannot be re-used
+  accountDeletionCodes.delete(userId);
+  return true;
+}
+
 export async function deleteUserAccount(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
   try {
     const user = await userRepository.getUserById(userId);
@@ -1365,6 +1496,9 @@ export async function deleteUserAccount(userId: string): Promise<{ success: bool
       throw error;
     }
 
+    const userEmail = user.email;
+    const userName = user.name || user.email.split('@')[0] || 'User';
+
     await cleanupUserData(userId, user.role);
 
     try {
@@ -1374,6 +1508,21 @@ export async function deleteUserAccount(userId: string): Promise<{ success: bool
     }
 
     await userRepository.deleteUser(userId);
+
+    // Send post-deletion notification email
+    if (userEmail) {
+      sendAccountDeletedEmail(userEmail, {
+        recipientName: userName,
+        deletionDate: new Date().toUTCString(),
+      }).catch((emailErr) => {
+        logger.warn('Failed to send account deletion notification email', {
+          userId,
+          email: userEmail,
+          error: getErrorMessage(emailErr),
+        });
+      });
+      logger.info('Account deletion notification email dispatched', { userId, email: userEmail });
+    }
 
     logger.info('User account permanently deleted under data erasure compliance', { userId });
     return {

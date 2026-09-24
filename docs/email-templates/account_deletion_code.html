@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Account Deletion - FreelanceXchain</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8fafc; padding: 40px 16px;">
+        <tr>
+            <td align="center" style="padding: 32px 12px;">
+                
+                <!-- Main Container -->
+                <table role="presentation" style="max-width: 620px; width: 100%; border-collapse: collapse;">
+                    
+                    <!-- Floating Top Navbar Pill -->
+                    <tr>
+                        <td align="center" style="padding-bottom: 24px;">
+                            <div style="display: inline-block; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 9999px; padding: 10px 24px; box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05);">
+                                <table role="presentation" style="border-collapse: collapse; margin: 0 auto;">
+                                    <tr>
+                                        <td style="vertical-align: middle; padding-right: 8px;">
+                                            <svg width="26" height="26" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+                                                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(45 50 50)" fill="none" stroke="#dc2626" stroke-width="11" />
+                                                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(-45 50 50)" fill="none" stroke="#b91c1c" stroke-width="11" />
+                                            </svg>
+                                        </td>
+                                        <td style="vertical-align: middle;">
+                                            <span style="font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1;">
+                                                Freelance<span style="color: #dc2626; font-weight: 900;">X</span>chain
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Hero Section -->
+                    <tr>
+                        <td align="center" style="padding: 8px 16px 28px; text-align: center;">
+                            <!-- Top Pill Badge -->
+                            <div style="display: inline-block; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 9999px; padding: 6px 16px; margin-bottom: 18px;">
+                                <span style="color: #991b1b; font-size: 12px; font-weight: 700; letter-spacing: 0.2px;">
+                                    ⚠️ Critical Security Alert &bull; Account Erasure Request
+                                </span>
+                            </div>
+
+                            <!-- Hero Headline -->
+                            <h1 style="margin: 0 0 12px; font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1.25;">
+                                Confirm Account Deletion
+                            </h1>
+
+                            <!-- Hero Subtitle -->
+                            <p style="margin: 0 auto; max-width: 480px; font-size: 15px; color: #475569; line-height: 1.6; font-weight: 400;">
+                                Hello <strong>{{ recipientName }}</strong>, a request was received to permanently delete your FreelanceXchain account and associated personal data.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Interactive Card -->
+                    <tr>
+                        <td style="padding: 0 12px;">
+                            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.06), 0 8px 10px -6px rgba(0, 0, 0, 0.04); overflow: hidden;">
+                                
+                                <!-- Card Header -->
+                                <tr>
+                                    <td style="padding: 20px 28px 16px; border-bottom: 1px solid #f1f5f9; background-color: #ffffff;">
+                                        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                                            <tr>
+                                                <td>
+                                                    <div style="font-size: 15px; font-weight: 700; color: #0f172a;">
+                                                        Secondary Deletion Code
+                                                    </div>
+                                                    <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
+                                                        Out-of-band verification required
+                                                    </div>
+                                                </td>
+                                                <td align="right">
+                                                    <span style="display: inline-block; background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 9999px; padding: 4px 12px; font-size: 11px; font-weight: 700; color: #dc2626;">
+                                                        ⏱️ {{ expiresMinutes }} Minutes Expiry
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+
+                                <!-- Card Content -->
+                                <tr>
+                                    <td style="padding: 28px;">
+                                        <p style="margin: 0 0 14px; color: #334155; font-size: 14px; line-height: 1.6;">
+                                            To complete the permanent deletion of your account, enter the 6-digit confirmation code below in your settings screen:
+                                        </p>
+
+                                        <!-- Verification Code Box -->
+                                        <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0 16px;">
+                                            <div style="font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;">
+                                                Account Deletion Code
+                                            </div>
+                                            <div style="font-size: 36px; font-weight: 800; color: #dc2626; letter-spacing: 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">
+                                                {{ confirmationCode }}
+                                            </div>
+                                        </div>
+
+                                        <div style="background-color: #f8fafc; border-left: 4px solid #dc2626; padding: 14px 16px; border-radius: 0 8px 8px 0; margin-top: 20px;">
+                                            <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.5;">
+                                                <strong>Notice:</strong> Once confirmed, this action cannot be reversed. Your profile, portfolio items, and credentials will be permanently erased. Past blockchain transactions remain immutably on-chain.
+                                            </p>
+                                        </div>
+
+                                        <p style="margin: 20px 0 0; font-size: 13px; color: #64748b; line-height: 1.5;">
+                                            If you did <strong>not</strong> initiate this deletion, someone may have access to your active session. Please change your password immediately and secure your account.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td align="center" style="padding: 32px 16px 0; text-align: center;">
+                            <p style="margin: 0 0 8px; font-size: 12px; color: #94a3b8;">
+                                &copy; 2026 FreelanceXchain. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -19,7 +19,9 @@ type EmailTemplate =
   | 'review_received'
   | 'kyc_approved'
   | 'kyc_rejected'
-  | 'weekly_digest';
+  | 'weekly_digest'
+  | 'account_deletion_code'
+  | 'account_deleted';
 
 type EmailData = {
   to: string;
@@ -429,6 +431,50 @@ export async function sendWeeklyDigestEmail(
       totalEscrowValue: data.totalEscrowValue ?? '$0',
       topMatchRate: data.topMatchRate ?? '95%',
       topProjects: data.topProjects ?? [],
+    },
+  });
+}
+
+export async function sendAccountDeletionCodeEmail(
+  to: string,
+  data: {
+    recipientName?: string;
+    userName?: string;
+    confirmationCode: string;
+    expiresMinutes?: number;
+  }
+): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.userName ?? 'User';
+  return sendEmail({
+    to,
+    subject: 'Action Required: Confirm Account Deletion',
+    template: 'account_deletion_code',
+    data: {
+      ...data,
+      recipientName,
+      confirmationCode: data.confirmationCode,
+      expiresMinutes: data.expiresMinutes ?? 15,
+    },
+  });
+}
+
+export async function sendAccountDeletedEmail(
+  to: string,
+  data: {
+    recipientName?: string;
+    userName?: string;
+    deletionDate?: string;
+  }
+): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.userName ?? 'User';
+  return sendEmail({
+    to,
+    subject: 'Your FreelanceXchain Account Has Been Permanently Deleted',
+    template: 'account_deleted',
+    data: {
+      ...data,
+      recipientName,
+      deletionDate: data.deletionDate ?? new Date().toUTCString(),
     },
   });
 }
