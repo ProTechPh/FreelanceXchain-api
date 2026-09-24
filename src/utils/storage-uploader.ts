@@ -60,6 +60,55 @@ export type UploadFileOptions = {
 };
 
 /**
+ * Generate a secure file access URL that routes through the proxy endpoint
+ * instead of exposing direct Appwrite URLs.
+ * @param bucket - Storage bucket ID
+ * @param fileId - Appwrite file ID
+ * @returns Secure proxy URL for file access
+ */
+export function getSecureFileUrl(bucket: BucketId, fileId: string): string {
+  // Use the API's proxy endpoint for secure file access
+  // This ensures authorization checks are performed before serving files
+  return `/api/files/access/${bucket}/${fileId}`;
+}
+
+/**
+ * Check if a URL is a legacy direct Appwrite URL
+ * @param url - URL to check
+ * @returns True if the URL is a direct Appwrite storage URL
+ */
+function isLegacyAppwriteUrl(url: string): boolean {
+  if (!url) return false;
+  // Check if URL contains Appwrite storage path pattern
+  return url.includes('/storage/buckets/') && url.includes('/files/');
+}
+
+/**
+ * Extract bucket and file ID from a legacy Appwrite URL and convert to secure URL
+ * @param legacyUrl - Legacy direct Appwrite URL
+ * @returns Secure proxy URL or null if parsing fails
+ */
+export function convertLegacyUrlToSecure(legacyUrl: string): string | null {
+  if (!isLegacyAppwriteUrl(legacyUrl)) {
+    // Already a secure URL or invalid
+    return legacyUrl;
+  }
+  
+  try {
+    const bucketMatch = legacyUrl.match(/\/storage\/buckets\/([^/]+)/);
+    const fileIdMatch = legacyUrl.match(/\/files\/([^/]+)/);
+    
+    if (bucketMatch?.[1] && fileIdMatch?.[1]) {
+      return getSecureFileUrl(bucketMatch[1] as BucketId, fileIdMatch[1]);
+    }
+  } catch {
+    logger.warn('Failed to convert legacy URL to secure URL', { legacyUrl });
+  }
+  
+  return null;
+}
+
+/**
  * Upload a file buffer to Appwrite Storage
  * @returns Upload result with file metadata or error
  */
@@ -87,10 +136,11 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
       permissions
     );
     
-    const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucket}/files/${file.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+    // Use secure proxy URL instead of direct Appwrite URL
+    const secureUrl = getSecureFileUrl(bucket, file.$id);
     
     const metadata: FileMetadata = {
-      url,
+      url: secureUrl,
       filename: originalFilename, // Keep original filename for display
       size: buffer.length,
       mimeType,
@@ -103,7 +153,7 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
       bucket,
       fileId: file.$id,
       size: buffer.length,
-      url,
+      url: secureUrl,
     });
     
     return {
@@ -156,6 +206,50 @@ export async function uploadMultipleFiles(
 }
 
 /**
+ * Stream a file from Appwrite Storage
+ * This function is used by the file access endpoint to proxy file content
+ * with proper authorization checks.
+ * @param bucket - Storage bucket ID
+ * @param fileId - Appwrite file ID
+ * @returns ReadableStream of file content or null if file not found
+ */
+export async function streamFileFromStorage(
+  bucket: BucketId,
+  fileId: string
+): Promise<{ stream: ReadableStream; mimeType: string; size: number; filename: string } | null> {
+  try {
+    // Get file metadata first
+    const file = await storage.getFile(bucket, fileId);
+    
+    // Download file content as buffer
+    const buffer = await storage.getFileDownload(bucket, fileId);
+    
+    // Convert buffer to ReadableStream
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(buffer);
+        controller.close();
+      },
+    });
+    
+    return {
+      stream,
+      mimeType: file.mimeType || 'application/octet-stream',
+      size: file.sizeOriginal || 0,
+      filename: file.name,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to stream file from storage', {
+      error: message,
+      bucket,
+      fileId,
+    });
+    return null;
+  }
+}
+
+/**
  * Delete a file from Appwrite Storage
  * @param fileId - Appwrite file ID
  * @param bucket - Storage bucket ID
@@ -193,14 +287,20 @@ export async function deleteFileFromStorage(
 
 /**
  * Extract file ID from Appwrite Storage URL
- * @param url - Full Appwrite Storage URL
+ * Supports both legacy direct Appwrite URLs and new secure proxy URLs
+ * @param url - Full Appwrite Storage URL or secure proxy URL
  * @returns File ID or null if invalid URL
  */
 export function extractFileIdFromUrl(url: string): string | null {
   try {
-    const urlObj = new URL(url);
+    // Handle secure proxy URLs: /api/files/access/{bucket}/{fileId}
+    const proxyMatch = url.match(/\/api\/files\/access\/[^/]+\/([^/]+)/);
+    if (proxyMatch && proxyMatch[1]) {
+      return proxyMatch[1];
+    }
     
-    // Appwrite storage URLs follow pattern: https://{endpoint}/storage/buckets/{bucket}/files/{fileId}/view?project=${process.env.APPWRITE_PROJECT_ID}
+    // Handle legacy Appwrite URLs: https://{endpoint}/storage/buckets/{bucket}/files/{fileId}/view
+    const urlObj = new URL(url);
     const pathMatch = urlObj.pathname.match(/\/storage\/buckets\/[^/]+\/files\/([^/]+)/);
     
     if (pathMatch && pathMatch[1]) {
@@ -210,6 +310,35 @@ export function extractFileIdFromUrl(url: string): string | null {
     return null;
   } catch {
     logger.warn('Failed to extract file ID from URL', { url });
+    return null;
+  }
+}
+
+/**
+ * Extract bucket ID from URL
+ * Supports both legacy direct Appwrite URLs and new secure proxy URLs
+ * @param url - Full Appwrite Storage URL or secure proxy URL
+ * @returns Bucket ID or null if invalid URL
+ */
+export function extractBucketFromUrl(url: string): BucketId | null {
+  try {
+    // Handle secure proxy URLs: /api/files/access/{bucket}/{fileId}
+    const proxyMatch = url.match(/\/api\/files\/access\/([^/]+)/);
+    if (proxyMatch && proxyMatch[1]) {
+      return proxyMatch[1] as BucketId;
+    }
+    
+    // Handle legacy Appwrite URLs: https://{endpoint}/storage/buckets/{bucket}/files/{fileId}/view
+    const urlObj = new URL(url);
+    const pathMatch = urlObj.pathname.match(/\/storage\/buckets\/([^/]+)/);
+    
+    if (pathMatch && pathMatch[1]) {
+      return pathMatch[1] as BucketId;
+    }
+    
+    return null;
+  } catch {
+    logger.warn('Failed to extract bucket from URL', { url });
     return null;
   }
 }
@@ -315,6 +444,7 @@ export async function deleteFile(
 /**
  * Get a signed URL for a file owned by the given user. When userId is provided,
  * ownership is verified server-side from the stored file name (BLF-11.2).
+ * Returns a secure proxy URL instead of direct Appwrite URL.
  * Error strings: 'FORBIDDEN' (another user's file), 'FILE_NOT_FOUND'.
  */
 export async function getSignedUrl(bucket: BucketId, path: string, userId?: string): Promise<UploadResult> {
@@ -323,11 +453,11 @@ export async function getSignedUrl(bucket: BucketId, path: string, userId?: stri
     if (ownership === 'missing') return { success: false, error: 'FILE_NOT_FOUND' };
     if (ownership === 'forbidden') return { success: false, error: 'FORBIDDEN' };
   }
-  // Appwrite doesn't have "signed URLs" in the same way Appwrite does for public view
-  const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucket}/files/${path}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+  // Return secure proxy URL instead of direct Appwrite URL
+  const secureUrl = getSecureFileUrl(bucket, path);
   return {
     success: true,
-    url,
+    url: secureUrl,
   };
 }
 
@@ -392,7 +522,7 @@ export async function getFileQuota(userId: string): Promise<{
     buckets.map(bucket => listUserFiles(bucket, userId))
   );
 
-  // listUserFiles never throws, but a bucket listing can fail â€” surface that
+  // listUserFiles never throws, but a bucket listing can fail — surface that
   // instead of reporting a silently-undersized quota.
   const failed = results.find(r => !r.success);
   if (failed) {

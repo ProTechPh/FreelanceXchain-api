@@ -17,6 +17,7 @@ import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { generateId } from '../utils/id.js';
+import { users, Query } from '../config/appwrite.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -35,6 +36,7 @@ export interface UserFilters {
   role?: string;
   status?: string;
   kycStatus?: string;
+  emailVerified?: boolean | string;
   search?: string;
 }
 
@@ -42,6 +44,7 @@ interface UserManagementData {
   users: Array<UserEntity & {
     kyc_status: KycVerification['status'] | 'not_started';
     kyc_verified: boolean;
+    email_verified: boolean;
   }>;
   total: number;
 }
@@ -156,12 +159,44 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
 export async function getUserManagement(filters?: UserFilters): Promise<ServiceResult<UserManagementData>> {
   try {
     const allUsers = await userRepository.queryAll('$createdAt');
+    const appwriteUsersMap = new Map<string, boolean>();
+    try {
+      if (users && typeof users.list === 'function') {
+        const listRes = await users.list([Query.limit(100)]);
+        if (listRes?.users && Array.isArray(listRes.users)) {
+          for (const u of listRes.users) {
+            appwriteUsersMap.set(u.$id, Boolean(u.emailVerification));
+          }
+        }
+      }
+    } catch {
+      // In tests or if users.list fails, fallback to per-user lookup
+    }
+
     const usersWithKyc = await Promise.all(allUsers.map(async (user) => {
-      const verification = await getKycVerificationByUserId(user.id);
+      const verificationPromise = getKycVerificationByUserId(user.id).catch(() => null);
+
+      let emailVerified = appwriteUsersMap.has(user.id)
+        ? appwriteUsersMap.get(user.id)!
+        : Boolean((user as any).email_verified ?? (user as any).emailVerification ?? false);
+
+      if (!appwriteUsersMap.has(user.id) && !emailVerified) {
+        try {
+          if (users && typeof users.get === 'function') {
+            const appwriteUser = await users.get(user.id);
+            emailVerified = Boolean(appwriteUser?.emailVerification);
+          }
+        } catch {
+          // If Appwrite lookup fails, default to false
+        }
+      }
+
+      const verification = await verificationPromise;
       return {
         ...user,
         kyc_status: verification?.status ?? 'not_started' as const,
         kyc_verified: verification?.status === 'approved',
+        email_verified: emailVerified,
       };
     }));
 
@@ -178,6 +213,12 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
       filtered = filtered.filter(u =>
         (u as UserEntity & { kyc_status?: string }).kyc_status === filters.kycStatus
       );
+    }
+    if (filters?.emailVerified !== undefined) {
+      const wantVerified = typeof filters.emailVerified === 'string'
+        ? filters.emailVerified === 'true'
+        : Boolean(filters.emailVerified);
+      filtered = filtered.filter(u => Boolean(u.email_verified) === wantVerified);
     }
     if (filters?.search) {
       const term = filters.search.toLowerCase();

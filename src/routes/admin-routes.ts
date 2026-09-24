@@ -25,7 +25,7 @@ import { asyncHandler } from '../utils/async-handler.js';
 const router = Router();
 
 /** Transform a user entity into the admin frontend shape */
-function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean }) | null | undefined) {
+function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean; kyc_status?: string; email_verified?: boolean }) | null | undefined) {
   if (!user) return null;
   return {
     id: user.id,
@@ -34,7 +34,9 @@ function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean }) | null | u
     walletAddress: user.wallet_address || '',
     createdAt: user.created_at,
     name: user.name || '',
-    kycVerified: user.kyc_verified,
+    kycVerified: Boolean(user.kyc_verified),
+    kycStatus: user.kyc_status ?? (user.kyc_verified ? 'approved' : 'not_started'),
+    emailVerified: Boolean(user.email_verified),
     isActive: !user.is_suspended, // Active means NOT suspended
   };
 }
@@ -96,10 +98,14 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
   const role = req.query['role'] as string | undefined;
+  const kycStatus = req.query['kycStatus'] as string | undefined;
+  const emailVerified = req.query['emailVerified'] as string | undefined;
 
   const filters: UserFilters = {};
   if (status) filters.status = status;
   if (role) filters.role = role;
+  if (kycStatus) filters.kycStatus = kycStatus;
+  if (emailVerified !== undefined) filters.emailVerified = emailVerified;
   const result = await getUserManagement(filters);
 
   if (!result.success) {

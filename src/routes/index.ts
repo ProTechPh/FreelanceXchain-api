@@ -1,4 +1,4 @@
-// Routes barrel export
+﻿// Routes barrel export
 // This file will export all route modules as they are created
 import { Router } from 'express';
 import authRoutes from './auth-routes.js';
@@ -19,6 +19,7 @@ import adminRoutes from './admin-routes.js';
 import auditLogRoutes from './audit-logs.js';
 import fileUploadRoutes from './file-upload.js';
 import fileManagementRoutes from './file-management-routes.js';
+import fileAccessRoutes from './file-access-routes.js';
 import messageRoutes from './message-routes.js';
 import reviewRoutes from './review-routes.js';
 import appRatingRoutes from './app-rating-routes.js';
@@ -105,17 +106,20 @@ router.use('/files', fileUploadRoutes);
 // File management routes (storage quota, list, remove)
 router.use('/file-management', fileManagementRoutes);
 
+// Secure file access routes (prevents direct Appwrite URL access)
+router.use('/files/access', fileAccessRoutes);
+
 // Message routes
 router.use('/messages', messageRoutes);
 
 // Review routes
 router.use('/reviews', reviewRoutes);
 
-// App rating routes — feedback about the platform itself, not about a
+// App rating routes â€” feedback about the platform itself, not about a
 // counterparty. The /reviews mount above is the freelancer<->employer rating.
 router.use('/app-ratings', appRatingRoutes);
 
-// Customer support tickets — a user asking the platform a question, which an
+// Customer support tickets â€” a user asking the platform a question, which an
 // admin answers. Unlike /disputes, there is no counterparty.
 router.use('/support-tickets', supportTicketRoutes);
 
@@ -172,3 +176,6 @@ router.use('/metrics', metricsRoutes);
 router.use('/crypto-news', cryptoNewsRoutes);
 
 export default router;
+
+
+

@@ -644,7 +644,7 @@ describe('Storage Uploader - Compatibility Wrappers', () => {
       expect(result.success).toBe(true);
       expect(result.url).toContain('proposal-attachments');
       expect(result.url).toContain('file-id-abc');
-      expect(result.url).toContain('/view');
+      expect(result.url).toContain('/api/files/access/');
     });
   });
 
@@ -752,7 +752,7 @@ describe('Storage Uploader - Compatibility Wrappers', () => {
       const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
 
       expect(result.success).toBe(true);
-      expect(result.url).toContain('/contract-documents/files/f1/view');
+      expect(result.url).toContain('/api/files/access/contract-documents/f1');
     });
 
     it('should refuse a signed URL for another user file', async () => {
