@@ -44,6 +44,13 @@ jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts
   getKycVerificationById: jest.fn(),
 }));
 
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: {
+    getContractsByFreelancer: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    getContractsByEmployer: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+  },
+}));
+
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {
     emailExists: jest.fn().mockResolvedValue(false),
@@ -56,6 +63,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
     getUserById: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue({}),
     updateUser: jest.fn().mockResolvedValue({}),
+    deleteUser: jest.fn().mockResolvedValue(true),
   },
   UserRepository: jest.fn(),
   UserEntity: {} as UserEntity,
@@ -130,9 +138,13 @@ const {
   requestEmailOtp,
   requestMagicUrl,
   verifyAuthToken,
+  deleteUserAccount,
+  requestAccountDeletion,
+  verifyAccountDeletionCode,
 } = await import('../../services/auth-service.js');
 
 const { userRepository } = await import('../../repositories/user-repository.js');
+const { contractRepository } = await import('../../repositories/contract-repository.js');
 const { getKycVerificationByUserId } = await import('../../repositories/didit-kyc-repository.js');
 const { logger } = await import('../../config/logger.js');
 const { account: adminAccount, createUserClient, users } = await import('../../config/appwrite.js');
@@ -2219,5 +2231,125 @@ describe('auth-service - updateUserWallet', () => {
     const result = await updateUserWallet('u-1', '0x123');
 
     expect(result).toEqual({ code: 'UPDATE_FAILED', message: 'Failed to update wallet address' });
+  });
+
+  describe('Account Deletion Service', () => {
+    const mockUser = {
+      id: 'del-user-1',
+      email: 'delete-me@example.com',
+      name: 'Delete User',
+      role: 'freelancer',
+    };
+
+    describe('requestAccountDeletion', () => {
+      it('should return USER_NOT_FOUND when user does not exist', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(null);
+        const result = await requestAccountDeletion('unknown-user');
+        expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
+      });
+
+      it('should return ACTIVE_CONTRACTS_EXIST when user has active contracts', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
+          items: [{ id: 'c-1', status: 'active' }],
+          total: 1,
+        });
+
+        const result = await requestAccountDeletion('del-user-1');
+        expect(result).toMatchObject({
+          code: 'ACTIVE_CONTRACTS_EXIST',
+        });
+      });
+
+      it('should generate a 6-digit code and mask email on success', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+
+        const result = await requestAccountDeletion('del-user-1');
+        expect(result.success).toBe(true);
+        expect(result.email).toBe('d***e@example.com');
+        expect(result.message).toContain('6-digit confirmation code');
+        expect(result.testCode).toBeDefined();
+        expect(result.testCode?.length).toBe(6);
+      });
+    });
+
+    describe('verifyAccountDeletionCode', () => {
+      it('should return INVALID_CONFIRMATION_CODE when no code was requested', () => {
+        const result = verifyAccountDeletionCode('non-existent-user', '123456');
+        expect(result).toEqual({
+          code: 'INVALID_CONFIRMATION_CODE',
+          message: expect.stringContaining('expired or was not requested'),
+        });
+      });
+
+      it('should return INVALID_CONFIRMATION_CODE on mismatched code', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+
+        await requestAccountDeletion('user-verify-fail');
+        const result = verifyAccountDeletionCode('user-verify-fail', '000000');
+        expect(result).toEqual({
+          code: 'INVALID_CONFIRMATION_CODE',
+          message: expect.stringContaining('Invalid confirmation code'),
+        });
+      });
+
+      it('should verify valid code and invalidate it for reuse', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+
+        const req = await requestAccountDeletion('user-verify-success');
+        const code = req.testCode!;
+
+        const firstVerify = verifyAccountDeletionCode('user-verify-success', code);
+        expect(firstVerify).toBe(true);
+
+        // Reusing the code must fail
+        const secondVerify = verifyAccountDeletionCode('user-verify-success', code);
+        expect(secondVerify).toEqual({
+          code: 'INVALID_CONFIRMATION_CODE',
+          message: expect.stringContaining('expired or was not requested'),
+        });
+      });
+    });
+
+    describe('deleteUserAccount', () => {
+      it('should return USER_NOT_FOUND when user does not exist', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(null);
+        const result = await deleteUserAccount('missing-user');
+        expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
+      });
+
+      it('should return ACTIVE_CONTRACTS_EXIST when user has active contracts', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
+          items: [{ id: 'c-1', status: 'active' }],
+          total: 1,
+        });
+
+        const result = await deleteUserAccount('del-user-1');
+        expect(result).toMatchObject({
+          code: 'ACTIVE_CONTRACTS_EXIST',
+        });
+      });
+
+      it('should delete user and return success message', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const result = await deleteUserAccount('del-user-1');
+        expect(result).toEqual({
+          success: true,
+          message: 'Account and associated data have been permanently deleted.',
+        });
+        expect(userRepository.deleteUser).toHaveBeenCalledWith('del-user-1');
+      });
+    });
   });
 });

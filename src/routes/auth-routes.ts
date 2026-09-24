@@ -28,6 +28,8 @@ import {
   updateUserWallet,
   disconnectUserWallet,
   deleteUserAccount,
+  requestAccountDeletion,
+  verifyAccountDeletionCode,
   isAuthError,
 } from '../services/auth-service.js';
 import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
@@ -1783,19 +1785,74 @@ router.delete('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (re
 
 /**
  * @swagger
+ * /api/auth/account/delete-request:
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Request account deletion confirmation code
+ *     description: Sends a 6-digit confirmation code to the user's email address to verify account deletion intent.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Confirmation code dispatched to user email
+ *       400:
+ *         description: Cannot delete account due to active contracts
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/account/delete-request', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = await requestAccountDeletion(userId);
+
+  if (isAuthError(result)) {
+    const statusCode = result.code === 'USER_NOT_FOUND' ? 404 : result.code === 'ACTIVE_CONTRACTS_EXIST' ? 400 : 500;
+    sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
+    return;
+  }
+
+  sendSuccessResponse(res, 200, result, requestId);
+}));
+
+/**
+ * @swagger
  * /api/auth/account:
  *   delete:
  *     tags:
  *       - Authentication
  *     summary: Delete account
- *     description: Permanently deletes the user account and associated personal data (GDPR Right to Erasure)
+ *     description: Permanently deletes the user account and associated personal data (GDPR Right to Erasure) after secondary verification.
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - confirmation
+ *               - code
+ *             properties:
+ *               confirmation:
+ *                 type: string
+ *                 example: DELETE
+ *               code:
+ *                 type: string
+ *                 example: "123456"
  *     responses:
  *       200:
  *         description: Account permanently deleted
  *       400:
- *         description: Cannot delete account due to active contracts
+ *         description: Missing confirmation, invalid code, or active contracts
  *       401:
  *         description: Unauthorized
  */
@@ -1806,6 +1863,24 @@ router.delete('/account', authMiddleware, authRateLimiter, asyncHandler(async (r
   /* istanbul ignore next */
   if (!userId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const { confirmation, code } = req.body ?? {};
+
+  if (typeof confirmation !== 'string' || confirmation.trim().toUpperCase() !== 'DELETE') {
+    sendErrorResponse(res, 400, 'CONFIRMATION_REQUIRED', 'You must type DELETE to confirm account deletion', { requestId });
+    return;
+  }
+
+  if (!code || typeof code !== 'string') {
+    sendErrorResponse(res, 400, 'CONFIRMATION_CODE_REQUIRED', 'Email confirmation code is required to delete your account', { requestId });
+    return;
+  }
+
+  const codeVerification = verifyAccountDeletionCode(userId, code);
+  if (isAuthError(codeVerification)) {
+    sendErrorResponse(res, 400, codeVerification.code, codeVerification.message, { requestId });
     return;
   }
 
