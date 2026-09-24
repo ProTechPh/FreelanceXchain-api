@@ -87,6 +87,16 @@ export function fromAppwriteDoc<T = Record<string, unknown>>(doc: Record<string,
   } as T;
 }
 
+/**
+ * Type guard to check if an error is an AppwriteException with document_not_found type.
+ * Appwrite errors have code, type, and response properties.
+ */
+function isDocumentNotFoundError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const err = error as { code?: number; type?: string; response?: string };
+  return err.code === 404 && err.type === 'document_not_found';
+}
+
 export class BaseRepository<T extends BaseEntity> {
   protected collectionId: string;
   protected collectionName: string;
@@ -149,7 +159,10 @@ export class BaseRepository<T extends BaseEntity> {
       );
       return mapDocument<T>(doc);
     } catch (error) {
-      logger.error(`Repository error in ${this.collectionId}.getById`, { id, error });
+      // Don't log expected 404 errors (e.g., free users without subscription documents)
+      if (!isDocumentNotFoundError(error)) {
+        logger.error(`Repository error in ${this.collectionId}.getById`, { id, error });
+      }
       return null;
     }
   }
@@ -293,7 +306,7 @@ export class BaseRepository<T extends BaseEntity> {
   // --- Query helpers ------------------------------------------
 
   protected async listWithQueries<U = T>(
-    queries: string[], // Query[] at runtime ï¿½ Appwrite SDK types Query as non-string but methods return strings
+    queries: string[], // Query[] at runtime – Appwrite SDK types Query as non-string but methods return strings
     mapper?: (doc: Record<string, unknown>) => U
   ): Promise<U[]> {
     try {

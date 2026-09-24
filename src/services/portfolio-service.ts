@@ -111,7 +111,7 @@ export async function createPortfolioItem(
       freelancer_id: freelancerId,
       title: input.title,
       description: input.description,
-      images: JSON.stringify(input.images),
+      images: JSON.stringify(images),
       skills: JSON.stringify(resolvedSkills),
       ...(input.projectUrl !== undefined ? { project_url: input.projectUrl } : {}),
       ...(input.completedAt !== undefined ? { completed_at: input.completedAt } : {}),

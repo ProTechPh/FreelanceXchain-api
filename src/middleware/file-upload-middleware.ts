@@ -449,10 +449,10 @@ export const uploadDisputeEvidence = createFileUploadMiddleware('files', {
 });
 
 /**
- * Middleware for portfolio images (1-5 images only, max 5MB each)
+ * Middleware for portfolio images (0-5 images, max 5MB each; optional when project URL is provided)
  */
 export const uploadPortfolioImages = createFileUploadMiddleware('files', {
-  minFiles: 1,
+  minFiles: 0,
   maxFiles: 5,
   maxFileSize: MAX_IMAGE_FILE_SIZE,
   maxTotalSize: 15 * 1024 * 1024,
