@@ -1379,7 +1379,7 @@ function maskEmail(email: string): string {
   return `${first}***${last}@${domain}`;
 }
 
-export async function requestAccountDeletion(userId: string): Promise<{ success: boolean; message: string; email?: string; testCode?: string } | AuthError> {
+export async function requestAccountDeletion(userId: string): Promise<{ success: boolean; message: string; email?: string } | AuthError> {
   try {
     const user = await userRepository.getUserById(userId);
     if (!user) {
@@ -1431,7 +1431,6 @@ export async function requestAccountDeletion(userId: string): Promise<{ success:
       success: true,
       message: `A 6-digit confirmation code has been sent to ${masked || 'your registered email'}.`,
       ...(masked ? { email: masked } : {}),
-      ...(config.server.nodeEnv === 'test' ? { testCode: code } : {}),
     };
   } catch (error: unknown) {
     logger.error('Account deletion request failed', { error: getErrorMessage(error), userId });

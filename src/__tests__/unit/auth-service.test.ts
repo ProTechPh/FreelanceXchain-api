@@ -51,6 +51,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
   },
 }));
 
+const mockSendAccountDeletionCodeEmail = jest.fn().mockResolvedValue({ success: true });
+const mockSendAccountDeletedEmail = jest.fn().mockResolvedValue({ success: true });
+
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendAccountDeletionCodeEmail: mockSendAccountDeletionCodeEmail,
+  sendAccountDeletedEmail: mockSendAccountDeletedEmail,
+}));
+
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {
     emailExists: jest.fn().mockResolvedValue(false),
@@ -2241,6 +2249,11 @@ describe('auth-service - updateUserWallet', () => {
       role: 'freelancer',
     };
 
+    beforeEach(() => {
+      mockSendAccountDeletionCodeEmail.mockClear();
+      mockSendAccountDeletedEmail.mockClear();
+    });
+
     describe('requestAccountDeletion', () => {
       it('should return USER_NOT_FOUND when user does not exist', async () => {
         userRepository.getUserById.mockResolvedValueOnce(null);
@@ -2270,8 +2283,15 @@ describe('auth-service - updateUserWallet', () => {
         expect(result.success).toBe(true);
         expect(result.email).toBe('d***e@example.com');
         expect(result.message).toContain('6-digit confirmation code');
-        expect(result.testCode).toBeDefined();
-        expect(result.testCode?.length).toBe(6);
+        expect((result as Record<string, unknown>).testCode).toBeUndefined();
+        expect(mockSendAccountDeletionCodeEmail).toHaveBeenCalledWith(
+          mockUser.email,
+          expect.objectContaining({
+            recipientName: mockUser.name,
+            confirmationCode: expect.stringMatching(/^\d{6}$/),
+            expiresMinutes: 15,
+          })
+        );
       });
     });
 
@@ -2302,8 +2322,9 @@ describe('auth-service - updateUserWallet', () => {
         contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
         contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
 
-        const req = await requestAccountDeletion('user-verify-success');
-        const code = req.testCode!;
+        await requestAccountDeletion('user-verify-success');
+        expect(mockSendAccountDeletionCodeEmail).toHaveBeenCalledTimes(1);
+        const code = mockSendAccountDeletionCodeEmail.mock.calls[0][1].confirmationCode;
 
         const firstVerify = verifyAccountDeletionCode('user-verify-success', code);
         expect(firstVerify).toBe(true);
