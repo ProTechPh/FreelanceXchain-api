@@ -107,9 +107,25 @@ export async function deliverWebhook(
 
 export default {
   async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const rawEmail = await new Response(message.raw).arrayBuffer();
-    const parsed = await PostalMime.parse(rawEmail);
-    const payload = buildInboundPayload(message, parsed);
-    await deliverWebhook(payload, env);
+    try {
+      const rawEmail = await new Response(message.raw).arrayBuffer();
+      const parsed = await PostalMime.parse(rawEmail);
+      const payload = buildInboundPayload(message, parsed);
+      await deliverWebhook(payload, env);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Email processing failed for ${message.from} → ${message.to}: ${msg}`);
+
+      // Permanent 4xx from the API (invalid recipient, user not found) —
+      // retrying will never succeed, so reject the message.
+      if (msg.includes("status 4")) {
+        message.setReject(`Delivery rejected: ${msg}`);
+        return;
+      }
+
+      // Transient failures (5xx, network, parsing) — re-throw so Cloudflare
+      // retries delivery automatically.
+      throw err;
+    }
   },
 } satisfies ExportedHandler<Env>;

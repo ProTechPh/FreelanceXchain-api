@@ -30,6 +30,9 @@ export type InboundEmailPayload = {
 
 const PLATFORM_DOMAIN = 'freelancexchain.works';
 
+/** Local-part addresses that map to the platform admin inbox rather than a user. */
+const PLATFORM_MAILBOXES = new Set(['support', 'admin', 'security', 'team', 'noreply']);
+
 type CloudflareSendResponse = { success: boolean; errors?: Array<{ message: string }> };
 
 /**
@@ -267,10 +270,21 @@ export async function processInboundEmail(
       return errorResult('INVALID_RECIPIENT', `Recipient address not on platform domain: ${payload.to}`);
     }
 
-    const user = await userRepository.findOne('name', username);
-    if (!user) {
-      logger.warn(`Inbound email to unknown user: ${username}@${PLATFORM_DOMAIN}`);
-      return errorResult('USER_NOT_FOUND', `No user found with username: ${username}`);
+    let user;
+    if (PLATFORM_MAILBOXES.has(username)) {
+      // Platform mailbox (support, admin, security, …) → deliver to first admin user
+      const admins = await userRepository.getUsersByRole('admin');
+      user = admins[0] ?? null;
+      if (!user) {
+        logger.error(`No admin user exists to receive platform mailbox email: ${username}@${PLATFORM_DOMAIN}`);
+        return errorResult('USER_NOT_FOUND', `No admin user configured to receive platform emails`);
+      }
+    } else {
+      user = await userRepository.findOne('name', username);
+      if (!user) {
+        logger.warn(`Inbound email to unknown user: ${username}@${PLATFORM_DOMAIN}`);
+        return errorResult('USER_NOT_FOUND', `No user found with username: ${username}`);
+      }
     }
 
     const existing = await emailInboxRepository.findByMessageId(payload.messageId);
