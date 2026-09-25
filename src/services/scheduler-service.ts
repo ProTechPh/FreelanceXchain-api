@@ -12,16 +12,6 @@ import { messageRepository } from '../repositories/message-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import { emailPreferenceRepository } from '../repositories/email-preference-repository.js';
 import { savedSearchRepository } from '../repositories/saved-search-repository.js';
-import { emailDeliveryFailureRepository } from '../repositories/email-delivery-failure-repository.js';
-
-/**
- * Alert threshold for permanently rejected inbound emails per hour. Sustained
- * rejections above this mean something is wrong with how users reach the
- * platform mailbox (or mail is being sent to stale addresses) — the hourly
- * check logs an error so ops can act instead of relying on Cloudflare bounces
- * alone.
- */
-const EMAIL_DELIVERY_FAILURE_ALERT_THRESHOLD = 5;
 import type { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { fromAppwriteDoc } from '../repositories/base-repository.js';
 import { parseField } from '../utils/index.js';
@@ -452,43 +442,6 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
   }
 }
 
-/**
- * Hourly ops alert for permanently rejected inbound emails (unknown user /
- * invalid recipient). Counts rejections recorded in the last hour and logs an
- * error when the threshold is crossed — matching the reconciliation job's
- * report-via-logs contract. Read errors are logged and swallowed.
- */
-export async function checkEmailDeliveryFailures(): Promise<void> {
-  try {
-    const failures = await emailDeliveryFailureRepository.findRecent(1000);
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    const recent = failures.filter(f => new Date(f.created_at).getTime() >= oneHourAgo);
-
-    if (recent.length >= EMAIL_DELIVERY_FAILURE_ALERT_THRESHOLD) {
-      logger.error(
-        `[ops] ${recent.length} inbound emails permanently rejected in the last hour (threshold ${EMAIL_DELIVERY_FAILURE_ALERT_THRESHOLD})`,
-        {
-          sample: recent.slice(0, 10).map(f => ({
-            messageId: f.message_id,
-            from: f.from_address,
-            to: f.to_address,
-            code: f.failure_code,
-          })),
-        }
-      );
-    } else if (recent.length > 0) {
-      logger.warn(`[ops] ${recent.length} inbound email delivery failure(s) in the last hour`, {
-        codes: recent.reduce<Record<string, number>>((acc, f) => {
-          acc[f.failure_code] = (acc[f.failure_code] ?? 0) + 1;
-          return acc;
-        }, {}),
-      });
-    }
-  } catch (error) {
-    logger.error('Failed to check email delivery failures', { error });
-  }
-}
-
 export function initializeScheduler(): void {
   logger.info('Initializing scheduler service...');
 
@@ -527,14 +480,6 @@ export function initializeScheduler(): void {
   cron.schedule('0 * * * *', () => {
     logger.info('Running scheduled job: Reconcile contract payments with escrow ledger');
     reconcileContractPayments();
-  });
-
-  // Alert on sustained inbound email delivery failures - Hourly at :10.
-  // Read-only: logs error when the hourly rejection count crosses the
-  // threshold so ops can act (see docs/reliability/email-delivery.md).
-  cron.schedule('10 * * * *', () => {
-    logger.info('Running scheduled job: Check email delivery failures');
-    checkEmailDeliveryFailures();
   });
 
   logger.info('Scheduler service initialized successfully');
