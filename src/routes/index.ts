@@ -1,4 +1,4 @@
-﻿// Routes barrel export
+// Routes barrel export
 // This file will export all route modules as they are created
 import { Router } from 'express';
 import authRoutes from './auth-routes.js';
@@ -37,7 +37,6 @@ import disputeEvidenceRoutes from './dispute-evidence-routes.js';
 import escrowRefundRoutes from './escrow-refund-routes.js';
 import webhookRoutes from './webhook-routes.js';
 import rushUpgradeRoutes from './rush-upgrade-routes.js';
-import emailInboxRoutes from './email-inbox-routes.js';
 import dashboardRoutes from './dashboard-routes.js';
 import metricsRoutes from './metrics-routes.js';
 import cryptoNewsRoutes from './crypto-news-routes.js';
@@ -162,9 +161,6 @@ router.use('/billing', billingRoutes);
 
 // Rush upgrade routes
 router.use('/', rushUpgradeRoutes);
-
-// Email inbox routes
-router.use('/inbox', emailInboxRoutes);
 
 // User dashboard summary
 router.use('/dashboard', dashboardRoutes);

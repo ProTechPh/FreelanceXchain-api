@@ -147,7 +147,7 @@ export async function createApp(): Promise<Express> {
 
   // Body parsing middleware
   // Only store rawBody for webhook paths to avoid doubling memory on every request
-  const WEBHOOK_PATHS = ['/api/kyc/webhook', '/api/webhooks', '/api/inbox/webhook'];
+  const WEBHOOK_PATHS = ['/api/kyc/webhook', '/api/webhooks'];
   app.use(express.json({
     limit: '10mb',
     verify: (req, _res, buf) => {
