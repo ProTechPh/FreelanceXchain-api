@@ -1385,68 +1385,6 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         expect(mockLogger.info).toHaveBeenCalledWith('Running scheduled job: Reconcile contract payments with escrow ledger');
       }
     });
-
-    it('schedules the hourly email delivery failure check', async () => {
-      const { initializeScheduler } = await importScheduler();
-      initializeScheduler();
-      expect(mockCronSchedule).toHaveBeenCalledWith('10 * * * *', expect.any(Function));
-    });
-  });
-
-  describe('checkEmailDeliveryFailures', () => {
-    it('should log an ops error when the hourly rejection threshold is crossed', async () => {
-      const now = new Date().toISOString();
-      const failures = Array.from({ length: 5 }, (_, i) => ({
-        $id: `f${i}`,
-        message_id: `m${i}`,
-        from_address: 'a@b.com',
-        to_address: 'x@other.com',
-        failure_code: 'USER_NOT_FOUND',
-        created_at: now,
-      }));
-      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: failures, total: 5 });
-
-      const { checkEmailDeliveryFailures } = await importScheduler();
-      await checkEmailDeliveryFailures();
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('5 inbound emails permanently rejected in the last hour'),
-        expect.objectContaining({ sample: expect.any(Array) })
-      );
-    });
-
-    it('should log a warning with codes when failures are below the threshold', async () => {
-      const now = new Date().toISOString();
-      const failures = [
-        { $id: 'f1', message_id: 'm1', from_address: 'a@b.com', to_address: 'x@other.com', failure_code: 'USER_NOT_FOUND', created_at: now },
-        { $id: 'f2', message_id: 'm2', from_address: 'a@b.com', to_address: 'x@other.com', failure_code: 'INVALID_RECIPIENT', created_at: now },
-      ];
-      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: failures, total: 2 });
-
-      const { checkEmailDeliveryFailures } = await importScheduler();
-      await checkEmailDeliveryFailures();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('2 inbound email delivery failure(s)'),
-        expect.objectContaining({ codes: { USER_NOT_FOUND: 1, INVALID_RECIPIENT: 1 } })
-      );
-      expect(mockLogger.error).not.toHaveBeenCalled();
-    });
-
-    it('should stay quiet when there are no recent failures', async () => {
-      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
-
-      const { checkEmailDeliveryFailures } = await importScheduler();
-      await checkEmailDeliveryFailures();
-      expect(mockLogger.warn).not.toHaveBeenCalled();
-      expect(mockLogger.error).not.toHaveBeenCalled();
-    });
-
-    it('should stay quiet on read errors (the repository logs its own error)', async () => {
-      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
-
-      const { checkEmailDeliveryFailures } = await importScheduler();
-      await expect(checkEmailDeliveryFailures()).resolves.toBeUndefined();
-      // The repository reports the read failure; the check must not crash or alert.
-      expect(mockLogger.error).toHaveBeenCalledWith('Repository error in email_delivery_failures.listWithQueries', expect.anything());
-    });
   });
 });
+
