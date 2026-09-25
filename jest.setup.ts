@@ -147,6 +147,8 @@ global.mockAppwriteAccount = mockAppwriteAccount;
 const mockAppwriteUsers = {
   create: jest.fn().mockResolvedValue({ $id: 'test-user-id' }),
   get: jest.fn().mockResolvedValue({ $id: 'test-user-id' }),
+  updateEmailVerification: jest.fn().mockResolvedValue({}),
+  delete: jest.fn().mockResolvedValue({}),
 };
 
 global.mockAppwriteUsers = mockAppwriteUsers;

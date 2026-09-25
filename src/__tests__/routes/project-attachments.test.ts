@@ -27,6 +27,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   requireVerifiedKyc: (req: any, res: any, next: any) => {
     next();
   },
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock file upload middleware - use multer to handle actual file uploads

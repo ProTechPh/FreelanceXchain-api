@@ -34,6 +34,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     next();
   },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({

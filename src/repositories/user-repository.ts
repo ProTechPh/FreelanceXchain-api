@@ -1,6 +1,7 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
+import type { AdminPermission } from '../models/user.js';
 
 export type UserEntity = {
   id: string;
@@ -14,6 +15,7 @@ export type UserEntity = {
   is_suspended: boolean;
   suspension_reason: string | null;
   mfa_enabled: boolean;
+  permissions?: AdminPermission[] | string[];
   created_at: string;
   updated_at: string;
 };

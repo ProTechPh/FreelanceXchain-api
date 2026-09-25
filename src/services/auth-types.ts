@@ -1,4 +1,4 @@
-import { UserRole } from '../models/user.js';
+import { UserRole, type AdminPermission } from '../models/user.js';
 import type { PlanTier, SubscriptionStatus } from '../models/subscription.js';
 
 export type RegisterInput = {
@@ -35,6 +35,7 @@ export type AuthResult = {
     role: UserRole;
     walletAddress: string;
     kycStatus?: string;
+    permissions?: AdminPermission[];
     createdAt: string;
     authProvider?: 'email' | 'oauth';
     emailVerification?: boolean;

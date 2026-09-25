@@ -8,7 +8,7 @@ import { employerProfileRepository } from '../repositories/employer-profile-repo
 import { emailPreferenceRepository } from '../repositories/email-preference-repository.js';
 import { favoriteRepository } from '../repositories/favorites-repository.js';
 import { account as adminAccount, createUserClient, users } from '../config/appwrite.js';
-import { UserRole } from '../models/user.js';
+import { UserRole, type AdminPermission } from '../models/user.js';
 import { getErrorMessage } from '../utils/index.js';
 import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
@@ -30,6 +30,24 @@ export { isAuthError };
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
+
+function extractPermissions(raw: unknown): AdminPermission[] | undefined {
+  if (Array.isArray(raw)) {
+    return raw as AdminPermission[];
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed as AdminPermission[];
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
 
 function getErrorCode(error: unknown): number | undefined {
   if (typeof error === 'object' && error !== null) {
@@ -291,6 +309,8 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
     logger.warn('Failed to fetch Appwrite user details during token generation', { userId: user.id, error });
   }
 
+  const permissions = extractPermissions(user.permissions);
+
   return {
     user: {
       id: user.id,
@@ -298,6 +318,7 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
       role: user.role,
       walletAddress: user.wallet_address,
       ...(kycVerification?.status ? { kycStatus: kycVerification.status } : {}),
+      ...(permissions ? { permissions } : {}),
       createdAt: user.created_at,
       emailVerification,
       authProvider,
@@ -534,7 +555,7 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
   }
 }
 
-export async function validateToken(accessToken: string): Promise<{ id: string; userId: string; email: string; role: UserRole } | AuthError> {
+export async function validateToken(accessToken: string): Promise<{ id: string; userId: string; email: string; role: UserRole; permissions?: AdminPermission[] | undefined } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
@@ -556,11 +577,14 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
       };
     }
 
+    const permissions = extractPermissions(publicUser.permissions);
+
     return {
       id: publicUser.id,
       userId: publicUser.id,
       email: publicUser.email,
       role: publicUser.role,
+      ...(permissions ? { permissions } : {}),
     };
   } catch (error: unknown) {
     logger.error('Token validation failed', { error: getErrorMessage(error) });
@@ -826,6 +850,8 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     logger.warn('Failed to retrieve Appwrite user metadata for current user', { userId, error });
   }
 
+  const permissions = extractPermissions(user.permissions);
+
   if (user.role === 'admin') {
     return {
       id: user.id,
@@ -834,6 +860,7 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
       role: user.role,
       walletAddress: user.wallet_address,
       kycStatus: 'approved',
+      ...(permissions ? { permissions } : {}),
       createdAt: user.created_at,
       authProvider,
       emailVerification,

@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requirePermission } from '../middleware/auth-middleware.js';
 import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
+import type { AdminPermission } from '../models/user.js';
 
 import {
   getPlatformStats,
@@ -12,6 +13,8 @@ import {
   unsuspendUser,
   verifyUser,
   updateUser,
+  updateAdminPermissions,
+  inviteOrAddUser,
   getDisputeManagement,
   getSystemHealth,
   getSatisfactionRate,
@@ -25,8 +28,15 @@ import { asyncHandler } from '../utils/async-handler.js';
 const router = Router();
 
 /** Transform a user entity into the admin frontend shape */
-function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean; kyc_status?: string; email_verified?: boolean }) | null | undefined) {
+function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean; kyc_status?: string; email_verified?: boolean; permissions?: string[] }) | null | undefined) {
   if (!user) return null;
+
+  const permissions = Array.isArray(user.permissions)
+    ? user.permissions
+    : typeof user.permissions === 'string' && (user.permissions as string).trim()
+      ? (() => { try { const p = JSON.parse(user.permissions as string); return Array.isArray(p) ? p : []; } catch { return []; } })()
+      : (user.role === 'admin' ? ['*'] : []);
+
   return {
     id: user.id,
     email: user.email,
@@ -38,6 +48,7 @@ function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean; kyc_status?:
     kycStatus: user.kyc_status ?? (user.kyc_verified ? 'approved' : 'not_started'),
     emailVerified: Boolean(user.email_verified),
     isActive: !user.is_suspended, // Active means NOT suspended
+    permissions,
   };
 }
 
@@ -72,7 +83,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
  *     security:
  *       - bearerAuth: []
  */
-router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/analytics', authMiddleware, requirePermission('analytics:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getAdminAnalytics();
@@ -94,7 +105,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
  *     security:
  *       - bearerAuth: []
  */
-router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/users', authMiddleware, requirePermission('users:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
   const role = req.query['role'] as string | undefined;
@@ -122,6 +133,61 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
 
 /**
  * @swagger
+ * /api/admin/users:
+ *   post:
+ *     summary: Create or invite a new user (freelancer, employer, or admin)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/users', authMiddleware, requirePermission('users:manage'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const adminUserId = req.user?.userId;
+  const requestId = getRequestId(req);
+  const { name, email, role, password, permissions, autoVerifyEmail } = req.body;
+
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  // Privilege escalation check:
+  // Creating an 'admin' account strictly requires 'admin:manage' (Super Admin).
+  // Sub-admins with only 'users:manage' are blocked from creating administrators.
+  if (role === 'admin') {
+    const userPerms = req.user?.permissions as AdminPermission[] | undefined;
+    const isSuperAdmin = !userPerms || userPerms.length === 0 || (userPerms as string[]).includes('*') || userPerms.includes('admin:manage');
+    if (!isSuperAdmin) {
+      sendErrorResponse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Only super administrators with admin:manage permission can create admin accounts', { requestId });
+      return;
+    }
+  }
+
+  const result = await inviteOrAddUser({
+    name,
+    email,
+    role,
+    password,
+    permissions,
+    autoVerifyEmail: autoVerifyEmail ?? true,
+  }, adminUserId);
+
+  if (!result.success) {
+    const code = result.error?.code ?? 'UNKNOWN';
+    const statusCode = code === 'DUPLICATE_EMAIL' ? 409
+      : ['INVALID_EMAIL', 'INVALID_NAME', 'INVALID_ROLE', 'INVALID_PERMISSION', 'INVALID_PASSWORD', 'INVALID_PERMISSIONS'].includes(code) ? 400
+      : 500;
+    sendErrorResponse(res, statusCode, code, result.error?.message ?? 'An error occurred', { requestId });
+    return;
+  }
+
+  res.status(201).json({
+    user: mapAdminUser(result.data.user),
+    ...(result.data.temporaryPassword !== undefined ? { temporaryPassword: result.data.temporaryPassword } : {}),
+  });
+}));
+
+/**
+ * @swagger
  * /api/admin/users/{userId}:
  *   patch:
  *     summary: Update user information
@@ -129,7 +195,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/users/:userId', authMiddleware, requirePermission('users:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const { name, role, isActive } = req.body;
@@ -166,7 +232,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/users/:userId/suspend', authMiddleware, requirePermission('users:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const { reason } = req.body;
@@ -196,7 +262,7 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/users/:userId/unsuspend', authMiddleware, requirePermission('users:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -237,7 +303,7 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
  *                 maxLength: 500
  *                 description: Audit reason for the manual KYC approval
  * */
-router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/users/:userId/verify', authMiddleware, requirePermission('kyc:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
   const adminUserId = req.user?.userId;
@@ -283,6 +349,42 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
 
 /**
  * @swagger
+ * /api/admin/users/{userId}/permissions:
+ *   patch:
+ *     summary: Update granular permissions for an admin user
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/users/:userId/permissions', authMiddleware, requirePermission('admin:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.params['userId'] ?? '';
+  const adminUserId = req.user?.userId;
+  const requestId = getRequestId(req);
+  const { permissions } = req.body;
+
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  if (!Array.isArray(permissions)) {
+    sendErrorResponse(res, 400, 'INVALID_PERMISSIONS', 'Permissions must be an array of permission strings', { requestId });
+    return;
+  }
+
+  const result = await updateAdminPermissions(userId, permissions as AdminPermission[], adminUserId);
+
+  if (!result.success) {
+    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : 400;
+    sendErrorResponse(res, statusCode, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
+    return;
+  }
+
+  res.status(200).json(mapAdminUser(result.data));
+}));
+
+/**
+ * @swagger
  * /api/admin/disputes:
  *   get:
  *     summary: Get dispute management dashboard
@@ -290,7 +392,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
  *     security:
  *       - bearerAuth: []
  */
-router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/disputes', authMiddleware, requirePermission('disputes:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
 
@@ -315,7 +417,7 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
  *     security:
  *       - bearerAuth: []
  */
-router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/system/health', authMiddleware, requirePermission('system:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getSystemHealth();
