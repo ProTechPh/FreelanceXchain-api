@@ -532,6 +532,78 @@ function generateTemporaryPassword(): string {
   return `Temp!${random}1`;
 }
 
+function validateInviteUserInput(input: InviteUserInput): ServiceResult<never> | null {
+  const trimmedName = input.name?.trim();
+  if (!trimmedName || trimmedName.length < 2) {
+    return errorResult('INVALID_NAME', 'Name must be at least 2 characters long');
+  }
+
+  const normalizedEmail = input.email?.trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
+    return errorResult('INVALID_EMAIL', 'A valid email address is required');
+  }
+
+  if (!['freelancer', 'employer', 'admin'].includes(input.role)) {
+    return errorResult('INVALID_ROLE', 'Role must be freelancer, employer, or admin');
+  }
+
+  if (input.role === 'admin' && input.permissions !== undefined) {
+    if (!Array.isArray(input.permissions)) {
+      return errorResult('INVALID_PERMISSIONS', 'Permissions must be an array');
+    }
+    const validSet = new Set<string>(ADMIN_PERMISSIONS);
+    for (const p of input.permissions) {
+      if (!validSet.has(p)) {
+        return errorResult('INVALID_PERMISSION', `Invalid permission: ${p}`);
+      }
+    }
+  }
+
+  if (input.password?.trim() && input.password.trim().length < 8) {
+    return errorResult('INVALID_PASSWORD', 'Password must be at least 8 characters long');
+  }
+
+  return null;
+}
+
+async function createAuthUserInAppwrite(
+  trimmedName: string,
+  normalizedEmail: string,
+  passwordToUse: string,
+  autoVerifyEmail?: boolean
+): Promise<{ appwriteUserId: string } | ServiceResult<never>> {
+  try {
+    const appwriteUser = await users.create(
+      ID.unique(),
+      normalizedEmail,
+      undefined,
+      passwordToUse,
+      trimmedName
+    );
+    const appwriteUserId = appwriteUser.$id;
+
+    if (autoVerifyEmail !== false) {
+      try {
+        await users.updateEmailVerification(appwriteUserId, true);
+      } catch (verifyErr) {
+        logger.warn('Failed to update email verification status in Appwrite', {
+          userId: appwriteUserId,
+          error: verifyErr,
+        });
+      }
+    }
+    return { appwriteUserId };
+  } catch (appwriteErr: unknown) {
+    const msg = appwriteErr instanceof Error ? appwriteErr.message : String(appwriteErr);
+    if (msg.includes('already exists') || (appwriteErr as any)?.code === 409) {
+      return errorResult('DUPLICATE_EMAIL', 'An account with this email already exists in Auth provider');
+    }
+    logger.error('Failed to create user in Appwrite Auth', { error: appwriteErr, email: normalizedEmail });
+    return errorResult('INTERNAL_ERROR', 'Failed to create user in authentication provider');
+  }
+}
+
 /**
  * Create or invite a new user through Appwrite Auth and register in public database.
  */
@@ -540,86 +612,29 @@ export async function inviteOrAddUser(
   actorId: string = 'system-admin'
 ): Promise<ServiceResult<{ user: UserEntity; temporaryPassword?: string }>> {
   try {
-    const trimmedName = input.name?.trim();
-    if (!trimmedName || trimmedName.length < 2) {
-      return errorResult('INVALID_NAME', 'Name must be at least 2 characters long');
-    }
+    const validationError = validateInviteUserInput(input);
+    if (validationError) return validationError;
 
-    const normalizedEmail = input.email?.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
-      return errorResult('INVALID_EMAIL', 'A valid email address is required');
-    }
+    const trimmedName = input.name.trim();
+    const normalizedEmail = input.email.trim().toLowerCase();
 
-    if (!['freelancer', 'employer', 'admin'].includes(input.role)) {
-      return errorResult('INVALID_ROLE', 'Role must be freelancer, employer, or admin');
-    }
-
-    // Validate admin permissions if role is admin and permissions provided
-    if (input.role === 'admin' && input.permissions !== undefined) {
-      if (!Array.isArray(input.permissions)) {
-        return errorResult('INVALID_PERMISSIONS', 'Permissions must be an array');
-      }
-      const validSet = new Set<string>(ADMIN_PERMISSIONS);
-      for (const p of input.permissions) {
-        if (!validSet.has(p)) {
-          return errorResult('INVALID_PERMISSION', `Invalid permission: ${p}`);
-        }
-      }
-    }
-
-    // Ensure email is not already registered in our database
     const emailExists = await userRepository.emailExists(normalizedEmail);
     if (emailExists) {
       return errorResult('DUPLICATE_EMAIL', 'An account with this email already exists');
     }
 
-    // Password handling: manual or secure auto-generated temporary password
-    let passwordToUse = input.password?.trim();
-    let temporaryPasswordGenerated: string | undefined = undefined;
+    const temporaryPasswordGenerated = input.password?.trim() ? undefined : generateTemporaryPassword();
+    const passwordToUse = input.password?.trim() || temporaryPasswordGenerated!;
 
-    if (passwordToUse) {
-      if (passwordToUse.length < 8) {
-        return errorResult('INVALID_PASSWORD', 'Password must be at least 8 characters long');
-      }
-    } else {
-      temporaryPasswordGenerated = generateTemporaryPassword();
-      passwordToUse = temporaryPasswordGenerated;
-    }
+    const authResult = await createAuthUserInAppwrite(
+      trimmedName,
+      normalizedEmail,
+      passwordToUse,
+      input.autoVerifyEmail
+    );
+    if ('success' in authResult) return authResult;
+    const { appwriteUserId } = authResult;
 
-    // Create user in Appwrite Auth
-    let appwriteUserId: string | undefined;
-    try {
-      const appwriteUser = await users.create(
-        ID.unique(),
-        normalizedEmail,
-        undefined,
-        passwordToUse,
-        trimmedName
-      );
-      appwriteUserId = appwriteUser.$id;
-
-      // Handle email verification
-      if (input.autoVerifyEmail !== false) {
-        try {
-          await users.updateEmailVerification(appwriteUserId, true);
-        } catch (verifyErr) {
-          logger.warn('Failed to update email verification status in Appwrite', {
-            userId: appwriteUserId,
-            error: verifyErr,
-          });
-        }
-      }
-    } catch (appwriteErr: unknown) {
-      const msg = appwriteErr instanceof Error ? appwriteErr.message : String(appwriteErr);
-      if (msg.includes('already exists') || (appwriteErr as any)?.code === 409) {
-        return errorResult('DUPLICATE_EMAIL', 'An account with this email already exists in Auth provider');
-      }
-      logger.error('Failed to create user in Appwrite Auth', { error: appwriteErr, email: normalizedEmail });
-      return errorResult('INTERNAL_ERROR', 'Failed to create user in authentication provider');
-    }
-
-    // Create user record in our database
     let createdUser: UserEntity;
     try {
       const adminPermissions = input.role === 'admin'
@@ -639,36 +654,22 @@ export async function inviteOrAddUser(
         ...(adminPermissions ? { permissions: adminPermissions } : {}),
       });
     } catch (dbErr) {
-      // Compensate: Delete orphaned Appwrite user if DB persistence fails
-      if (appwriteUserId) {
-        try {
-          await users.delete(appwriteUserId);
-          logger.warn('Rolled back Appwrite user after DB insertion failure', { userId: appwriteUserId });
-        } catch (delErr) {
-          logger.error('CRITICAL: Failed to rollback Appwrite user', { userId: appwriteUserId, error: delErr });
-        }
+      try {
+        await users.delete(appwriteUserId);
+        logger.warn('Rolled back Appwrite user after DB insertion failure', { userId: appwriteUserId });
+      } catch (delErr) {
+        logger.error('CRITICAL: Failed to rollback Appwrite user', { userId: appwriteUserId, error: delErr });
       }
       logger.error('Failed to create user database record', { error: dbErr, userId: appwriteUserId });
       return errorResult('INTERNAL_ERROR', 'Failed to create user record in database');
     }
 
-    logger.info('ADMIN ACTION: user created/invited', {
-      actor: actorId,
-      userId: createdUser.id,
-      role: createdUser.role,
-      email: normalizedEmail,
-    });
-
+    logger.info('ADMIN ACTION: user created/invited', { actor: actorId, userId: createdUser.id, role: createdUser.role });
     await recordAdminAudit({
       actorId,
       targetUserId: createdUser.id,
       action: 'admin.user_created',
-      payload: {
-        role: createdUser.role,
-        email: normalizedEmail,
-        permissions: createdUser.permissions,
-        autoVerifyEmail: input.autoVerifyEmail !== false,
-      },
+      payload: { role: createdUser.role, email: normalizedEmail, permissions: createdUser.permissions },
     });
 
     return successResult({
