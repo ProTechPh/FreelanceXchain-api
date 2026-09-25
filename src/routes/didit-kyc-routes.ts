@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requirePermission } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, webhookRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -543,7 +543,7 @@ router.post('/webhook', webhookRateLimiter, asyncHandler(async (req: Request, re
  *               items:
  *                 $ref: '#/components/schemas/KycVerification'
  */
-router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/admin/pending', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const result = await getPendingAdminReviews();
 
   if (!result.success) {
@@ -574,7 +574,7 @@ router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimite
  *       200:
  *         description: Verifications list
  */
-router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/admin/status/:status', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const status = req.params['status'] as KycStatus;
   const validStatuses: KycStatus[] = ['pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired'];
 
@@ -628,7 +628,7 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRat
  *       200:
  *         description: Review completed
  */
-router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/admin/review/:verificationId', authMiddleware, requirePermission('kyc:manage'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const adminUserId = req.user?.userId;
   const { decision, notes } = req.body;
@@ -674,7 +674,7 @@ router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'
  *       200:
  *         description: Verification details
  */
-router.get('/admin/verification/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/admin/verification/:verificationId', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {
@@ -717,7 +717,7 @@ router.get('/admin/verification/:verificationId', authMiddleware, requireRole('a
  *       200:
  *         description: Verification decision details including presigned images
  */
-router.get('/admin/verification/:verificationId/decision', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/admin/verification/:verificationId/decision', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {
@@ -781,7 +781,7 @@ router.get('/admin/verification/:verificationId/decision', authMiddleware, requi
 router.post(
   '/admin/manual-verify',
   authMiddleware,
-  requireRole('admin'),
+  requirePermission('kyc:manage'),
   apiRateLimiter,
   upload.fields([
     { name: 'id_front', maxCount: 1 },

@@ -12,6 +12,8 @@ const mockSuspendUser = jest.fn<any>();
 const mockUnsuspendUser = jest.fn<any>();
 const mockVerifyUser = jest.fn<any>();
 const mockUpdateUser = jest.fn<any>();
+const mockUpdateAdminPermissions = jest.fn<any>();
+const mockInviteOrAddUser = jest.fn<any>();
 const mockGetDisputeManagement = jest.fn<any>();
 const mockGetSystemHealth = jest.fn<any>();
 const mockGetSatisfactionRate = jest.fn<any>();
@@ -32,6 +34,8 @@ jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => (
   unsuspendUser: mockUnsuspendUser,
   verifyUser: mockVerifyUser,
   updateUser: mockUpdateUser,
+  updateAdminPermissions: mockUpdateAdminPermissions,
+  inviteOrAddUser: mockInviteOrAddUser,
   getDisputeManagement: mockGetDisputeManagement,
   getSystemHealth: mockGetSystemHealth,
   getSatisfactionRate: mockGetSatisfactionRate,
@@ -45,6 +49,7 @@ jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'admin-1', role: 'admin' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -440,6 +445,8 @@ describe('admin-routes.ts - Branch Coverage', () => {
       getDisputeManagement: mockGetDisputeManagement2,
       getSystemHealth: mockGetSystemHealth2,
       getSatisfactionRate: jest.fn(),
+      updateAdminPermissions: jest.fn(),
+      inviteOrAddUser: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: mockGetAdminAnalytics2,
@@ -590,6 +597,8 @@ describe('admin-routes - error with null/undefined error object', () => {
       getDisputeManagement: mockGetDisputeManagement3,
       getSystemHealth: mockGetSystemHealth3,
       getSatisfactionRate: jest.fn(),
+      updateAdminPermissions: jest.fn(),
+      inviteOrAddUser: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: mockGetAdminAnalytics3,
@@ -886,6 +895,8 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
       getDisputeManagement: jest.fn(),
       getSystemHealth: jest.fn(),
       getSatisfactionRate: jest.fn(),
+      updateAdminPermissions: jest.fn(),
+      inviteOrAddUser: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: jest.fn(),
@@ -901,6 +912,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
         next();
       },
       requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
@@ -969,6 +981,8 @@ describe('admin verification authentication coverage', () => {
       getDisputeManagement: jest.fn(),
       getSystemHealth: jest.fn(),
       getSatisfactionRate: jest.fn(),
+      updateAdminPermissions: jest.fn(),
+      inviteOrAddUser: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: jest.fn(),
@@ -980,6 +994,7 @@ describe('admin verification authentication coverage', () => {
     jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
       authMiddleware: (_req: any, _res: any, next: any) => next(),
       requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),

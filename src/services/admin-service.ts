@@ -16,8 +16,10 @@ import type { KycVerification } from '../models/didit-kyc.js';
 import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
+import crypto from 'crypto';
 import { generateId } from '../utils/id.js';
-import { users, Query } from '../config/appwrite.js';
+import { users, Query, ID } from '../config/appwrite.js';
+import { ADMIN_PERMISSIONS, type AdminPermission } from '../models/user.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -434,6 +436,247 @@ export async function updateUser(
     return successResult(updated as UserEntity);
   } catch (error) {
     logger.error('Unexpected error in updateUser', { error, userId, updates });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
+/**
+ * Update permissions for an administrator account
+ */
+export async function updateAdminPermissions(
+  userId: string,
+  permissions: AdminPermission[],
+  actorId: string = 'system-admin'
+): Promise<ServiceResult<UserEntity>> {
+  try {
+    const existing = await userRepository.getUserById(userId);
+
+    if (!existing) {
+      return errorResult('NOT_FOUND', 'User not found');
+    }
+
+    if (existing.role !== 'admin') {
+      return errorResult('INVALID_ROLE', 'Permissions can only be assigned to administrators');
+    }
+
+    // Validate that all permissions are recognized members of ADMIN_PERMISSIONS
+    const validSet = new Set<string>(ADMIN_PERMISSIONS);
+    for (const p of permissions) {
+      if (!validSet.has(p)) {
+        return errorResult('INVALID_PERMISSION', `Invalid permission: ${p}`);
+      }
+    }
+
+    // Guard: Prevent removing admin:manage from the only remaining super-admin
+    const targetHadAdminManage =
+      existing.permissions === undefined ||
+      (Array.isArray(existing.permissions) && (
+        (existing.permissions as string[]).includes('*') ||
+        (existing.permissions as string[]).includes('admin:manage')
+      ));
+
+    const targetWillHaveAdminManage = permissions.includes('admin:manage');
+
+    if (targetHadAdminManage && !targetWillHaveAdminManage) {
+      const allAdmins = await userRepository.getUsersByRole('admin');
+      const otherSuperAdmins = allAdmins.filter(u => {
+        if (u.id === userId) return false;
+        const perms = u.permissions;
+        return (
+          !perms ||
+          perms.length === 0 ||
+          (perms as string[]).includes('*') ||
+          (perms as string[]).includes('admin:manage')
+        );
+      });
+
+      if (otherSuperAdmins.length === 0) {
+        return errorResult('LAST_SUPER_ADMIN', 'Cannot remove admin:manage from the last remaining super administrator');
+      }
+    }
+
+    const updated = await userRepository.updateUser(userId, {
+      permissions,
+    } as Partial<UserEntity>);
+
+    logger.info('ADMIN ACTION: admin permissions updated', {
+      actor: actorId,
+      userId,
+      permissions,
+    });
+    await recordAdminAudit({
+      actorId,
+      targetUserId: userId,
+      action: 'admin.permissions_updated',
+      payload: { permissions },
+    });
+
+    return successResult(updated as UserEntity);
+  } catch (error) {
+    logger.error('Unexpected error in updateAdminPermissions', { error, userId, permissions });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
+}
+
+export interface InviteUserInput {
+  name: string;
+  email: string;
+  role: 'freelancer' | 'employer' | 'admin';
+  password?: string;
+  permissions?: AdminPermission[];
+  autoVerifyEmail?: boolean;
+}
+
+function generateTemporaryPassword(): string {
+  const random = crypto.randomBytes(9).toString('base64url');
+  return `Temp!${random}1`;
+}
+
+/**
+ * Create or invite a new user through Appwrite Auth and register in public database.
+ */
+export async function inviteOrAddUser(
+  input: InviteUserInput,
+  actorId: string = 'system-admin'
+): Promise<ServiceResult<{ user: UserEntity; temporaryPassword?: string }>> {
+  try {
+    const trimmedName = input.name?.trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      return errorResult('INVALID_NAME', 'Name must be at least 2 characters long');
+    }
+
+    const normalizedEmail = input.email?.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
+      return errorResult('INVALID_EMAIL', 'A valid email address is required');
+    }
+
+    if (!['freelancer', 'employer', 'admin'].includes(input.role)) {
+      return errorResult('INVALID_ROLE', 'Role must be freelancer, employer, or admin');
+    }
+
+    // Validate admin permissions if role is admin and permissions provided
+    if (input.role === 'admin' && input.permissions !== undefined) {
+      if (!Array.isArray(input.permissions)) {
+        return errorResult('INVALID_PERMISSIONS', 'Permissions must be an array');
+      }
+      const validSet = new Set<string>(ADMIN_PERMISSIONS);
+      for (const p of input.permissions) {
+        if (!validSet.has(p)) {
+          return errorResult('INVALID_PERMISSION', `Invalid permission: ${p}`);
+        }
+      }
+    }
+
+    // Ensure email is not already registered in our database
+    const emailExists = await userRepository.emailExists(normalizedEmail);
+    if (emailExists) {
+      return errorResult('DUPLICATE_EMAIL', 'An account with this email already exists');
+    }
+
+    // Password handling: manual or secure auto-generated temporary password
+    let passwordToUse = input.password?.trim();
+    let temporaryPasswordGenerated: string | undefined = undefined;
+
+    if (passwordToUse) {
+      if (passwordToUse.length < 8) {
+        return errorResult('INVALID_PASSWORD', 'Password must be at least 8 characters long');
+      }
+    } else {
+      temporaryPasswordGenerated = generateTemporaryPassword();
+      passwordToUse = temporaryPasswordGenerated;
+    }
+
+    // Create user in Appwrite Auth
+    let appwriteUserId: string | undefined;
+    try {
+      const appwriteUser = await users.create(
+        ID.unique(),
+        normalizedEmail,
+        undefined,
+        passwordToUse,
+        trimmedName
+      );
+      appwriteUserId = appwriteUser.$id;
+
+      // Handle email verification
+      if (input.autoVerifyEmail !== false) {
+        try {
+          await users.updateEmailVerification(appwriteUserId, true);
+        } catch (verifyErr) {
+          logger.warn('Failed to update email verification status in Appwrite', {
+            userId: appwriteUserId,
+            error: verifyErr,
+          });
+        }
+      }
+    } catch (appwriteErr: unknown) {
+      const msg = appwriteErr instanceof Error ? appwriteErr.message : String(appwriteErr);
+      if (msg.includes('already exists') || (appwriteErr as any)?.code === 409) {
+        return errorResult('DUPLICATE_EMAIL', 'An account with this email already exists in Auth provider');
+      }
+      logger.error('Failed to create user in Appwrite Auth', { error: appwriteErr, email: normalizedEmail });
+      return errorResult('INTERNAL_ERROR', 'Failed to create user in authentication provider');
+    }
+
+    // Create user record in our database
+    let createdUser: UserEntity;
+    try {
+      const adminPermissions = input.role === 'admin'
+        ? (input.permissions && input.permissions.length > 0 ? input.permissions : ['users:view', 'disputes:view', 'kyc:view', 'analytics:view'])
+        : undefined;
+
+      createdUser = await userRepository.createUser({
+        id: appwriteUserId,
+        email: normalizedEmail,
+        password_hash: '',
+        role: input.role,
+        wallet_address: '',
+        name: trimmedName,
+        is_suspended: false,
+        suspension_reason: null,
+        mfa_enabled: false,
+        ...(adminPermissions ? { permissions: adminPermissions } : {}),
+      });
+    } catch (dbErr) {
+      // Compensate: Delete orphaned Appwrite user if DB persistence fails
+      if (appwriteUserId) {
+        try {
+          await users.delete(appwriteUserId);
+          logger.warn('Rolled back Appwrite user after DB insertion failure', { userId: appwriteUserId });
+        } catch (delErr) {
+          logger.error('CRITICAL: Failed to rollback Appwrite user', { userId: appwriteUserId, error: delErr });
+        }
+      }
+      logger.error('Failed to create user database record', { error: dbErr, userId: appwriteUserId });
+      return errorResult('INTERNAL_ERROR', 'Failed to create user record in database');
+    }
+
+    logger.info('ADMIN ACTION: user created/invited', {
+      actor: actorId,
+      userId: createdUser.id,
+      role: createdUser.role,
+      email: normalizedEmail,
+    });
+
+    await recordAdminAudit({
+      actorId,
+      targetUserId: createdUser.id,
+      action: 'admin.user_created',
+      payload: {
+        role: createdUser.role,
+        email: normalizedEmail,
+        permissions: createdUser.permissions,
+        autoVerifyEmail: input.autoVerifyEmail !== false,
+      },
+    });
+
+    return successResult({
+      user: createdUser,
+      ...(temporaryPasswordGenerated !== undefined ? { temporaryPassword: temporaryPasswordGenerated } : {}),
+    });
+  } catch (error) {
+    logger.error('Unexpected error in inviteOrAddUser', { error, input });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }

@@ -1,10 +1,11 @@
-import type { UserRole } from '../models/user.js';
+import type { UserRole, AdminPermission } from '../models/user.js';
 
 /** Shape of the authenticated user attached to `req.user` by authMiddleware. */
 export type ValidatedUser = {
   userId: string;
   email: string;
   role: UserRole;
+  permissions?: AdminPermission[] | string[] | undefined;
 };
 
 declare global {

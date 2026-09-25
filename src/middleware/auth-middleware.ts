@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { validateToken } from '../services/auth-service.js';
 import { AuthError } from '../services/auth-types.js';
-import { UserRole } from '../models/user.js';
+import { UserRole, type AdminPermission } from '../models/user.js';
 import type { ValidatedUser } from '../types/express.js';
 import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
@@ -69,6 +69,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     userId: result.userId,
     email: result.email,
     role: result.role,
+    ...(result.permissions !== undefined ? { permissions: result.permissions } : {}),
   };
   next();
 }
@@ -117,6 +118,68 @@ export function requireRole(...roles: UserRole[]) {
       });
       
       sendErrorResponse(res, 403, 'AUTH_FORBIDDEN', 'Insufficient permissions', { requestId });
+      return;
+    }
+
+    next();
+  };
+}
+
+/**
+ * Enforces granular permissions for administrators.
+ * - Requires user to be authenticated with role 'admin'.
+ * - Super-admins (permissions undefined, empty, or containing '*' or 'admin:manage') have full access.
+ * - Restricted admins (e.g. KYC Officer) must have at least one of the specified permissions.
+ */
+export function requirePermission(...permissions: AdminPermission[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const requestId = getRequestId(req);
+
+    if (!req.user) {
+      logger.auth('Authentication required but user not authenticated', undefined, {
+        requestId,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+      });
+
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
+      return;
+    }
+
+    if (req.user.role !== 'admin') {
+      logger.authzFailure(req.user.userId, req.path, req.method, {
+        requestId,
+        userRole: req.user.role,
+        requiredRoles: ['admin'],
+        ip: req.ip,
+      });
+
+      sendErrorResponse(res, 403, 'AUTH_FORBIDDEN', 'Administrator access required', { requestId });
+      return;
+    }
+
+    const userPerms = req.user.permissions as AdminPermission[] | undefined;
+
+    // Backward compatibility and Super Admin bypass:
+    // If permissions array is not defined, or empty (legacy admins), or includes '*' or 'admin:manage',
+    // the user has unrestricted administrator access.
+    if (!userPerms || userPerms.length === 0 || (userPerms as string[]).includes('*') || userPerms.includes('admin:manage')) {
+      next();
+      return;
+    }
+
+    // Check if the administrator has any of the required permissions
+    const hasPermission = permissions.some((perm) => userPerms.includes(perm));
+    if (!hasPermission) {
+      logger.authzFailure(req.user.userId, req.path, req.method, {
+        requestId,
+        requiredPermissions: permissions,
+        userPermissions: userPerms,
+        ip: req.ip,
+      });
+
+      sendErrorResponse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'You do not have permission to perform this administrative action', { requestId });
       return;
     }
 

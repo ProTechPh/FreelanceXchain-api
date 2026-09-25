@@ -67,6 +67,7 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'is_suspended', type: 'boolean', required: false, default: false },
       { name: 'suspension_reason', type: 'string', size: 1000, required: false },
       { name: 'mfa_enabled', type: 'boolean', required: false, default: false },
+      { name: 'permissions', type: 'string', size: 2000, required: false, default: '[]' },
     ],
     indexes: [
       { key: 'unique_email', type: DatabasesIndexType.Unique, attributes: ['email'] },
