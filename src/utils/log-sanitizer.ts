@@ -34,8 +34,8 @@ const SENSITIVE_PATTERNS = {
   // Authorization headers
   authHeader: /authorization[\s:]+['"]?([^'"\n]+)['"]?/gi,
   
-  // Private keys
-  privateKey: /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----[\s\S]*?-----END\s+(?:RSA\s+)?PRIVATE\s+KEY-----/gi,
+  // Private keys (bounded non-dash class to prevent ReDoS / catastrophic backtracking)
+  privateKey: /-----BEGIN\s+(?:[A-Z]+\s+)?PRIVATE\s+KEY-----[^-]{1,8192}-----END\s+(?:[A-Z]+\s+)?PRIVATE\s+KEY-----/gi,
 };
 
 /**
