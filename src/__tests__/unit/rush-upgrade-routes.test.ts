@@ -12,6 +12,7 @@ const mockAcceptCounterOffer = jest.fn<any>();
 const mockDeclineCounterOffer = jest.fn<any>();
 const mockPayRushUpgradeFee = jest.fn<any>();
 const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
+const mockWithdrawRushUpgradeRequest = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
   requestRushUpgrade: mockRequestRushUpgrade,
@@ -21,6 +22,7 @@ jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), 
   payRushUpgradeFee: mockPayRushUpgradeFee,
   getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
   getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+  withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -379,6 +381,7 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express = (await import('express')).default;
@@ -469,6 +472,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express = (await import('express')).default;
@@ -554,6 +558,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express2 = (await import('express')).default;
@@ -638,6 +643,7 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express = (await import('express')).default;

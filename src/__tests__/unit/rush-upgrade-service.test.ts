@@ -1282,11 +1282,9 @@ describe('rush upgrade - direct fee transfer', () => {
     expect(mockProjectRepo.updateProject).not.toHaveBeenCalled();
   });
 
-  it('sends a real on-chain transfer when blockchain mode is real', async () => {
+  it('requires a client transaction hash when blockchain mode is real', async () => {
     mockGetBlockchainMode.mockReturnValue('real');
     mockIsWeb3Available.mockReturnValue(true);
-    const txHash = '0x' + 'f'.repeat(64);
-    mockSendTransaction.mockResolvedValue({ hash: txHash });
 
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
@@ -1300,20 +1298,18 @@ describe('rush upgrade - direct fee transfer', () => {
 
     const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(mockSendTransaction).toHaveBeenCalledWith(
-      freelancer.wallet_address,
-      200n * 10n ** 18n,
-    );
-    const payments = Array.from(paymentStore.values()) as any[];
-    expect(payments[0].tx_hash).toBe(txHash);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('TRANSACTION_HASH_REQUIRED');
+    }
+    mockGetBlockchainMode.mockReturnValue('simulated');
   });
 
-  it('rejects pay when the on-chain transfer fails', async () => {
+  it('rejects pay when the on-chain transfer verification fails', async () => {
     mockGetBlockchainMode.mockReturnValue('real');
     mockIsWeb3Available.mockReturnValue(true);
-    mockSendTransaction.mockRejectedValue(new Error('insufficient funds'));
+    const validHash = '0x' + 'a'.repeat(64);
+    mockGetTransactionByHash.mockRejectedValue(new Error('insufficient funds'));
 
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
@@ -1325,18 +1321,20 @@ describe('rush upgrade - direct fee transfer', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id, transactionHash: validHash });
 
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.code).toBe('RUSH_FEE_TRANSFER_FAILED');
+    if (!result.success) expect(result.error.code).toBe('VERIFICATION_FAILED');
     // Nothing applied: contract untouched
     expect(mockContractRepo.updateContract).not.toHaveBeenCalled();
     expect(Array.from(paymentStore.values())).toHaveLength(0);
+    mockGetBlockchainMode.mockReturnValue('simulated');
   });
 
   it('rejects pay when the freelancer has no wallet in real mode', async () => {
     mockGetBlockchainMode.mockReturnValue('real');
     mockIsWeb3Available.mockReturnValue(true);
+    const validHash = '0x' + 'c'.repeat(64);
 
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer', wallet_address: null });
@@ -1348,11 +1346,12 @@ describe('rush upgrade - direct fee transfer', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'accepted',
     });
 
-    const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
+    const result = await payRushUpgradeFee(employer.id, { requestId: request.id, transactionHash: validHash });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('MISSING_WALLET');
     expect(mockContractRepo.updateContract).not.toHaveBeenCalled();
+    mockGetBlockchainMode.mockReturnValue('simulated');
   });
 
   it('pays the rush fee directly when accepting a counter-offer', async () => {

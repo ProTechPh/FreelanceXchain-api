@@ -371,7 +371,7 @@ function createCache<T>(prefix: string, maxSize: number, ttlMs: number): RedisCa
     logger.info(`[cache:${prefix}] Using Redis cache`);
     return new RedisCache<T>(prefix, maxSize, ttlMs);
   }
-  logger.debug(`[cache:${prefix}] Using in-memory LRU cache`);
+  logger.debug?.(`[cache:${prefix}] Using in-memory LRU cache`);
   return new LRUCache<T>(maxSize, ttlMs);
 }
 

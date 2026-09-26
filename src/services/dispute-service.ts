@@ -716,12 +716,7 @@ async function updateDisputeStatuses(
 export async function resolveDispute(
   input: ResolveDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
-  const initialDispute = await disputeRepository.getDisputeById(input.disputeId);
-  const milestoneKey = initialDispute?.milestone_id ? milestoneLockKey(initialDispute.milestone_id) : `dispute-resolve:${input.disputeId}`;
-
-  // Serialize concurrent resolution attempts and milestone approval on the same milestone
-  return withLock(milestoneKey, async () => {
-    return withLock(`dispute-resolve:${input.disputeId}`, async () => {
+  return withLock(`dispute-resolve:${input.disputeId}`, async () => {
     const { disputeId, decision, reasoning, resolvedBy } = input;
 
     const validated = await validateDisputeResolution(input);
@@ -786,7 +781,6 @@ export async function resolveDispute(
     });
 
     return successResult(statusResult.dispute);
-    });
   });
 }
 

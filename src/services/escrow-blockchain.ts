@@ -376,7 +376,8 @@ export async function withdrawFromEscrow(
   }
 
   const contract = getEscrowContractWithSigner(escrowAddress);
-  const serverWalletAddress = await getWallet().getAddress();
+  const wallet = getWallet();
+  const serverWalletAddress = wallet.address ?? (await wallet.getAddress?.());
   let pendingAmount = BigInt(0);
   try {
     pendingAmount = await contract.pendingWithdrawals(serverWalletAddress);

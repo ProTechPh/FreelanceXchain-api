@@ -58,6 +58,10 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
 
 // Cache
 const mockSkillCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
+const mockProjectCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
+const mockProjectCategoryStatsCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
+const mockFreelancerSearchCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
+const mockIdempotencyCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
 const mockPlatformMetricsCache = { get: jest.fn(), set: jest.fn() };
 const mockSkillTrendsCache = { get: jest.fn(), set: jest.fn() };
 const mockFreelancerAnalyticsCache = { get: jest.fn(), set: jest.fn() };
@@ -70,6 +74,10 @@ const mockChurnRiskCache = { get: jest.fn(), set: jest.fn() };
 const mockMarketplaceVelocityCache = { get: jest.fn(), set: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
   skillCache: mockSkillCache,
+  projectCache: mockProjectCache,
+  projectCategoryStatsCache: mockProjectCategoryStatsCache,
+  freelancerSearchCache: mockFreelancerSearchCache,
+  idempotencyCache: mockIdempotencyCache,
   platformMetricsCache: mockPlatformMetricsCache,
   skillTrendsCache: mockSkillTrendsCache,
   freelancerAnalyticsCache: mockFreelancerAnalyticsCache,
@@ -80,6 +88,7 @@ jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
   cohortRetentionCache: mockCohortRetentionCache,
   churnRiskCache: mockChurnRiskCache,
   marketplaceVelocityCache: mockMarketplaceVelocityCache,
+  allCaches: [mockSkillCache, mockProjectCache, mockFreelancerSearchCache],
   LRUCache: jest.fn().mockImplementation(() => ({ get: jest.fn(), set: jest.fn() })),
 }));
 
@@ -354,6 +363,10 @@ function resetAllMocks() {
   // Reset cache mocks to return undefined (cache miss by default)
   mockSkillCache.get.mockReset().mockReturnValue(undefined);
   mockSkillCache.set.mockReset();
+  mockProjectCache.get.mockReset().mockReturnValue(undefined);
+  mockProjectCache.set.mockReset();
+  mockFreelancerSearchCache.get.mockReset().mockReturnValue(undefined);
+  mockFreelancerSearchCache.set.mockReset();
   mockPlatformMetricsCache.get.mockReset().mockReturnValue(undefined);
   mockPlatformMetricsCache.set.mockReset();
   mockSkillTrendsCache.get.mockReset().mockReturnValue(undefined);

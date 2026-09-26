@@ -589,11 +589,18 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
   await withLock('escrow-withdraw:' + contractId, async () => {
     try {
       const { withdrawFromEscrow } = await import('../services/escrow-blockchain.js');
-      const { userRepository } = await import('../repositories/user-repository.js');
-      const employer = contract.employerId ? await userRepository.getUserById(contract.employerId) : null;
-      const employerWallet = employer?.wallet_address ?? undefined;
+      let employerWallet: string | undefined;
+      try {
+        const { userRepository } = await import('../repositories/user-repository.js');
+        const employer = contract.employerId ? await userRepository.getUserById(contract.employerId) : null;
+        employerWallet = employer?.wallet_address ?? undefined;
+      } catch (err) {
+        logger.warn('Could not query employer wallet for escrow forwarding', { error: err });
+      }
 
-      const result = await withdrawFromEscrow(contract.escrowAddress, employerWallet);
+      const result = employerWallet
+        ? await withdrawFromEscrow(contract.escrowAddress, employerWallet)
+        : await withdrawFromEscrow(contract.escrowAddress);
       sendSuccessResponse(res, 200, {
         message: 'Escrow withdrawal processed',
         transactionHash: result.transactionHash,
