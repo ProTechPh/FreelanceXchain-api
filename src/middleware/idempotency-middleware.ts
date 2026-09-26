@@ -19,30 +19,95 @@ export function clearIdempotencyCache(): void {
   }
 }
 
+function extractIdempotencyKey(req: Request): string | null {
+  const rawKey = req.header('Idempotency-Key') ?? req.header('X-Idempotency-Key');
+  return rawKey ? rawKey.trim() : null;
+}
+
+function handleExistingEntry(
+  existing: IdempotencyEntry,
+  key: string,
+  req: Request,
+  res: Response
+): boolean {
+  if (existing.status === 'in_progress') {
+    sendErrorResponse(
+      res,
+      409,
+      'IDEMPOTENCY_CONFLICT',
+      `A request with idempotency key "${key}" is currently being processed. Please wait for it to complete.`,
+      { requestId: getRequestId(req) }
+    );
+    return true;
+  }
+
+  if (existing.status === 'completed' && existing.statusCode !== undefined) {
+    logger.debug('Replaying cached idempotent response', { key, statusCode: existing.statusCode });
+    res.setHeader('Idempotent-Replayed', 'true');
+    res.setHeader('X-Idempotency-Key', key);
+    res.status(existing.statusCode).json(existing.body);
+    return true;
+  }
+
+  return false;
+}
+
+function attachResponseCaching(res: Response, cacheKey: string, ttlMs: number): void {
+  const originalJson = res.json.bind(res);
+  const originalSend = res.send.bind(res);
+  let captured = false;
+
+  const commitCache = (body: any): void => {
+    if (captured) return;
+    captured = true;
+    if (res.statusCode < 500) {
+      idempotencyCache.set(cacheKey, { status: 'completed', statusCode: res.statusCode, body }, ttlMs);
+    } else {
+      idempotencyCache.delete(cacheKey);
+    }
+  };
+
+  res.json = (body: any): Response => {
+    commitCache(body);
+    return originalJson(body);
+  };
+
+  res.send = (body: any): Response => {
+    let parsed = body;
+    if (typeof body === 'string') {
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        // keep as string
+      }
+    }
+    commitCache(parsed);
+    return originalSend(body);
+  };
+
+  res.on('close', () => {
+    if (!res.writableEnded && !captured) {
+      idempotencyCache.delete(cacheKey);
+    }
+  });
+}
+
 /**
  * Idempotency middleware for mutating endpoints (escrow releases, refunds, payments).
- * Ensures that if a client retries a request with the same Idempotency-Key:
- * 1. Concurrent in-flight duplicates receive 409 Conflict.
- * 2. Already completed requests replay the identical cached response (with Idempotent-Replayed: true header).
- * 3. 5xx server errors do not poison the cache and can be safely retried.
- * 4. Requests without an Idempotency-Key header proceed without caching (backward-compatible).
  */
 export function idempotencyMiddleware(ttlMs: number = DEFAULT_TTL_MS): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Only apply to mutating HTTP methods
     if (req.method !== 'POST' && req.method !== 'PATCH' && req.method !== 'PUT' && req.method !== 'DELETE') {
       next();
       return;
     }
 
-    const rawKey = req.header('Idempotency-Key') ?? req.header('X-Idempotency-Key');
-    if (!rawKey) {
-      // Header not provided - allow normal execution for backward compatibility
+    const key = extractIdempotencyKey(req);
+    if (key === null) {
       next();
       return;
     }
 
-    const key = rawKey.trim();
     if (key.length === 0 || key.length > 255) {
       sendErrorResponse(
         res,
@@ -59,83 +124,14 @@ export function idempotencyMiddleware(ttlMs: number = DEFAULT_TTL_MS): RequestHa
     const cacheKey = `idemp:${userId}:${req.method}:${endpointPath}:${key}`;
 
     const existing = idempotencyCache.get(cacheKey) as IdempotencyEntry | undefined;
-
-    if (existing) {
-      if (existing.status === 'in_progress') {
-        sendErrorResponse(
-          res,
-          409,
-          'IDEMPOTENCY_CONFLICT',
-          `A request with idempotency key "${key}" is currently being processed. Please wait for it to complete.`,
-          { requestId: getRequestId(req) }
-        );
-        return;
-      }
-
-      if (existing.status === 'completed' && existing.statusCode !== undefined) {
-        logger.debug('Replaying cached idempotent response', { cacheKey, statusCode: existing.statusCode });
-        res.setHeader('Idempotent-Replayed', 'true');
-        res.setHeader('X-Idempotency-Key', key);
-        res.status(existing.statusCode).json(existing.body);
-        return;
-      }
+    if (existing && handleExistingEntry(existing, key, req, res)) {
+      return;
     }
 
-    // Mark key as in-progress with a short TTL to prevent permanently stuck states if process aborts
     idempotencyCache.set(cacheKey, { status: 'in_progress' }, IN_PROGRESS_TTL_MS);
     res.setHeader('X-Idempotency-Key', key);
 
-    // Intercept response completion
-    const originalJson = res.json.bind(res);
-    const originalSend = res.send.bind(res);
-    let captured = false;
-
-    const commitCache = (body: any): void => {
-      if (captured) return;
-      captured = true;
-
-      // Only cache successful or non-transient responses (< 500)
-      if (res.statusCode < 500) {
-        idempotencyCache.set(
-          cacheKey,
-          {
-            status: 'completed',
-            statusCode: res.statusCode,
-            body,
-          },
-          ttlMs
-        );
-      } else {
-        // Evict 5xx server errors so client can retry
-        idempotencyCache.delete(cacheKey);
-      }
-    };
-
-    res.json = (body: any): Response => {
-      commitCache(body);
-      return originalJson(body);
-    };
-
-    res.send = (body: any): Response => {
-      let parsed = body;
-      if (typeof body === 'string') {
-        try {
-          parsed = JSON.parse(body);
-        } catch {
-          // keep as string if not JSON
-        }
-      }
-      commitCache(parsed);
-      return originalSend(body);
-    };
-
-    // Clean up if connection closed before completion
-    res.on('close', () => {
-      if (!res.writableEnded && !captured) {
-        idempotencyCache.delete(cacheKey);
-      }
-    });
-
+    attachResponseCaching(res, cacheKey, ttlMs);
     next();
   };
 }
