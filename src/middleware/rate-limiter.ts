@@ -116,6 +116,15 @@ export const oauthRateLimiter = rateLimiter('oauth', {
 
 export const authRateLimiter = loginRateLimiter;
 
+// Linking or unlinking a wallet is an authenticated profile change, not a
+// credential attempt, so it gets its own bucket: wallet connect/disconnect
+// cycles must never use up an IP's login attempts.
+export const walletRateLimiter = rateLimiter('wallet', {
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 30,
+  message: 'Too many wallet changes, please try again in a few minutes',
+});
+
 export const apiRateLimiter = rateLimiter('api', {
   windowMs: 60 * 1000,
   maxRequests: 100,

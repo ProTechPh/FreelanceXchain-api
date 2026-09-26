@@ -33,7 +33,7 @@ import {
   isAuthError,
 } from '../services/auth-service.js';
 import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
-import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
+import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter, walletRateLimiter } from '../middleware/rate-limiter.js';
 import { requireTurnstile } from '../middleware/turnstile-middleware.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
@@ -1706,7 +1706,7 @@ router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Requ
  *       404:
  *         description: User not found
  */
-router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.patch('/wallet', authMiddleware, walletRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { walletAddress } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -1759,7 +1759,7 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
  *       401:
  *         description: Unauthorized
  */
-router.delete('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.delete('/wallet', authMiddleware, walletRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
