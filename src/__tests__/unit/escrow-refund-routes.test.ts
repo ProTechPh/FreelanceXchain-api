@@ -10,12 +10,14 @@ const mockCreateRefundRequest = jest.fn<any>();
 const mockApproveRefund = jest.fn<any>();
 const mockRejectRefund = jest.fn<any>();
 const mockGetContractRefunds = jest.fn<any>();
+const mockWithdrawRefundRequest = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/escrow-refund-service.ts'), () => ({
   createRefundRequest: mockCreateRefundRequest,
   approveRefund: mockApproveRefund,
   rejectRefund: mockRejectRefund,
   getContractRefunds: mockGetContractRefunds,
+  withdrawRefundRequest: mockWithdrawRefundRequest,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -156,6 +158,51 @@ describe('Escrow Refund Routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('POST /refunds/:refundId/withdraw', () => {
+    it('should withdraw refund request successfully', async () => {
+      mockWithdrawRefundRequest.mockResolvedValue({
+        success: true,
+        data: { message: 'Withdrawn' },
+      });
+      const res = await request(app).post('/api/escrow/refunds/refund-1/withdraw');
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Withdrawn');
+    });
+
+    it('should return 404 when refund not found', async () => {
+      mockWithdrawRefundRequest.mockResolvedValue({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Not found' },
+      });
+      const res = await request(app).post('/api/escrow/refunds/refund-1/withdraw');
+      expect(res.status).toBe(404);
+    });
+
+    it('should return 403 when unauthorized', async () => {
+      mockWithdrawRefundRequest.mockResolvedValue({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Forbidden' },
+      });
+      const res = await request(app).post('/api/escrow/refunds/refund-1/withdraw');
+      expect(res.status).toBe(403);
+    });
+
+    it('should return 400 on other service error', async () => {
+      mockWithdrawRefundRequest.mockResolvedValue({
+        success: false,
+        error: { code: 'INVALID_STATUS', message: 'Invalid status' },
+      });
+      const res = await request(app).post('/api/escrow/refunds/refund-1/withdraw');
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 500 when service throws', async () => {
+      mockWithdrawRefundRequest.mockRejectedValue(new Error('Unexpected error'));
+      const res = await request(app).post('/api/escrow/refunds/refund-1/withdraw');
+      expect(res.status).toBe(500);
+    });
+  });
 });
 
 
@@ -253,6 +300,7 @@ describe('escrow-refund-routes.ts - Branch Coverage', () => {
       getContractRefunds: mockGetContractRefunds,
       approveRefund: mockApproveRefund,
       rejectRefund: mockRejectRefund,
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;
@@ -322,6 +370,7 @@ describe('escrow-refund-routes - catch blocks for refund-request and refunds', (
       getContractRefunds: mockGetContractRefunds,
       approveRefund: jest.fn(),
       rejectRefund: jest.fn(),
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;
@@ -368,6 +417,7 @@ describe('escrow-refund-routes - instanceof Error false branch', () => {
       approveRefund: localApproveRefund,
       rejectRefund: localRejectRefund,
       getContractRefunds: jest.fn(),
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;
@@ -433,6 +483,7 @@ describe('escrow-refund-routes - ?? nullish fallback branches', () => {
       approveRefund: localApproveRefund,
       rejectRefund: localRejectRefund,
       getContractRefunds: localGetRefunds,
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;

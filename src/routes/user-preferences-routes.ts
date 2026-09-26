@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { getUserPreferences, updateTourProgress, setTourAutoStart } from '../services/user-preferences-service.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
 import type { UserRole } from '../models/user.js';
 
 const router = Router();
+router.use(apiRateLimiter);
 
 /**
  * GET /api/user-preferences

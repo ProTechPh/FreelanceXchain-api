@@ -109,7 +109,7 @@ describe('Audit Logs Routes', () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('INTERNAL_ERROR');
-      expect(res.body.error.message).toBe('DB error');
+      expect(res.body.error.message).toBe('Internal server error');
     });
   });
 

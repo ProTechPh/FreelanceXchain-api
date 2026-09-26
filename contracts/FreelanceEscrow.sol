@@ -274,7 +274,7 @@ contract FreelanceEscrow {
         uint256 employerAmt = amt - freelancerAmt;
 
         // All state changes before any external interaction (CEI pattern)
-        milestone.status = MilestoneStatus.Approved;
+        milestone.status = (freelancerBps == 0) ? MilestoneStatus.Refunded : MilestoneStatus.Approved;
         releasedAmount += freelancerAmt;
         refundedAmount += employerAmt;
 

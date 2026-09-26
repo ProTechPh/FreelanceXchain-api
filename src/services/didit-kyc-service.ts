@@ -993,7 +993,11 @@ async function persistManualVerification(
 }
 
 export async function manualKycVerification(params: ManualKycParams): Promise<ServiceResult<KycVerification>> {
-  const { userId } = params;
+  const { userId, adminUserId } = params;
+
+  if (userId === adminUserId) {
+    return errorResult('SELF_REVIEW_FORBIDDEN', 'Admins cannot manually verify their own account');
+  }
 
   // BLF-12.3: serialize manual verifications per target user so two concurrent
   // admin submissions cannot both pass the ALREADY_VERIFIED gate, create duplicate

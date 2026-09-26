@@ -3,16 +3,20 @@ import { AuditLogService } from '../services/audit-log-service.js';
 import type { AuditLogStatus } from '../repositories/audit-log-repository.js';
 import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
 import { getRequestId, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { logger } from '../config/logger.js';
 
 const router = Router();
+router.use(apiRateLimiter);
 const auditLogService = new AuditLogService();
 
 function sendServerError(res: Response, error: unknown): void {
+  logger.error('Audit log server error', error);
   sendErrorResponse(
     res,
     500,
     'INTERNAL_ERROR',
-    error instanceof Error ? error.message : 'Internal server error',
+    'Internal server error',
     { requestId: getRequestId(res.req) }
   );
 }

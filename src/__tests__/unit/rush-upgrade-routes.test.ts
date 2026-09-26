@@ -12,6 +12,7 @@ const mockAcceptCounterOffer = jest.fn<any>();
 const mockDeclineCounterOffer = jest.fn<any>();
 const mockPayRushUpgradeFee = jest.fn<any>();
 const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
+const mockWithdrawRushUpgradeRequest = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
   requestRushUpgrade: mockRequestRushUpgrade,
@@ -21,6 +22,7 @@ jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), 
   payRushUpgradeFee: mockPayRushUpgradeFee,
   getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
   getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+  withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -379,6 +381,7 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express = (await import('express')).default;
@@ -469,6 +472,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express = (await import('express')).default;
@@ -554,6 +558,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express2 = (await import('express')).default;
@@ -638,6 +643,7 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
       payRushUpgradeFee: mockPayRushUpgradeFee,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
       getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
+      withdrawRushUpgradeRequest: mockWithdrawRushUpgradeRequest,
     }));
 
     const express = (await import('express')).default;
@@ -681,5 +687,43 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/contracts/c-1/rush-upgrade-requests');
     expect(res.status).toBe(200);
+  });
+
+  describe('POST /rush-upgrade-requests/:id/withdraw', () => {
+    it('withdraws rush upgrade request successfully', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: true, data: { message: 'Withdrawn' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Withdrawn');
+    });
+
+    it('returns 404 when request not found', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when user is unauthorized', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: false, error: { code: 'UNAUTHORIZED', message: 'Forbidden' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 400 on other service error', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Invalid' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 500 when service throws', async () => {
+      mockWithdrawRushUpgradeRequest.mockRejectedValueOnce(new Error('Unexpected'));
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(500);
+    });
   });
 });

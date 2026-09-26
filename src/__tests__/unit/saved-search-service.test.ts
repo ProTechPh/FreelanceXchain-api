@@ -8,6 +8,7 @@ const mockLogger = {
   error: jest.fn(),
   info: jest.fn(),
   warn: jest.fn(),
+  debug: jest.fn(),
 };
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({

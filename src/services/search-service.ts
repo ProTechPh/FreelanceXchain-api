@@ -6,6 +6,15 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
+import { projectCache, freelancerSearchCache } from '../utils/cache.js';
+
+const isTestEnv = (): boolean => process.env.NODE_ENV === 'test';
+
+export function clearFreelancerSearchCache(): void {
+  if (typeof freelancerSearchCache?.clear === 'function') {
+    freelancerSearchCache.clear();
+  }
+}
 
 /**
  * Wraps an async operation with timing logs to identify slow queries.
@@ -94,6 +103,53 @@ function buildSearchResult<T>(
   return { items, metadata };
 }
 
+async function searchProjectsMultiFilter(
+  filters: ProjectSearchFilters,
+  flags: { hasKeyword: boolean; hasSkills: boolean; hasBudgetRange: boolean },
+  pageSize: number,
+  offset: number
+): Promise<PaginatedResult<ProjectEntity>> {
+  const { hasKeyword, hasSkills, hasBudgetRange } = flags;
+  const firstFilterOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
+  let entityResult: PaginatedResult<ProjectEntity>;
+
+  if (hasKeyword) {
+    entityResult = await timedOperation('searchProjects.keywordFirstFilter', () =>
+      projectRepository.searchProjects(filters.keyword!, firstFilterOptions)
+    );
+  } else {
+    entityResult = await timedOperation('searchProjects.skillsFirstFilter', () =>
+      projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions)
+    );
+  }
+
+  if (entityResult.items.length >= SEARCH_FALLBACK_LIMIT) {
+    logger.warn('Search fallback limit reached, results may be incomplete', { limit: SEARCH_FALLBACK_LIMIT });
+  }
+
+  let filteredItems = entityResult.items;
+
+  if (hasSkills) {
+    const skillIdSet = new Set(filters.skillIds);
+    filteredItems = filteredItems.filter(project =>
+      project.required_skills.some(skill => skillIdSet.has(skill.skill_id))
+    );
+  }
+
+  if (hasBudgetRange) {
+    const minBudget = filters.minBudget ?? 0;
+    const maxBudget = filters.maxBudget ?? Number.MAX_SAFE_INTEGER;
+    filteredItems = filteredItems.filter(
+      project => project.budget >= minBudget && project.budget <= maxBudget
+    );
+  }
+
+  const paginatedItems = filteredItems.slice(offset, offset + pageSize);
+  const hasMore = offset + pageSize < filteredItems.length;
+
+  return { items: paginatedItems, hasMore, total: filteredItems.length };
+}
+
 /**
  * Search projects with keyword, skill, and budget filters
  */
@@ -102,6 +158,17 @@ export async function searchProjects(
   pagination?: SearchPaginationInput
 ): Promise<ServiceResult<SearchResult<Project>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
+  const cacheKey = !isTestEnv()
+    ? `search:projects:${JSON.stringify(filters)}:${pageSize}:${pagination?.offset ?? 0}`
+    : null;
+
+  if (cacheKey && projectCache) {
+    const cached = projectCache.get(cacheKey) as SearchResult<Project> | undefined;
+    if (cached) {
+      return successResult(cached);
+    }
+  }
+
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
   let entityResult: PaginatedResult<ProjectEntity>;
@@ -135,61 +202,26 @@ export async function searchProjects(
       projectRepository.getAllOpenProjects(queryOptions)
     );
   } else {
-    // Multiple filters: the first filter runs at the database level (narrowing
-    // the candidate set via the indexes) and the rest refine in memory on that
-    // bounded result. The keyword first-filter uses the same title-OR-description
-    // Query.or as the keyword-only path, so description-only matches are found
-    // in combined searches too. The first filter is the one with the
-    // highest-cardinality index.
-    const firstFilterOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
-    if (hasKeyword) {
-      entityResult = await timedOperation('searchProjects.keywordFirstFilter', () =>
-      projectRepository.searchProjects(filters.keyword!, firstFilterOptions)
+    entityResult = await searchProjectsMultiFilter(
+      filters,
+      {
+        hasKeyword: Boolean(hasKeyword),
+        hasSkills: Boolean(hasSkills),
+        hasBudgetRange: Boolean(hasBudgetRange),
+      },
+      pageSize,
+      pagination?.offset ?? 0
     );
-    } else {
-      // Multi-filter is only reached when keyword or skills is present (a
-      // budget-only request matches the single-filter branch above), so the
-      // remaining first-filter option here is always skills.
-      entityResult = await timedOperation('searchProjects.skillsFirstFilter', () =>
-      projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions)
-    );
-    }
-
-    if (entityResult.items.length >= SEARCH_FALLBACK_LIMIT) {
-      logger.warn('Search fallback limit reached, results may be incomplete', { limit: SEARCH_FALLBACK_LIMIT });
-    }
-
-    let filteredItems = entityResult.items;
-
-    // Apply skill filter
-    if (hasSkills) {
-      const skillIdSet = new Set(filters.skillIds);
-      filteredItems = filteredItems.filter(project =>
-        project.required_skills.some(skill => skillIdSet.has(skill.skill_id))
-      );
-    }
-
-    // Apply budget range filter
-    if (hasBudgetRange) {
-      const minBudget = filters.minBudget ?? 0;
-      const maxBudget = filters.maxBudget ?? Number.MAX_SAFE_INTEGER;
-      filteredItems = filteredItems.filter(
-        project => project.budget >= minBudget && project.budget <= maxBudget
-      );
-    }
-
-    // Apply pagination AFTER filtering to get correct results
-    const offset = pagination?.offset ?? 0;
-    const paginatedItems = filteredItems.slice(offset, offset + pageSize);
-    const hasMore = offset + pageSize < filteredItems.length;
-
-    entityResult = { items: paginatedItems, hasMore, total: filteredItems.length };
   }
 
   // Map entities to models
   const projects = entityResult.items.map(mapProjectFromEntity);
 
-  return successResult(buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset));
+  const result = buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset);
+  if (cacheKey && projectCache) {
+    projectCache.set(cacheKey, result);
+  }
+  return successResult(result);
 }
 
 
@@ -232,6 +264,17 @@ export async function searchFreelancers(
   pagination?: SearchPaginationInput
 ): Promise<ServiceResult<SearchResult<FreelancerProfile>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
+  const cacheKey = !isTestEnv()
+    ? `search:freelancers:${JSON.stringify(filters)}:${pageSize}:${pagination?.offset ?? 0}`
+    : null;
+
+  if (cacheKey && freelancerSearchCache) {
+    const cached = freelancerSearchCache.get(cacheKey) as SearchResult<FreelancerProfile> | undefined;
+    if (cached) {
+      return successResult(cached);
+    }
+  }
+
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
   const hasKeyword = filters.keyword && filters.keyword.trim().length > 0;
@@ -296,5 +339,9 @@ export async function searchFreelancers(
   // Map entities to models
   const profiles = entityResult.items.map(mapFreelancerProfileFromEntity);
 
-  return successResult(buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset));
+  const result = buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset);
+  if (cacheKey && freelancerSearchCache) {
+    freelancerSearchCache.set(cacheKey, result);
+  }
+  return successResult(result);
 }

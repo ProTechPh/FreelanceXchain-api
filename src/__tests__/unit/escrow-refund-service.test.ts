@@ -1407,4 +1407,73 @@ describe('Escrow Refund Service - fallback coverage', () => {
     const otherPartyId = contract.freelancer_id === refund.requested_by ? contract.employer_id : contract.freelancer_id;
     expect(otherPartyId).toBe('fl-1');
   });
+
+  describe('withdrawRefundRequest', () => {
+    it('returns REFUND_NOT_FOUND when refund not found', async () => {
+      const { withdrawRefundRequest } = await import(resolveModule('src/services/escrow-refund-service.ts'));
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(null);
+
+      const result = await withdrawRefundRequest('r-1', 'user-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('REFUND_NOT_FOUND');
+    });
+
+    it('returns UNAUTHORIZED when requested_by does not match userId', async () => {
+      const { withdrawRefundRequest } = await import(resolveModule('src/services/escrow-refund-service.ts'));
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'r-1',
+        requested_by: 'different-user',
+        status: 'pending',
+      });
+
+      const result = await withdrawRefundRequest('r-1', 'user-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('returns INVALID_STATUS when refund is not pending', async () => {
+      const { withdrawRefundRequest } = await import(resolveModule('src/services/escrow-refund-service.ts'));
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'r-1',
+        requested_by: 'user-1',
+        status: 'approved',
+      });
+
+      const result = await withdrawRefundRequest('r-1', 'user-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
+    });
+
+    it('successfully withdraws a pending refund request', async () => {
+      const { withdrawRefundRequest } = await import(resolveModule('src/services/escrow-refund-service.ts'));
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'r-1',
+        requested_by: 'user-1',
+        status: 'pending',
+      });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'r-1', status: 'cancelled' });
+
+      const result = await withdrawRefundRequest('r-1', 'user-1');
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.message).toBe('Refund request withdrawn successfully');
+      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith(
+        'r-1',
+        expect.objectContaining({ status: 'cancelled' })
+      );
+    });
+
+    it('returns WITHDRAW_FAILED when repository update throws', async () => {
+      const { withdrawRefundRequest } = await import(resolveModule('src/services/escrow-refund-service.ts'));
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'r-1',
+        requested_by: 'user-1',
+        status: 'pending',
+      });
+      mockRefundRequestRepository.update.mockRejectedValueOnce(new Error('DB failure'));
+
+      const result = await withdrawRefundRequest('r-1', 'user-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('WITHDRAW_FAILED');
+    });
+  });
 });
