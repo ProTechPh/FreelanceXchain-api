@@ -1,4 +1,4 @@
-import { BaseRepository, fromAppwriteDoc, mapDocument } from './base-repository.js';
+import { BaseRepository, mapDocument } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
 import type { AdminPermission } from '../models/user.js';
