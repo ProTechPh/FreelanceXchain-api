@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AuditLogService } from '../services/audit-log-service.js';
 import type { AuditLogStatus } from '../repositories/audit-log-repository.js';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
 import { getRequestId, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 
 const router = Router();
@@ -36,7 +36,7 @@ router.get('/me', authMiddleware, async (req: Request, res: Response): Promise<v
 });
 
 // Get audit logs for a specific user (admin only)
-router.get('/user/:userId', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/user/:userId', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId!; // Route param is always defined
     const limit = parseInt(req.query.limit as string) || 100;
@@ -49,7 +49,7 @@ router.get('/user/:userId', authMiddleware, requireRole('admin'), async (req: Re
 });
 
 // Get audit logs for a specific resource (admin only)
-router.get('/resource/:resourceType/:resourceId', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/resource/:resourceType/:resourceId', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const resourceType = req.params.resourceType!; // Route param is always defined
     const resourceId = req.params.resourceId!; // Route param is always defined
@@ -62,7 +62,7 @@ router.get('/resource/:resourceType/:resourceId', authMiddleware, requireRole('a
 });
 
 // Get audit logs by action (admin only)
-router.get('/action/:action', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/action/:action', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const action = req.params.action!; // Route param is always defined
     const limit = parseInt(req.query.limit as string) || 100;
@@ -75,7 +75,7 @@ router.get('/action/:action', authMiddleware, requireRole('admin'), async (req: 
 });
 
 // Get failed actions (admin only)
-router.get('/failed', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/failed', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
 
@@ -87,7 +87,7 @@ router.get('/failed', authMiddleware, requireRole('admin'), async (req: Request,
 });
 
 // Get audit logs by date range (admin only)
-router.get('/range', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/range', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const startDate = new Date(req.query.startDate as string);
     const endDate = new Date(req.query.endDate as string);
@@ -105,7 +105,7 @@ router.get('/range', authMiddleware, requireRole('admin'), async (req: Request, 
 });
 
 // Combined filtered search with pagination (admin only)
-router.get('/search', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/search', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { actor, user, action, resourceType, resourceId, status, startDate, endDate, limit, cursor } = req.query;
 
@@ -164,7 +164,7 @@ router.get('/search', authMiddleware, requireRole('admin'), async (req: Request,
 });
 
 // Per-admin, per-day activity summary (admin only)
-router.get('/summary/admin-activity', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/summary/admin-activity', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const startDate = new Date(req.query.startDate as string);
     const endDate = new Date(req.query.endDate as string);
@@ -182,7 +182,7 @@ router.get('/summary/admin-activity', authMiddleware, requireRole('admin'), asyn
 });
 
 // Generate user audit report (admin only)
-router.get('/report/user/:userId', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/report/user/:userId', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.params.userId!; // Route param is always defined
     const startDate = new Date(req.query.startDate as string);
@@ -201,7 +201,7 @@ router.get('/report/user/:userId', authMiddleware, requireRole('admin'), async (
 });
 
 // Generate system audit report (admin only)
-router.get('/report/system', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/report/system', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const startDate = new Date(req.query.startDate as string);
     const endDate = new Date(req.query.endDate as string);
@@ -219,7 +219,7 @@ router.get('/report/system', authMiddleware, requireRole('admin'), async (req: R
 });
 
 // Get specific audit log by ID (admin only)
-router.get('/:id', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+router.get('/:id', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
     const id = req.params.id!; // Route param is always defined
 

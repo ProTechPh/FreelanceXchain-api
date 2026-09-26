@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
 import {
   validate,
   submitSupportTicketSchema,
@@ -110,7 +110,7 @@ router.get(
 router.get(
   '/admin',
   authMiddleware,
-  requireRole('admin'),
+  requirePermission('support:manage'),
   apiRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const requestId = getRequestId(req);
@@ -135,7 +135,7 @@ router.get(
 router.patch(
   '/admin/:id/status',
   authMiddleware,
-  requireRole('admin'),
+  requirePermission('support:manage'),
   apiRateLimiter,
   validate(updateSupportTicketStatusSchema),
   asyncHandler(async (req: Request, res: Response) => {

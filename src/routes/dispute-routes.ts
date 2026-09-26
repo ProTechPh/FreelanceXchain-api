@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireVerifiedKyc, requirePermission, hasAdminPermission } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
 import { clampLimit } from '../utils/index.js';
@@ -182,6 +182,11 @@ router.get(
         return;
       }
 
+      if (userRole === 'admin' && !hasAdminPermission(req.user, 'disputes:view', 'disputes:manage')) {
+        sendErrorResponse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'You do not have permission to view disputes', { requestId: getRequestId(req) });
+        return;
+      }
+
       const result = await getAllDisputes(userId, userRole, { 
         ...(status && { status }), 
         limit 
@@ -353,9 +358,14 @@ router.get(
         return;
       }
 
-      // Authorization check - only dispute parties and admins can view dispute details
+      // Authorization check - only dispute parties and admins with permission can view dispute details
       const dispute = result.data;
-      if (req.user?.role !== 'admin' && dispute.initiatorId !== userId) {
+      if (req.user?.role === 'admin') {
+        if (!hasAdminPermission(req.user, 'disputes:view', 'disputes:manage')) {
+          sendErrorResponse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'You do not have permission to view disputes', { requestId: getRequestId(req) });
+          return;
+        }
+      } else if (dispute.initiatorId !== userId) {
         // Check if user is the other contract party via the contract
         const contractResult = await getContractById(dispute.contractId);
         if (contractResult.success) {
@@ -657,7 +667,7 @@ async function handleJsonEvidenceSubmission(req: Request, res: Response, next: N
 router.post(
   '/:disputeId/resolve',
   authMiddleware,
-  requireVerifiedKyc,
+  requirePermission('disputes:manage'),
   apiRateLimiter,
   validateUUID(['disputeId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {

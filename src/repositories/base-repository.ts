@@ -54,7 +54,7 @@ function serializeAttributeValue(key: string, value: unknown): unknown {
  * Strips Appwrite-internal fields ($id, $collectionId, etc.) and
  * reverses JSON serialization done by create()/update().
  */
-function mapDocument<T extends BaseEntity>(doc: Record<string, unknown>): T {
+export function mapDocument<T extends BaseEntity>(doc: Record<string, unknown>): T {
   const { $collectionId: _cid, $databaseId: _did, ...rest } = doc;
   const result = fromAppwriteDoc<Record<string, unknown>>(rest);
 
@@ -306,7 +306,7 @@ export class BaseRepository<T extends BaseEntity> {
   // --- Query helpers ------------------------------------------
 
   protected async listWithQueries<U = T>(
-    queries: string[], // Query[] at runtime – Appwrite SDK types Query as non-string but methods return strings
+    queries: string[], // Query[] at runtime Â– Appwrite SDK types Query as non-string but methods return strings
     mapper?: (doc: Record<string, unknown>) => U
   ): Promise<U[]> {
     try {

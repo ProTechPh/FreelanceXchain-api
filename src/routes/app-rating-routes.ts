@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
 import { validate, submitAppRatingSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId, sendServiceError } from '../utils/route-helpers.js';
@@ -96,7 +96,7 @@ router.get(
 router.get(
   '/admin',
   authMiddleware,
-  requireRole('admin'),
+  requirePermission('analytics:view'),
   apiRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const requestId = getRequestId(req);
@@ -122,7 +122,7 @@ router.get(
 router.get(
   '/admin/summary',
   authMiddleware,
-  requireRole('admin'),
+  requirePermission('analytics:view'),
   apiRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const requestId = getRequestId(req);

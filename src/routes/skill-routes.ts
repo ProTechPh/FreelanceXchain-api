@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requirePermission } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
   createCategory,
@@ -240,7 +240,7 @@ router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['cate
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/categories', authMiddleware, requirePermission('skills:manage'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { name, description } = req.body;
   const requestId = getRequestId(req);
 
@@ -308,7 +308,7 @@ router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter,
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requirePermission('skills:manage'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { categoryId, name, description } = req.body;
   const requestId = getRequestId(req);
 
@@ -383,7 +383,7 @@ router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHand
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id/deprecate', authMiddleware, requirePermission('skills:manage'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const requestId = getRequestId(req);
 
@@ -875,7 +875,7 @@ router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validate
  *       200:
  *         description: Skill suggestions retrieved successfully
  */
-router.get('/suggestions', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
+router.get('/suggestions', authMiddleware, requirePermission('skills:manage'), apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
   const suggestions = await getPendingSkillSuggestions();
   res.status(200).json(suggestions);
 }));
@@ -914,7 +914,7 @@ router.get('/suggestions', authMiddleware, requireRole('admin'), apiRateLimiter,
  *       404:
  *         description: Skill suggestion not found
  */
-router.put('/suggestions/:id/status', authMiddleware, requireRole('admin'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.put('/suggestions/:id/status', authMiddleware, requirePermission('skills:manage'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body;
   const requestId = getRequestId(req);
