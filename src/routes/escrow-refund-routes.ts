@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { idempotencyMiddleware } from '../middleware/idempotency-middleware.js';
 import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 import {
@@ -46,7 +47,7 @@ const router = Router();
  *       200:
  *         description: Refund request created successfully
  */
-router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, validateUUID(['contractId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, validateUUID(['contractId']), apiRateLimiter, idempotencyMiddleware(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -130,7 +131,7 @@ router.get('/:contractId/refunds', authMiddleware, validateUUID(['contractId']),
  *       200:
  *         description: Refund approved successfully
  */
-router.post('/refunds/:refundId/approve', authMiddleware, requireVerifiedKyc, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/approve', authMiddleware, requireVerifiedKyc, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, idempotencyMiddleware(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -179,7 +180,7 @@ router.post('/refunds/:refundId/approve', authMiddleware, requireVerifiedKyc, re
  *       200:
  *         description: Refund rejected successfully
  */
-router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, idempotencyMiddleware(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -223,7 +224,7 @@ router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, req
  *       200:
  *         description: Refund request withdrawn successfully
  */
-router.post('/refunds/:refundId/withdraw', authMiddleware, requireVerifiedKyc, validateUUID(['refundId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/withdraw', authMiddleware, requireVerifiedKyc, validateUUID(['refundId']), apiRateLimiter, idempotencyMiddleware(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
     const userId = req.user?.userId ?? '';

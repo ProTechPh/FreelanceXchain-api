@@ -6,6 +6,15 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
+import { projectCache, freelancerSearchCache } from '../utils/cache.js';
+
+const isTestEnv = (): boolean => process.env.NODE_ENV === 'test';
+
+export function clearFreelancerSearchCache(): void {
+  if (typeof freelancerSearchCache?.clear === 'function') {
+    freelancerSearchCache.clear();
+  }
+}
 
 /**
  * Wraps an async operation with timing logs to identify slow queries.
@@ -102,6 +111,17 @@ export async function searchProjects(
   pagination?: SearchPaginationInput
 ): Promise<ServiceResult<SearchResult<Project>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
+  const cacheKey = !isTestEnv()
+    ? `search:projects:${JSON.stringify(filters)}:${pageSize}:${pagination?.offset ?? 0}`
+    : null;
+
+  if (cacheKey && projectCache) {
+    const cached = projectCache.get(cacheKey) as SearchResult<Project> | undefined;
+    if (cached) {
+      return successResult(cached);
+    }
+  }
+
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
   let entityResult: PaginatedResult<ProjectEntity>;
@@ -189,7 +209,11 @@ export async function searchProjects(
   // Map entities to models
   const projects = entityResult.items.map(mapProjectFromEntity);
 
-  return successResult(buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset));
+  const result = buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset);
+  if (cacheKey && projectCache) {
+    projectCache.set(cacheKey, result);
+  }
+  return successResult(result);
 }
 
 
@@ -232,6 +256,17 @@ export async function searchFreelancers(
   pagination?: SearchPaginationInput
 ): Promise<ServiceResult<SearchResult<FreelancerProfile>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
+  const cacheKey = !isTestEnv()
+    ? `search:freelancers:${JSON.stringify(filters)}:${pageSize}:${pagination?.offset ?? 0}`
+    : null;
+
+  if (cacheKey && freelancerSearchCache) {
+    const cached = freelancerSearchCache.get(cacheKey) as SearchResult<FreelancerProfile> | undefined;
+    if (cached) {
+      return successResult(cached);
+    }
+  }
+
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
   const hasKeyword = filters.keyword && filters.keyword.trim().length > 0;
@@ -296,5 +331,9 @@ export async function searchFreelancers(
   // Map entities to models
   const profiles = entityResult.items.map(mapFreelancerProfileFromEntity);
 
-  return successResult(buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset));
+  const result = buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset);
+  if (cacheKey && freelancerSearchCache) {
+    freelancerSearchCache.set(cacheKey, result);
+  }
+  return successResult(result);
 }

@@ -5,6 +5,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+import { platformMetricsCache } from '../utils/cache.js';
 
 export type ReputationScore = {
   userId: string;
@@ -289,6 +290,13 @@ export async function getReputationHistory(
 export async function getReputationLeaderboard(
   limit: number = 10
 ): Promise<ServiceResult<Array<{ userId: string; userName: string; averageRating: number; totalRatings: number }>>> {
+  const isTest = process.env.NODE_ENV === 'test';
+  const cacheKey = `leaderboard:${limit}`;
+  if (!isTest) {
+    const cached = platformMetricsCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
+
   try {
     // (Appwrite doesn't support GROUP BY queries)
     const allReviews = await reviewRepository.listAll();
@@ -322,6 +330,10 @@ export async function getReputationLeaderboard(
         return { ...entry, userName: user?.name || 'Unknown' };
       })
     );
+
+    if (!isTest) {
+      platformMetricsCache.set(cacheKey, leaderboard, 60_000);
+    }
 
     return successResult(leaderboard);
   } catch (error) {

@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import { generateId } from '../utils/id.js';
 import { users, Query, ID } from '../config/appwrite.js';
 import { ADMIN_PERMISSIONS, type AdminPermission } from '../models/user.js';
+import { platformMetricsCache } from '../utils/cache.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -105,6 +106,12 @@ async function recordAdminAudit(input: {
  * Get platform-wide statistics
  */
 export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> {
+  const isTest = process.env.NODE_ENV === 'test';
+  if (!isTest) {
+    const cached = platformMetricsCache.get('platform_stats');
+    if (cached) return successResult(cached);
+  }
+
   try {
     const [allUsers, allProjects, allContracts, allDisputes, allTransactions] = await Promise.all([
       userRepository.queryAll(),
@@ -137,7 +144,7 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
       completedTransactions.reduce((sum, t) => sum + (t.amount || 0), 0) * 100
     ) / 100;
 
-    return successResult({
+    const statsData: PlatformStats = {
       totalUsers,
       totalFreelancers,
       totalEmployers,
@@ -148,7 +155,13 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
       activeProjects,
       completedProjects,
       averageProjectBudget,
-    });
+    };
+
+    if (!isTest) {
+      platformMetricsCache.set('platform_stats', statsData, 60_000);
+    }
+
+    return successResult(statsData);
       } catch (error) {
       logger.error('Unexpected error in getPlatformStats', { error });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');

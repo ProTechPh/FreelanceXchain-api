@@ -378,6 +378,13 @@ function createCache<T>(prefix: string, maxSize: number, ttlMs: number): RedisCa
 // Skill cache: 200 entries, 5-minute TTL
 export const skillCache = createCache<any>('skill', 200, 5 * 60_000);
 
+// Project caches: open project listings & project details (30s TTL) and category stats (60s TTL)
+export const projectCache = createCache<any>('projects', 200, 30_000);
+export const projectCategoryStatsCache = createCache<any>('project-stats', 10, 60_000);
+
+// Freelancer search cache: 100 entries, 30s TTL
+export const freelancerSearchCache = createCache<any>('freelancer-search', 100, 30_000);
+
 // Analytics caches: 5-minute TTL for expensive queries
 export const platformMetricsCache = createCache<any>('platform-metrics', 10, 5 * 60_000);
 export const skillTrendsCache = createCache<any[]>('skill-trends', 10, 5 * 60_000);
@@ -399,8 +406,19 @@ export const cohortRetentionCache = createCache<any>('cohort-retention', 10, 60_
 export const churnRiskCache = createCache<any>('churn-risk', 10, 60_000);
 export const marketplaceVelocityCache = createCache<any>('marketplace-velocity', 10, 60_000);
 
+// Idempotency cache: 1000 entries, 15-minute TTL
+export const idempotencyCache = createCache<{
+  status: 'in_progress' | 'completed';
+  statusCode?: number;
+  body?: any;
+}>('idempotency', 1000, 15 * 60_000);
+
 const allCaches: (LRUCache<any> | RedisCache<any>)[] = [
   skillCache,
+  projectCache,
+  projectCategoryStatsCache,
+  freelancerSearchCache,
+  idempotencyCache,
   platformMetricsCache,
   skillTrendsCache,
   paymentSummaryCache,

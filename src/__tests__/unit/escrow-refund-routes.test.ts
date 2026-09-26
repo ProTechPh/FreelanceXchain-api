@@ -10,12 +10,14 @@ const mockCreateRefundRequest = jest.fn<any>();
 const mockApproveRefund = jest.fn<any>();
 const mockRejectRefund = jest.fn<any>();
 const mockGetContractRefunds = jest.fn<any>();
+const mockWithdrawRefundRequest = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/escrow-refund-service.ts'), () => ({
   createRefundRequest: mockCreateRefundRequest,
   approveRefund: mockApproveRefund,
   rejectRefund: mockRejectRefund,
   getContractRefunds: mockGetContractRefunds,
+  withdrawRefundRequest: mockWithdrawRefundRequest,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -253,6 +255,7 @@ describe('escrow-refund-routes.ts - Branch Coverage', () => {
       getContractRefunds: mockGetContractRefunds,
       approveRefund: mockApproveRefund,
       rejectRefund: mockRejectRefund,
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;
@@ -322,6 +325,7 @@ describe('escrow-refund-routes - catch blocks for refund-request and refunds', (
       getContractRefunds: mockGetContractRefunds,
       approveRefund: jest.fn(),
       rejectRefund: jest.fn(),
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;
@@ -368,6 +372,7 @@ describe('escrow-refund-routes - instanceof Error false branch', () => {
       approveRefund: localApproveRefund,
       rejectRefund: localRejectRefund,
       getContractRefunds: jest.fn(),
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;
@@ -433,6 +438,7 @@ describe('escrow-refund-routes - ?? nullish fallback branches', () => {
       approveRefund: localApproveRefund,
       rejectRefund: localRejectRefund,
       getContractRefunds: localGetRefunds,
+      withdrawRefundRequest: jest.fn(),
     }));
 
     const express = (await import('express')).default;

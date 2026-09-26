@@ -9,8 +9,20 @@ import { FileAttachment, validateAttachments } from '../utils/file-validator.js'
 import { logger } from '../config/logger.js';
 import { getFreelancerRecommendations, invalidateProjectMatchingCache } from './matching-service.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
+import { projectCache, projectCategoryStatsCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+
+const isTestEnv = (): boolean => process.env.NODE_ENV === 'test';
+
+export function clearProjectCache(): void {
+  if (typeof projectCache?.clear === 'function') {
+    projectCache.clear();
+  }
+  if (typeof projectCategoryStatsCache?.clear === 'function') {
+    projectCategoryStatsCache.clear();
+  }
+}
 
 type CreateProjectInput = {
   title: string;
@@ -199,6 +211,7 @@ export async function createProject(
     });
   }
 
+  clearProjectCache();
   return successResult(created);
 }
 
@@ -242,6 +255,14 @@ async function notifyMatchedFreelancers(project: ProjectEntity): Promise<void> {
 }
 
 export async function getProjectById(projectId: string): Promise<ServiceResult<ProjectWithProposalCount>> {
+  const cacheKey = `project_${projectId}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) {
+      return successResult(cached);
+    }
+  }
+
   const project = await projectRepository.findProjectById(projectId);
   if (!project) {
     return errorResult('NOT_FOUND', 'Project not found');
@@ -262,7 +283,11 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
     industry: employerProfile?.industry || '',
   } : undefined;
 
-  return successResult({ ...project, proposalCount, ...(employer ? { employer } : {}) });
+  const data: ProjectWithProposalCount = { ...project, proposalCount, ...(employer ? { employer } : {}) };
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export async function updateProject(
@@ -350,6 +375,7 @@ export async function updateProject(
     return errorResult('UPDATE_FAILED', 'Failed to update project');
   }
 
+  clearProjectCache();
   void invalidateProjectMatchingCache(projectId);
   return successResult(updated);
 }
@@ -390,6 +416,7 @@ export async function addMilestones(
     return errorResult('UPDATE_FAILED', 'Failed to add milestones');
   }
 
+  clearProjectCache();
   return successResult(updated);
 }
 
@@ -427,6 +454,7 @@ export async function setMilestones(
     return errorResult('UPDATE_FAILED', 'Failed to set milestones');
   }
 
+  clearProjectCache();
   return successResult(updated);
 }
 
@@ -434,6 +462,12 @@ export async function listProjectsByEmployer(
   employerId: string,
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const cacheKey = `employer_${employerId}_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
+
   const result = await projectRepository.getProjectsByEmployer(employerId, options);
   
   const projectIds = result.items.map(p => p.id);
@@ -446,34 +480,70 @@ export async function listProjectsByEmployer(
     proposalCount: proposalCounts.get(project.id) ?? 0,
   }));
 
-  return successResult({
+  const data = {
     items: projectsWithCounts,
     hasMore: result.hasMore,
     total: result.total,
-  });
+  };
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+
+  return successResult(data);
 }
 
 export async function listOpenProjects(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const cacheKey = `open_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) {
+      return successResult(cached);
+    }
+  }
   const result = await projectRepository.getAllOpenProjects(options);
-  return successResult(await addProposalCounts(result));
+  const data = await addProposalCounts(result);
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export async function searchProjects(
   keyword: string,
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const cleanKeyword = keyword.toLowerCase().trim();
+  const cacheKey = `search_${cleanKeyword}_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
   const result = await projectRepository.searchProjects(keyword, options);
-  return successResult(await addProposalCounts(result));
+  const data = await addProposalCounts(result);
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export async function listProjectsBySkills(
   skillIds: string[],
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const sortedIds = [...skillIds].sort().join(',');
+  const cacheKey = `skills_${sortedIds}_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
   const result = await projectRepository.getProjectsBySkills(skillIds, options);
-  return successResult(await addProposalCounts(result));
+  const data = await addProposalCounts(result);
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export async function listProjectsByBudgetRange(
@@ -481,24 +551,52 @@ export async function listProjectsByBudgetRange(
   maxBudget: number,
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const cacheKey = `budget_${minBudget}_${maxBudget}_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
   const result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, options);
-  return successResult(await addProposalCounts(result));
+  const data = await addProposalCounts(result);
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export async function listProjectsByCategory(
   categoryId: string,
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const cacheKey = `cat_${categoryId}_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
   const result = await projectRepository.getProjectsByCategory(categoryId, options);
-  return successResult(await addProposalCounts(result));
+  const data = await addProposalCounts(result);
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export async function listProjectsByMultipleCategories(
   categoryIds: string[],
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+  const sortedIds = [...categoryIds].sort().join(',');
+  const cacheKey = `cats_${sortedIds}_${options?.limit ?? 20}_${options?.offset ?? 0}`;
+  if (!isTestEnv()) {
+    const cached = projectCache.get(cacheKey);
+    if (cached) return successResult(cached);
+  }
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
-  return successResult(await addProposalCounts(result));
+  const data = await addProposalCounts(result);
+  if (!isTestEnv()) {
+    projectCache.set(cacheKey, data, 30_000);
+  }
+  return successResult(data);
 }
 
 export type CategoryStat = {
@@ -518,6 +616,13 @@ export async function getProjectCategoryStats(
 ): Promise<ServiceResult<{ categories: CategoryStat[] }>> {
   try {
     const clampedLimit = Math.max(1, Math.min(limit, 10000));
+    const cacheKey = `stats_${clampedLimit}`;
+    if (!isTestEnv()) {
+      const cached = projectCategoryStatsCache.get(cacheKey);
+      if (cached) {
+        return successResult(cached);
+      }
+    }
     const result = await listOpenProjects({ limit: clampedLimit, offset: 0 });
 
     if (!result.success) {
@@ -544,7 +649,11 @@ export async function getProjectCategoryStats(
       }
     }
 
-    return successResult({ categories: Array.from(categoryStats.values()) });
+    const data = { categories: Array.from(categoryStats.values()) };
+    if (!isTestEnv()) {
+      projectCategoryStatsCache.set(cacheKey, data, 60_000);
+    }
+    return successResult(data);
   } catch (error) {
     logger.error('Failed to get project category statistics', { error });
     return errorResult('INTERNAL_ERROR', 'Failed to retrieve project statistics');
@@ -567,6 +676,7 @@ export async function deleteProject(
 
   const deleted = await projectRepository.deleteProject(projectId);
   if (deleted) {
+    clearProjectCache();
     void invalidateProjectMatchingCache(projectId);
   }
   return successResult(deleted);

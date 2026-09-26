@@ -5,6 +5,7 @@ import { normalizeSkillName } from '../utils/skill-utils.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+import { freelancerSearchCache } from '../utils/cache.js';
 
 type CreateFreelancerProfileInput = {
   bio: string;
@@ -67,6 +68,9 @@ function validateDateRange(startDate: string, endDate: string | null | undefined
 }
 
 async function invalidateMatchingCache(userId: string): Promise<void> {
+  if (typeof freelancerSearchCache?.clear === 'function') {
+    freelancerSearchCache.clear();
+  }
   try {
     const { invalidateFreelancerMatchingCache } = await import('./matching-service.js');
     await invalidateFreelancerMatchingCache(userId);
