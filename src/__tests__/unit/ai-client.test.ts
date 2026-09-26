@@ -550,6 +550,35 @@ describe('AI Client - Extended Tests', () => {
     return await import('../../services/ai-client.js');
   };
 
+  describe('generateAIProposal - submittable terms', () => {
+    const request = {
+      freelancerName: 'Ada', freelancerSkills: ['React'], reputationScore: 0, completedProjectsCount: 0,
+      portfolioItems: [], projectTitle: 'Dashboard', projectDescription: 'Build it', projectSkills: ['React'], projectBudget: 2400,
+    };
+    const respondWith = (terms: Record<string, unknown>) => mockFetchExtended.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: JSON.stringify({ coverLetter: 'Hello', highlights: [], proposedMilestones: [], ...terms }), role: 'assistant' }, finish_reason: 'stop' }],
+      }),
+    } as any);
+
+    it('rounds a fractional duration and rate to values the proposal endpoint accepts', async () => {
+      const { generateAIProposal } = await importModule();
+      respondWith({ proposedRate: 2399.999, estimatedDuration: 10.5 });
+      const result = await generateAIProposal(request) as any;
+      expect(result.estimatedDuration).toBe(11);
+      expect(result.proposedRate).toBe(2400);
+    });
+
+    it('clamps out-of-range terms into the accepted bounds', async () => {
+      const { generateAIProposal } = await importModule();
+      respondWith({ proposedRate: 0.4, estimatedDuration: 9000 });
+      const result = await generateAIProposal(request) as any;
+      expect(result.proposedRate).toBe(1);
+      expect(result.estimatedDuration).toBe(3650);
+    });
+  });
+
   describe('generateContent', () => {
     it('should return generated text on success', async () => {
       const { generateContent } = await importModule();

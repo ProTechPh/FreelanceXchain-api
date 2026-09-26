@@ -9,7 +9,9 @@ import {
   MAX_FILE_SIZE,
   MAX_TOTAL_SIZE,
   MAX_FILE_COUNT,
+  isFileProxyPath,
 } from '../../utils/file-validator.js';
+import { getSecureFileUrl } from '../../utils/storage-uploader.js';
 
 const validStorageUrl = 'https://abc.appwrite.co/storage/v1/object/public/uploads/file.pdf';
 
@@ -176,6 +178,27 @@ describe('file-validator', () => {
       const bad2 = makeAttachment({ mimeType: 'bad/type', filename: 'file.xyz' });
       const errors = validateAttachments([bad1, bad2]);
       expect(errors.length).toBeGreaterThan(1);
+    });
+  });
+
+  describe('API file proxy URLs', () => {
+    it('accepts the relative URL the uploader stores for a new file', () => {
+      const url = getSecureFileUrl('proposal-attachments' as never, '65f1a2b3c4d5e6f7a8b9');
+      expect(validateAttachments([makeAttachment({ url })])).toHaveLength(0);
+    });
+
+    it.each([
+      '/api/files/access/proposal-attachments/../secret',
+      '/api/files/access/../admin/file-1',
+      '/api/files/access/proposal-attachments/file-1/extra',
+      '/api/files/access/proposal-attachments/',
+      '/api/users/me',
+      '//evil.example.com/api/files/access/b/f',
+      '/api/files/access/bucket/file?x=1',
+    ])('rejects %s', (url) => {
+      expect(isFileProxyPath(url)).toBe(false);
+      const errors = validateAttachments([makeAttachment({ url })]);
+      expect(errors.some((error) => error.field === 'attachments[0].url')).toBe(true);
     });
   });
 

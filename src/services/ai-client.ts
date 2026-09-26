@@ -744,6 +744,25 @@ export function keywordExtractSkills(
 /**
  * Fallback AI Proposal Generator using portfolio, skills, and reputation
  */
+
+// A drafted proposal is only useful if it can be submitted as-is, so its terms
+// are held to the same bounds as submitProposalSchema: rate 1-1,000,000 (cents
+// precision) and a whole number of days, 1-3650. Models happily return 10.5 days.
+const MIN_RATE = 1;
+const MAX_RATE = 1_000_000;
+const MIN_DURATION_DAYS = 1;
+const MAX_DURATION_DAYS = 3650;
+
+function toSubmittableRate(value: unknown, fallback: number): number {
+  const rate = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  return Math.min(MAX_RATE, Math.max(MIN_RATE, Math.round(rate * 100) / 100));
+}
+
+function toSubmittableDuration(value: unknown, fallback: number): number {
+  const days = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  return Math.min(MAX_DURATION_DAYS, Math.max(MIN_DURATION_DAYS, Math.round(days)));
+}
+
 export function fallbackGenerateProposal(
   request: AIProposalGenerationRequest
 ): AIProposalResult {
@@ -826,8 +845,8 @@ Best regards,
 
   return {
     coverLetter,
-    proposedRate: request.projectBudget || 1000,
-    estimatedDuration: proposedMilestones.reduce((acc, m) => acc + m.durationDays, 0) || 14,
+    proposedRate: toSubmittableRate(request.projectBudget, 1000),
+    estimatedDuration: toSubmittableDuration(proposedMilestones.reduce((acc, m) => acc + m.durationDays, 0), 14),
     proposedMilestones,
     highlights,
   };
@@ -885,8 +904,8 @@ export async function generateAIProposal(
 
   return {
     coverLetter: result.coverLetter,
-    proposedRate: typeof result.proposedRate === 'number' && result.proposedRate > 0 ? result.proposedRate : (request.projectBudget || 1000),
-    estimatedDuration: typeof result.estimatedDuration === 'number' && result.estimatedDuration > 0 ? result.estimatedDuration : 14,
+    proposedRate: toSubmittableRate(result.proposedRate, request.projectBudget || 1000),
+    estimatedDuration: toSubmittableDuration(result.estimatedDuration, 14),
     proposedMilestones: Array.isArray(result.proposedMilestones) && result.proposedMilestones.length > 0
       ? result.proposedMilestones
       : (request.projectMilestones || []).map((m) => ({
