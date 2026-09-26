@@ -337,7 +337,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 }));
 
 // Get contract funding info (for frontend MetaMask deployment)
-router.get('/:id/fund-info', authMiddleware, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -589,10 +589,15 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
   await withLock('escrow-withdraw:' + contractId, async () => {
     try {
       const { withdrawFromEscrow } = await import('../services/escrow-blockchain.js');
-      const result = await withdrawFromEscrow(contract.escrowAddress);
+      const { userRepository } = await import('../repositories/user-repository.js');
+      const employer = contract.employerId ? await userRepository.getUserById(contract.employerId) : null;
+      const employerWallet = employer?.wallet_address ?? undefined;
+
+      const result = await withdrawFromEscrow(contract.escrowAddress, employerWallet);
       sendSuccessResponse(res, 200, {
         message: 'Escrow withdrawal processed',
         transactionHash: result.transactionHash,
+        forwardTxHash: result.forwardTxHash,
       }, requestId);
     } catch (error) {
       logger.error('Error withdrawing from escrow', error);

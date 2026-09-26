@@ -132,7 +132,6 @@ export async function updateContractStatus(
     active: [
       { status: 'completed', allowedRoles: ['employer'] },
       { status: 'disputed', allowedRoles: ['employer', 'freelancer'] },
-      { status: 'cancelled', allowedRoles: ['employer'] },
     ],
     disputed: [
       { status: 'resolved', allowedRoles: ['admin'] },

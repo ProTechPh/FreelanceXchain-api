@@ -16,6 +16,7 @@ import { sendErrorResponse, sendValidationError } from '../utils/response-helper
 import { uploadMultipleFiles, cleanupUploadedFiles, type FileMetadata } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
+import { logger } from '../config/logger.js';
 import {
   createProject,
   getProjectById,
@@ -656,7 +657,9 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
       }
 
       /* istanbul ignore next */
-      sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'Failed to upload attachments', { requestId, details: uploadError instanceof Error ? uploadError.message : 'Failed to upload attachments' });
+      logger.error('Failed to upload project attachments', uploadError);
+      /* istanbul ignore next */
+      sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'Failed to upload attachments', { requestId });
       /* istanbul ignore next */
       return;
     }

@@ -1,4 +1,4 @@
-﻿import { logger } from '../config/logger.js';
+import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import type {
@@ -84,7 +84,7 @@ async function withMilestoneLocks<T>(milestoneIds: string[], fn: () => Promise<T
 }
 
 export async function createRefundRequest(input: CreateRefundRequestInput): Promise<ServiceResult<RefundRequest>> {
-  return withLock(`refund-create:`, async () => {
+  return withLock(`refund-create:${input.contractId}`, async () => {
     try {
       const validated = await validateRefundRequestCreation(input);
       if ('error' in validated) return validated.error;
@@ -377,7 +377,7 @@ async function persistRefundAuditEntry(
 }
 
 export async function approveRefund(input: ApproveRefundInput): Promise<ServiceResult<RefundRequest>> {
-  return withLock(`refund-approve:`, async () => {
+  return withLock(`refund-approve:${input.refundId}`, async () => {
     try {
       const validated = await validateRefundApproval(input);
       if ('error' in validated) return validated.error;
@@ -454,7 +454,7 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
 }
 
 export async function rejectRefund(input: RejectRefundInput): Promise<ServiceResult<RefundRequest>> {
-  return withLock(`refund-approve:`, async () => {
+  return withLock(`refund-reject:${input.refundId}`, async () => {
     try {
       const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
@@ -553,4 +553,36 @@ export async function getContractRefunds(contractId: string, userId: string): Pr
     logger.error('Failed to get contract refunds:', error);
     return errorResult('DATABASE_ERROR', error instanceof Error ? error.message : 'Failed to get refunds');
   }
+}
+
+export async function withdrawRefundRequest(
+  refundId: string,
+  userId: string
+): Promise<ServiceResult<{ message: string }>> {
+  return withLock(`refund-withdraw:${refundId}`, async () => {
+    try {
+      const refund = await refundRequestRepository.findWithContract(refundId);
+      if (!refund) {
+        return errorResult('REFUND_NOT_FOUND', 'Refund request not found');
+      }
+
+      if (refund.requested_by !== userId) {
+        return errorResult('UNAUTHORIZED', 'Only the user who requested the refund can withdraw it');
+      }
+
+      if (refund.status !== 'pending') {
+        return errorResult('INVALID_STATUS', 'Only pending refund requests can be withdrawn');
+      }
+
+      await refundRequestRepository.update(refundId, {
+        status: 'cancelled',
+        updated_at: new Date().toISOString(),
+      });
+
+      return successResult({ message: 'Refund request withdrawn successfully' });
+    } catch (error) {
+      logger.error('Failed to withdraw refund request:', error);
+      return errorResult('WITHDRAW_FAILED', error instanceof Error ? error.message : 'Failed to withdraw refund request');
+    }
+  });
 }

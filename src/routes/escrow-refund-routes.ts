@@ -9,6 +9,7 @@ import {
   approveRefund,
   rejectRefund,
   getContractRefunds,
+  withdrawRefundRequest,
 } from '../services/escrow-refund-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -202,6 +203,42 @@ router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, req
   } catch (error) {
     logger.error('Error rejecting refund:', { error: error instanceof Error ? error.message : String(error) });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject refund', { requestId: getRequestId(req) });
+  }
+}));
+
+/**
+ * @swagger
+ * /api/escrow/refunds/{refundId}/withdraw:
+ *   post:
+ *     summary: Withdraw a pending refund request
+ *     tags:
+ *       - Escrow Refunds
+ *     parameters:
+ *       - in: path
+ *         name: refundId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Refund request withdrawn successfully
+ */
+router.post('/refunds/:refundId/withdraw', authMiddleware, requireVerifiedKyc, validateUUID(['refundId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const refundId = req.params['refundId'] ?? '';
+    const userId = req.user?.userId ?? '';
+
+    const result = await withdrawRefundRequest(refundId, userId);
+
+    if (!result.success) {
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 : result.error.code === 'UNAUTHORIZED' ? 403 : 400;
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req) });
+    }
+
+    return res.json(result.data);
+  } catch (error) {
+    logger.error('Error withdrawing refund request:', { error: error instanceof Error ? error.message : String(error) });
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to withdraw refund request', { requestId: getRequestId(req) });
   }
 }));
 

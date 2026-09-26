@@ -166,23 +166,9 @@ async function transferRushFee(params: {
 
     transactionHash = clientTxHash;
   } else if (getBlockchainMode() === 'real' && isWeb3Available()) {
-    if (!freelancer?.wallet_address) {
-      return { error: errorResult('MISSING_WALLET', 'Freelancer wallet address is required to pay the rush fee') };
-    }
-    try {
-      const tx = await sendTransaction(freelancer.wallet_address, parseUnits(amount.toString(), 18));
-      transactionHash = tx.hash;
-      logger.info('Rush fee transferred on-chain', {
-        contractId,
-        requestId,
-        amount,
-        to: freelancer.wallet_address,
-        transactionHash,
-      });
-    } catch (error) {
-      logger.error('Failed to transfer rush fee on-chain', { error, contractId, requestId });
-      return { error: errorResult('RUSH_FEE_TRANSFER_FAILED', 'Failed to transfer the rush fee on-chain') };
-    }
+    // In real blockchain mode, the employer must submit an on-chain transaction hash proving direct payment.
+    // The server wallet must never pay out of platform reserves for an employer's rush upgrade.
+    return { error: errorResult('TRANSACTION_HASH_REQUIRED', 'A confirmed blockchain transaction hash is required to pay the rush fee in real blockchain mode') };
   } else {
     // Simulated mode: no real chain — the payment record below is the ledger.
     transactionHash = `sim-rush-fee-${requestId}-${Date.now()}`;
@@ -825,4 +811,38 @@ export async function getRushUpgradeRequestById(
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
   return successResult(mapRushUpgradeRequestFromEntity(entity));
+}
+
+export async function withdrawRushUpgradeRequest(
+  employerId: string,
+  requestId: string
+): Promise<ServiceResult<{ message: string }>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+    const request = await rushUpgradeRequestRepository.getRequestById(requestId);
+    if (!request) {
+      return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+    }
+
+    if (request.requested_by !== employerId) {
+      return errorResult('UNAUTHORIZED', 'Only the employer who requested the rush upgrade can withdraw it');
+    }
+
+    if (request.status !== 'pending' && request.status !== 'counter_offered') {
+      return errorResult('INVALID_STATUS', 'Only pending or counter-offered rush requests can be withdrawn');
+    }
+
+    const now = new Date().toISOString();
+    await rushUpgradeRequestRepository.update(requestId, {
+      status: 'declined',
+      responded_by: employerId,
+      responded_at: now,
+    });
+
+    return successResult({ message: 'Rush upgrade request withdrawn successfully' });
+  });
 }

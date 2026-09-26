@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { listUserFiles, getFileQuota, deleteFile } from '../utils/storage-uploader.js';
 import { BUCKETS, BucketId } from '../config/appwrite.js';
 import { config } from '../config/env.js';
@@ -7,6 +8,7 @@ import { sendErrorResponse, sendSuccessResponse, getRequestId } from '../utils/r
 import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
+router.use(apiRateLimiter);
 
 const ALLOWED_MANAGED_BUCKETS: BucketId[] = [
   BUCKETS.PORTFOLIO_IMAGES,
@@ -107,6 +109,11 @@ router.delete('/:bucket/:path', authMiddleware, asyncHandler(async (req: Request
   const { bucket, path: fileId } = req.params;
   if (!bucket || !fileId) {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Bucket and file path are required', { requestId });
+    return;
+  }
+
+  if (!ALLOWED_MANAGED_BUCKETS.includes(bucket as BucketId)) {
+    sendErrorResponse(res, 400, 'INVALID_BUCKET', 'Specified bucket is not allowed for file management', { requestId });
     return;
   }
 

@@ -717,7 +717,7 @@ export const submitReviewSchema: RequestSchema = {
     properties: {
       contractId: { type: 'string', required: true },
       rating: { type: 'number', minimum: 1, maximum: 5, required: true },
-      comment: { type: 'string', minLength: 1, required: true },
+      comment: { type: 'string', minLength: 1, maxLength: 2000, required: true },
       workQuality: { type: 'number', minimum: 1, maximum: 5 },
       communication: { type: 'number', minimum: 1, maximum: 5 },
       professionalism: { type: 'number', minimum: 1, maximum: 5 },

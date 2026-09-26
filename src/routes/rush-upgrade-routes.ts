@@ -13,6 +13,7 @@ import {
   declineCounterOffer,
   payRushUpgradeFee,
   getRushUpgradeRequestsForContract,
+  withdrawRushUpgradeRequest,
 } from '../services/rush-upgrade-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -383,6 +384,52 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
     /* istanbul ignore next */
     logger.error('Error declining counter-offer', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to decline counter-offer', { requestId: getRequestId(req) });
+  }
+}));
+
+/**
+ * @swagger
+ * /api/rush-upgrade-requests/{id}/withdraw:
+ *   post:
+ *     summary: Withdraw a pending rush upgrade request
+ *     description: Employer withdraws their pending rush upgrade request
+ *     tags:
+ *       - Rush Upgrade
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Request ID
+ *     responses:
+ *       200:
+ *         description: Rush upgrade request withdrawn
+ */
+router.post('/rush-upgrade-requests/:id/withdraw', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const requestIdParam = req.params['id'] ?? '';
+    const userId = req.user?.userId;
+    const xRequestId = getRequestId(req);
+
+    if (!userId) {
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
+    }
+
+    const result = await withdrawRushUpgradeRequest(userId, requestIdParam);
+
+    if (!result.success) {
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 : result.error.code === 'UNAUTHORIZED' ? 403 : 400;
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: xRequestId });
+    }
+
+    return res.status(200).json(result.data);
+  } catch (error) {
+    logger.error('Error withdrawing rush upgrade request', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to withdraw rush upgrade request', { requestId: getRequestId(req) });
   }
 }));
 

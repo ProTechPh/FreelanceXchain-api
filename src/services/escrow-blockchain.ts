@@ -368,18 +368,51 @@ export async function getPendingWithdrawals(escrowAddress: string, party: string
  * claimed by the freelancer's own wallet (msg.sender) via the escrow's withdraw().
  */
 export async function withdrawFromEscrow(
-  escrowAddress: string
-): Promise<{ transactionHash: string; receipt: TransactionReceipt }> {
+  escrowAddress: string,
+  recipientAddress?: string
+): Promise<{ transactionHash: string; forwardTxHash?: string | undefined; receipt: TransactionReceipt }> {
   if (!isWeb3Available()) {
     throw new Error('Web3 is not configured');
   }
 
+  const contract = getEscrowContractWithSigner(escrowAddress);
+  const serverWalletAddress = await getWallet().getAddress();
+  let pendingAmount = BigInt(0);
+  try {
+    pendingAmount = await contract.pendingWithdrawals(serverWalletAddress);
+  } catch (err) {
+    logger.warn('Could not query pendingWithdrawals on escrow contract', { escrowAddress, error: err });
+  }
+
   const receipt = await waitForReceipt(
-    await getEscrowContractWithSigner(escrowAddress).withdraw()
+    await contract.withdraw()
   );
+
+  let forwardTxHash: string | undefined;
+  if (recipientAddress && pendingAmount > BigInt(0)) {
+    try {
+      const { sendTransaction } = await import('./web3-client.js');
+      const forwardResult = await sendTransaction(recipientAddress, pendingAmount);
+      forwardTxHash = forwardResult.hash;
+      logger.info('Forwarded withdrawn escrow refund to employer wallet', {
+        escrowAddress,
+        recipientAddress,
+        amount: pendingAmount.toString(),
+        forwardTxHash,
+      });
+    } catch (forwardErr) {
+      logger.error('Failed to forward withdrawn escrow refund to recipient address', {
+        escrowAddress,
+        recipientAddress,
+        amount: pendingAmount.toString(),
+        error: forwardErr,
+      });
+    }
+  }
 
   return {
     transactionHash: receipt.hash,
+    forwardTxHash,
     receipt,
   };
 }

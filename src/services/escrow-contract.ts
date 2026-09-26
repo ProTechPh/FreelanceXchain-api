@@ -190,7 +190,7 @@ async function saveEscrow(escrow: EscrowState): Promise<void> {
           DATABASE_ID,
           MILESTONE_COLLECTION,
           milestoneDocId,
-          { status: m.status }
+          { status: m.status, amount: m.amount.toString() }
         );
       }
     } else {

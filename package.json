@@ -31,7 +31,11 @@
     "deploy:contracts:prod": "node scripts/deployment/deploy-all.cjs --network polygon",
     "setup:appwrite-db": "tsx scripts/setup-appwrite-db.ts",
     "db:restore": "tsx scripts/setup-appwrite-db.ts",
-    "db:restore:seed": "tsx scripts/setup-appwrite-db.ts --seed"
+    "db:restore:seed": "tsx scripts/setup-appwrite-db.ts --seed",
+    "db:reset": "tsx scripts/setup-appwrite-db.ts --reset",
+    "db:reset:seed": "tsx scripts/setup-appwrite-db.ts --reset --seed",
+    "db:reset:full": "tsx scripts/setup-appwrite-db.ts --reset --seed --wipe-auth",
+    "db:wipe": "tsx scripts/setup-appwrite-db.ts --reset --wipe-only"
   },
   "keywords": [
     "freelance",

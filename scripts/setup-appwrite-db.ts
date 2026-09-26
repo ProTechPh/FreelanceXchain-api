@@ -12,7 +12,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { Client, Databases, Storage, ID, Permission, Role, Query, DatabasesIndexType, OrderBy } from 'node-appwrite';
+import { Client, Databases, Storage, ID, Permission, Role, Query, DatabasesIndexType, OrderBy, Users } from 'node-appwrite';
 
 const ENDPOINT = process.env['APPWRITE_ENDPOINT']!;
 const PROJECT_ID = process.env['APPWRITE_PROJECT_ID']!;
@@ -1123,6 +1123,34 @@ const skills = [
   { seedId: "skill-10", category_id: "cat-4", name: "UI/UX Design", description: "User interface design", is_active: true },
 ];
 
+const adminUsers = [
+  {
+    seedId: "admin-1",
+    email: "admin@freelancexchain.com",
+    password_hash: "",
+    name: "System Administrator",
+    role: "admin",
+    wallet_address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+    permissions: JSON.stringify([
+      'kyc:view',
+      'kyc:manage',
+      'users:view',
+      'users:manage',
+      'disputes:view',
+      'disputes:manage',
+      'support:manage',
+      'skills:manage',
+      'analytics:view',
+      'system:view',
+      'audit:view',
+      'admin:manage',
+    ]),
+  },
+];
+
 const employerUsers = [
   {
     seedId: "employer-1",
@@ -1645,10 +1673,134 @@ async function seedCollection(collectionId: string, documents: Record<string, un
   console.log(`      ✓ Created: ${created}, Skipped: ${skipped}`);
 }
 
+const DEMO_PASSWORD = process.env['DEMO_USER_PASSWORD'] || 'FreelanceXchain2026!';
+
+/**
+ * Ensures Appwrite Auth accounts exist with verified email and known demo password
+ * so that users can immediately log in through the Next.js login page during demos.
+ */
+async function seedAuthUsers(usersList: Array<{ seedId: string; email: string; name: string }>): Promise<void> {
+  const usersService = new Users(client);
+  console.log(`    🔐 Ensuring Appwrite Auth accounts for ${usersList.length} demo users (Password: ${DEMO_PASSWORD})...`);
+  for (const u of usersList) {
+    try {
+      await usersService.create(u.seedId, u.email, undefined, DEMO_PASSWORD, u.name);
+      await usersService.updateEmailVerification(u.seedId, true);
+    } catch (e: any) {
+      if (e?.code === 409) {
+        // User already exists; update password and email verification
+        try {
+          await usersService.updatePassword(u.seedId, DEMO_PASSWORD);
+          await usersService.updateEmailVerification(u.seedId, true);
+        } catch {
+          // non-critical if update skipped
+        }
+      } else {
+        console.warn(`      ⚠️ Could not create auth user for ${u.email}:`, e?.message || e);
+      }
+    }
+  }
+  console.log(`      ✓ Demo Auth accounts ready.`);
+}
+
+/**
+ * Wipes all documents inside a collection.
+ * Using pagination to reliably delete in batches of 100.
+ */
+async function wipeCollectionDocuments(collectionId: string, name: string): Promise<void> {
+  let totalDeleted = 0;
+  while (true) {
+    try {
+      const response = await db.listDocuments(DATABASE_ID, collectionId, [Query.limit(100)]);
+      if (response.documents.length === 0) break;
+      for (const doc of response.documents) {
+        try {
+          await db.deleteDocument(DATABASE_ID, collectionId, doc.$id);
+          totalDeleted++;
+        } catch (delErr: any) {
+          // ignore individual delete failure
+        }
+      }
+    } catch (listErr: any) {
+      if (listErr?.code === 404) break;
+      console.warn(`    ⚠️ Could not list documents in "${collectionId}":`, listErr?.message || listErr);
+      break;
+    }
+  }
+  if (totalDeleted > 0) {
+    console.log(`    ✓ Wiped ${totalDeleted} documents from "${name}" (${collectionId})`);
+  }
+}
+
+/**
+ * Wipes all files from managed storage buckets.
+ */
+async function wipeStorageBuckets(): Promise<void> {
+  const storage = new Storage(client);
+  for (const b of BUCKETS_TO_SETUP) {
+    let totalDeleted = 0;
+    while (true) {
+      try {
+        const response = await storage.listFiles(b.bucketId, [Query.limit(100)]);
+        if (response.files.length === 0) break;
+        for (const file of response.files) {
+          try {
+            await storage.deleteFile(b.bucketId, file.$id);
+            totalDeleted++;
+          } catch {
+            // ignore
+          }
+        }
+      } catch {
+        break;
+      }
+    }
+    if (totalDeleted > 0) {
+      console.log(`    ✓ Wiped ${totalDeleted} uploaded files from bucket "${b.bucketId}"`);
+    }
+  }
+}
+
+/**
+ * Wipes all Appwrite Auth accounts.
+ */
+async function wipeAuthUsers(): Promise<void> {
+  const usersService = new Users(client);
+  let totalDeleted = 0;
+  while (true) {
+    try {
+      const response = await usersService.list([Query.limit(100)]);
+      if (response.users.length === 0) break;
+      for (const u of response.users) {
+        try {
+          await usersService.delete(u.$id);
+          totalDeleted++;
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      break;
+    }
+  }
+  if (totalDeleted > 0) {
+    console.log(`    ✓ Wiped ${totalDeleted} Appwrite Auth users`);
+  }
+}
+
+async function seedCleanFoundation(): Promise<void> {
+  await seedCollection("skill_categories", skillCategories, "Skill Categories");
+  await seedCollection("skills", skills, "Skills");
+  await seedAuthUsers(adminUsers);
+  await seedCollection("users", adminUsers, "Default Administrator");
+}
+
 async function seedAllData(): Promise<void> {
   await seedCollection("skill_categories", skillCategories, "Skill Categories");
   await seedCollection("skills", skills, "Skills");
-  await seedCollection("users", [...employerUsers, ...freelancerUsers], "Users");
+  const allUsers = [...adminUsers, ...employerUsers, ...freelancerUsers];
+  await seedAuthUsers(allUsers);
+  await seedCollection("users", allUsers, "Users");
   await seedCollection("freelancer_profiles", freelancerProfiles, "Freelancer Profiles");
   await seedCollection("employer_profiles", employerProfiles, "Employer Profiles");
   await seedCollection("kyc_verifications", kycVerifications, "KYC Verifications");
@@ -1659,17 +1811,39 @@ async function seedAllData(): Promise<void> {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const WITH_SEED = process.argv.includes("--seed") || process.argv.includes("-s");
+  const args = process.argv.slice(2);
+  const WITH_RESET = args.includes("--reset") || args.includes("-r") || args.includes("--wipe");
+  const WIPE_ONLY = args.includes("--wipe-only");
+  const WIPE_AUTH = args.includes("--wipe-auth");
+  const WITH_SEED = (args.includes("--seed") || args.includes("-s")) && !WIPE_ONLY;
 
-  console.log("=== FreelanceXchain — Appwrite Setup & Restore ===\n");
-  console.log(`Endpoint:  ${ENDPOINT}`);
-  console.log(`Project:   ${PROJECT_ID}`);
-  console.log(`Database:  ${DATABASE_ID}`);
-  console.log(`With Seed: ${WITH_SEED ? "YES (demo seed data will be populated)" : "NO (clean schema and buckets only)"}\n`);
+  console.log("=== FreelanceXchain — Appwrite Setup, Reset & Restore ===\n");
+  console.log(`Endpoint:   ${ENDPOINT}`);
+  console.log(`Project:    ${PROJECT_ID}`);
+  console.log(`Database:   ${DATABASE_ID}`);
+  console.log(`Mode:       ${WITH_RESET ? (WIPE_ONLY ? "WIPE ALL (Clean Slate)" : WITH_SEED ? "RESET + SEED DEMO DATA" : "RESET TO CLEAN DEFAULT") : WITH_SEED ? "SETUP + SEED" : "SETUP ONLY"}`);
+  if (WITH_SEED) {
+    console.log(`Demo Creds: [email: any demo email above, password: ${DEMO_PASSWORD}]`);
+  }
+  console.log("");
 
   await ensureDatabase();
 
-  console.log(`\n1. Creating/Verifying ${COLLECTIONS.length} collections...\n`);
+  if (WITH_RESET) {
+    console.log(`\n🧹 Step 0: Wiping existing documents from all ${COLLECTIONS.length} collections...`);
+    for (const colDef of COLLECTIONS) {
+      await wipeCollectionDocuments(colDef.id, colDef.name);
+    }
+    console.log(`🧹 Step 0b: Wiping uploaded files from storage buckets...`);
+    await wipeStorageBuckets();
+
+    if (WIPE_AUTH) {
+      console.log(`🧹 Step 0c: Wiping Appwrite Auth accounts...`);
+      await wipeAuthUsers();
+    }
+  }
+
+  console.log(`\n1. Creating/Verifying ${COLLECTIONS.length} collections, attributes, and indexes...\n`);
   for (const colDef of COLLECTIONS) {
     console.log(`[${colDef.id}]`);
     await createCollection(colDef);
@@ -1681,14 +1855,19 @@ async function main(): Promise<void> {
   console.log(`\n2. Creating/Verifying ${BUCKETS_TO_SETUP.length} storage buckets...\n`);
   await setupStorage();
 
-  if (WITH_SEED) {
-    console.log(`\n3. Seeding demo sample data...\n`);
-    await seedAllData();
+  if (!WIPE_ONLY) {
+    if (WITH_SEED) {
+      console.log(`\n3. Seeding full demo sample data (Users, Profiles, Projects, KYC)...`);
+      await seedAllData();
+    } else {
+      console.log(`\n3. Seeding clean foundational data (Skill Categories, Skills & Default Admin)...`);
+      await seedCleanFoundation();
+    }
   } else {
-    console.log(`\n3. Skipping seed data (pass --seed to populate initial demo data).`);
+    console.log(`\n3. Wiped completely clean. No seed data inserted.`);
   }
 
-  console.log(`\n=== Setup complete! (Mode: ${WITH_SEED ? "With Seed" : "Clean / Without Seed"}) ===`);
+  console.log(`\n=== Setup complete! Everything is ready and aligned. ===\n`);
 }
 
 main().catch((err) => {

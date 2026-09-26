@@ -25,11 +25,11 @@ import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendDisputeCreatedEmail } from './email-delivery-service.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
 function calculateDisputeShare(milestoneAmount: number, bps: number): number {
-  // Use precise calculation to avoid floating-point precision loss
-  // Convert to integer arithmetic: (amount * bps) / 10000 with proper rounding
-  const amountCents = Math.round(milestoneAmount * 100);
-  const shareCents = Math.round((amountCents * bps) / 10000);
-  return shareCents / 100;
+  // Use high-precision calculation with 6 decimal places (micro-ETH) to prevent truncating sub-0.005 ETH to 0
+  const factor = 1_000_000;
+  const amountUnits = Math.round(milestoneAmount * factor);
+  const shareUnits = Math.round((amountUnits * bps) / 10000);
+  return shareUnits / factor;
 }
 
 
@@ -490,7 +490,8 @@ async function recordDisputeResolutionPayments(params: {
   try {
     // CRITICAL-3: Use precise calculation to avoid floating-point precision loss
     const freelancerShare = calculateDisputeShare(params.milestoneAmount, params.resolvedBps);
-    const employerShare = Math.round((params.milestoneAmount - freelancerShare) * 100) / 100;
+    const factor = 1_000_000;
+    const employerShare = Math.round((params.milestoneAmount - freelancerShare) * factor) / factor;
     if (freelancerShare > 0) {
       await createPaymentRecord({
         contractId: params.contractId,
@@ -715,8 +716,12 @@ async function updateDisputeStatuses(
 export async function resolveDispute(
   input: ResolveDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
-  // Serialize concurrent resolution attempts for the same dispute to prevent double-disbursement
-  return withLock(`dispute-resolve:${input.disputeId}`, async () => {
+  const initialDispute = await disputeRepository.getDisputeById(input.disputeId);
+  const milestoneKey = initialDispute?.milestone_id ? milestoneLockKey(initialDispute.milestone_id) : `dispute-resolve:${input.disputeId}`;
+
+  // Serialize concurrent resolution attempts and milestone approval on the same milestone
+  return withLock(milestoneKey, async () => {
+    return withLock(`dispute-resolve:${input.disputeId}`, async () => {
     const { disputeId, decision, reasoning, resolvedBy } = input;
 
     const validated = await validateDisputeResolution(input);
@@ -781,6 +786,7 @@ export async function resolveDispute(
     });
 
     return successResult(statusResult.dispute);
+    });
   });
 }
 

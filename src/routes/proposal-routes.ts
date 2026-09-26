@@ -252,7 +252,8 @@ async function processMultipartProposal(req: Request, res: Response) {
       );
     }
     
-    return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId, details: failedUploads.map(r => r.error) });
+    logger.error('Failed to upload one or more proposal files', { failedUploads });
+    return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
   }
   
   const attachments = uploadResults.map(r => r.metadata!);
