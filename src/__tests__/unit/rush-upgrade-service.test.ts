@@ -108,6 +108,7 @@ const {
   getRushUpgradeRequestsByContract,
   getRushUpgradeRequestsForContract,
   getRushUpgradeRequestById,
+  withdrawRushUpgradeRequest,
 } = await import('../../services/rush-upgrade-service.js');
 
 // Seed data helpers
@@ -1632,6 +1633,56 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
       expect(result.error.code).toBe('INVALID_RECIPIENT');
       mockGetBlockchainMode.mockReturnValue('simulated');
       mockIsWeb3Available.mockReturnValue(false);
+    });
+  });
+
+  describe('withdrawRushUpgradeRequest', () => {
+    it('returns NOT_FOUND when request does not exist', async () => {
+      const result = await withdrawRushUpgradeRequest('emp-1', 'nonexistent-id');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('returns UNAUTHORIZED when caller is not the requester', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id });
+      const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'pending' });
+
+      const result = await withdrawRushUpgradeRequest('other-user', request.id);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('returns INVALID_STATUS when request is already accepted', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id });
+      const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'accepted' });
+
+      const result = await withdrawRushUpgradeRequest(employer.id, request.id);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
+    });
+
+    it('successfully withdraws a pending request', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id });
+      const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'pending' });
+
+      const result = await withdrawRushUpgradeRequest(employer.id, request.id);
+      expect(result.success).toBe(true);
+      const updated = rushUpgradeStore.get(request.id);
+      expect((updated as any)?.status).toBe('declined');
+    });
+
+    it('successfully withdraws a counter_offered request', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id });
+      const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'counter_offered' });
+
+      const result = await withdrawRushUpgradeRequest(employer.id, request.id);
+      expect(result.success).toBe(true);
+      const updated = rushUpgradeStore.get(request.id);
+      expect((updated as any)?.status).toBe('declined');
     });
   });
 });

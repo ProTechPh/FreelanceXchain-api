@@ -688,4 +688,42 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
     const res = await request(app).get('/api/contracts/c-1/rush-upgrade-requests');
     expect(res.status).toBe(200);
   });
+
+  describe('POST /rush-upgrade-requests/:id/withdraw', () => {
+    it('withdraws rush upgrade request successfully', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: true, data: { message: 'Withdrawn' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Withdrawn');
+    });
+
+    it('returns 404 when request not found', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when user is unauthorized', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: false, error: { code: 'UNAUTHORIZED', message: 'Forbidden' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 400 on other service error', async () => {
+      mockWithdrawRushUpgradeRequest.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Invalid' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 500 when service throws', async () => {
+      mockWithdrawRushUpgradeRequest.mockRejectedValueOnce(new Error('Unexpected'));
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/rush-upgrade-requests/r-1/withdraw');
+      expect(res.status).toBe(500);
+    });
+  });
 });
