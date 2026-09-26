@@ -13,7 +13,7 @@ import { withLock } from '../utils/async-lock.js';
 import { paymentRepository } from '../repositories/payment-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { getBlockchainMode } from './blockchain/factory.js';
-import { isWeb3Available, sendTransaction, getTransactionByHash } from './web3-client.js';
+import { isWeb3Available, getTransactionByHash } from './web3-client.js';
 
 function hasMoreThanTwoDecimals(value: number): boolean {
   const decimalStr = value.toString().split('.')[1];

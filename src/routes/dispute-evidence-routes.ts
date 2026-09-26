@@ -4,7 +4,6 @@ import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
 import {
-  submitEvidence,
   getDisputeEvidence,
   deleteEvidence,
   verifyEvidence,
@@ -12,21 +11,6 @@ import {
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
-
-// M13: Validate fileUrl to prevent SSRF/XSS via malicious schemes
-const ALLOWED_URL_SCHEMES = ['https:'];
-const MAX_FILE_URL_LENGTH = 2048;
-
-function isValidFileUrl(url: string | undefined): boolean {
-  if (!url) return true; // Optional field
-  if (url.length > MAX_FILE_URL_LENGTH) return false;
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
 
 const router = Router();
 
