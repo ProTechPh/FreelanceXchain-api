@@ -21,6 +21,8 @@ import { generateId } from '../utils/id.js';
 import { users, Query, ID } from '../config/appwrite.js';
 import { ADMIN_PERMISSIONS, type AdminPermission } from '../models/user.js';
 import { platformMetricsCache } from '../utils/cache.js';
+import { grantComplimentaryPro } from './subscription-service.js';
+import type { PlanTier } from '../models/subscription.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -546,6 +548,8 @@ export interface InviteUserInput {
   password?: string;
   permissions?: AdminPermission[];
   autoVerifyEmail?: boolean;
+  /** Start the account on Pro at no charge. Defaults to true; ignored for admins, who are always Pro. */
+  grantPro?: boolean;
 }
 
 function generateTemporaryPassword(): string {
@@ -631,7 +635,7 @@ async function createAuthUserInAppwrite(
 export async function inviteOrAddUser(
   input: InviteUserInput,
   actorId: string = 'system-admin'
-): Promise<ServiceResult<{ user: UserEntity; temporaryPassword?: string }>> {
+): Promise<ServiceResult<{ user: UserEntity; plan: PlanTier; temporaryPassword?: string }>> {
   try {
     const validationError = validateInviteUserInput(input);
     if (validationError) return validationError;
@@ -685,16 +689,25 @@ export async function inviteOrAddUser(
       return errorResult('INTERNAL_ERROR', 'Failed to create user record in database');
     }
 
-    logger.info('ADMIN ACTION: user created/invited', { actor: actorId, userId: createdUser.id, role: createdUser.role });
+    // Accounts created from user management start on Pro unless the admin
+    // turns it off. Admins are already treated as Pro at read time, so only
+    // marketplace roles need a subscription record.
+    const plan: PlanTier = createdUser.role === 'admin'
+      || (input.grantPro !== false && await grantComplimentaryPro(createdUser.id))
+      ? 'pro'
+      : 'free';
+
+    logger.info('ADMIN ACTION: user created/invited', { actor: actorId, userId: createdUser.id, role: createdUser.role, plan });
     await recordAdminAudit({
       actorId,
       targetUserId: createdUser.id,
       action: 'admin.user_created',
-      payload: { role: createdUser.role, email: normalizedEmail, permissions: createdUser.permissions },
+      payload: { role: createdUser.role, email: normalizedEmail, permissions: createdUser.permissions, plan },
     });
 
     return successResult({
       user: createdUser,
+      plan,
       ...(temporaryPasswordGenerated !== undefined ? { temporaryPassword: temporaryPasswordGenerated } : {}),
     });
   } catch (error) {
