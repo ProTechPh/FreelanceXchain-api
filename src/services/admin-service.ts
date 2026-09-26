@@ -419,6 +419,9 @@ export async function updateUser(
     }
 
     const updated = await userRepository.updateUser(userId, updatesObj);
+    if (!updated) {
+      return errorResult('UPDATE_FAILED', 'Failed to update user in database');
+    }
 
     // BLF-12.2: Attribute every privileged action to the acting admin for audit trail.
     logger.info('ADMIN ACTION: user updated', {
@@ -483,10 +486,11 @@ export async function updateAdminPermissions(
         if (u.id === userId) return false;
         const perms = u.permissions;
         return (
-          !perms ||
-          perms.length === 0 ||
-          (perms as string[]).includes('*') ||
-          (perms as string[]).includes('admin:manage')
+          perms === undefined ||
+          (Array.isArray(perms) && (
+            (perms as string[]).includes('*') ||
+            (perms as string[]).includes('admin:manage')
+          ))
         );
       });
 
@@ -498,6 +502,10 @@ export async function updateAdminPermissions(
     const updated = await userRepository.updateUser(userId, {
       permissions,
     } as Partial<UserEntity>);
+
+    if (!updated) {
+      return errorResult('UPDATE_FAILED', 'Failed to update administrator permissions in database');
+    }
 
     logger.info('ADMIN ACTION: admin permissions updated', {
       actor: actorId,

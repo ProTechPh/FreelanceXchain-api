@@ -33,10 +33,20 @@ const mockRequireRole = jest.fn((...roles: string[]) => (req: any, res: any, nex
   next();
 });
 
+const mockRequirePermission = jest.fn((..._perms: string[]) => (req: any, res: any, next: any) => {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ error: { code: 'AUTH_FORBIDDEN' } });
+    return;
+  }
+  next();
+});
+
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: mockAuthMiddleware,
   requireRole: mockRequireRole,
   requireVerifiedKyc: jest.fn((_req: any, _res: any, next: any) => next()),
+  requirePermission: mockRequirePermission,
+  hasAdminPermission: () => true,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({

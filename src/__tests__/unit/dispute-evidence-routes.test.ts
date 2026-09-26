@@ -26,6 +26,9 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { id: 'user-1', userId: 'user-1', role: 'freelancer' }; next(); },
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
@@ -370,6 +373,9 @@ describe('dispute-evidence-routes - ?? nullish fallback branches', () => {
         next();
       },
       requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+      hasAdminPermission: () => true,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-evidence-service.ts'), () => ({
       submitEvidence: mockSubmitEvidence,

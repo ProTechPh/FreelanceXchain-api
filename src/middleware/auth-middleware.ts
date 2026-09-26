@@ -131,6 +131,23 @@ export function requireRole(...roles: UserRole[]) {
  * - Super-admins (permissions undefined, empty, or containing '*' or 'admin:manage') have full access.
  * - Restricted admins (e.g. KYC Officer) must have at least one of the specified permissions.
  */
+/**
+ * Check if a validated user has the given administrative permission(s).
+ * - Super-admins (permissions undefined, or containing '*' or 'admin:manage') have full access.
+ * - Restricted admins must have at least one of the specified permissions.
+ */
+export function hasAdminPermission(
+  user: ValidatedUser | undefined,
+  ...permissions: AdminPermission[]
+): boolean {
+  if (!user || user.role !== 'admin') return false;
+  const userPerms = user.permissions as AdminPermission[] | undefined;
+  if (userPerms === undefined || (userPerms as string[]).includes('*') || userPerms.includes('admin:manage')) {
+    return true;
+  }
+  return permissions.some((perm) => userPerms.includes(perm));
+}
+
 export function requirePermission(...permissions: AdminPermission[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const requestId = getRequestId(req);
@@ -159,23 +176,11 @@ export function requirePermission(...permissions: AdminPermission[]) {
       return;
     }
 
-    const userPerms = req.user.permissions as AdminPermission[] | undefined;
-
-    // Backward compatibility and Super Admin bypass:
-    // If permissions array is not defined, or empty (legacy admins), or includes '*' or 'admin:manage',
-    // the user has unrestricted administrator access.
-    if (!userPerms || userPerms.length === 0 || (userPerms as string[]).includes('*') || userPerms.includes('admin:manage')) {
-      next();
-      return;
-    }
-
-    // Check if the administrator has any of the required permissions
-    const hasPermission = permissions.some((perm) => userPerms.includes(perm));
-    if (!hasPermission) {
+    if (!hasAdminPermission(req.user, ...permissions)) {
       logger.authzFailure(req.user.userId, req.path, req.method, {
         requestId,
         requiredPermissions: permissions,
-        userPermissions: userPerms,
+        userPermissions: req.user.permissions as AdminPermission[] | undefined,
         ip: req.ip,
       });
 

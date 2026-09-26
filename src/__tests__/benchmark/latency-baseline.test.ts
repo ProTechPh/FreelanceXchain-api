@@ -161,6 +161,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -39,7 +39,7 @@ const VALID_CLASSES: SliRouteClass[] = ['dashboard', 'contracts', 'global'];
  *       403:
  *         description: Forbidden (admin required)
  */
-router.get('/sli', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/sli', authMiddleware, requirePermission('system:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const requestedClass = req.query['class'] as SliRouteClass | undefined;
 

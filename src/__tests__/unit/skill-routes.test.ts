@@ -49,6 +49,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'admin', email: 'admin@test.com' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -754,6 +756,8 @@ describe('skill-routes - userName fallback (line 583)', () => {
       authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'freelancer' }; next(); },
       requireRole: () => (_req: any, _res: any, next: any) => next(),
       requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+      hasAdminPermission: () => true,
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),

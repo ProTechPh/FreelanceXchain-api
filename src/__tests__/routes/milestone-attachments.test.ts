@@ -26,6 +26,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     next();
   },
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 
 // Mock rate limiter middleware

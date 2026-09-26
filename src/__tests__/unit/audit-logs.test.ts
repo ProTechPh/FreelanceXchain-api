@@ -41,6 +41,8 @@ const mockRequireRole = jest.fn(() => (req: any, _res: any, next: any) => next()
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: mockAuthMiddleware,
   requireRole: mockRequireRole,
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 
 const auditLogsRouter = (await import('../../routes/audit-logs.js')).default;

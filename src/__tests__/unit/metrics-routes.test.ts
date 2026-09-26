@@ -34,6 +34,14 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     }
     next();
   },
+  requirePermission: () => (req: any, res: any, next: any) => {
+    if (req.user && req.user.role !== 'admin') {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Forbidden' } });
+      return;
+    }
+    next();
+  },
+  hasAdminPermission: () => true,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({

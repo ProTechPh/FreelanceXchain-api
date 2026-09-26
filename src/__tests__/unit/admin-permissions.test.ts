@@ -90,6 +90,17 @@ describe('Admin Permissions & RBAC Middleware', () => {
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
     });
+
+    it('blocks admin with empty permissions array [] with 403', async () => {
+      app.get('/test/empty-perms', (req, _res, next) => {
+        req.user = { userId: 'admin-empty', role: 'admin', permissions: [] };
+        next();
+      }, requirePermission('kyc:view'), (_req, res) => res.json({ ok: true }));
+
+      const res = await request(app).get('/test/empty-perms');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+    });
   });
 
   describe('updateAdminPermissions Service', () => {

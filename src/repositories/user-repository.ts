@@ -1,4 +1,4 @@
-import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
+import { BaseRepository, mapDocument } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
 import type { AdminPermission } from '../models/user.js';
@@ -52,7 +52,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
           COLLECTION_ID,
           [Query.equal('$id', chunk), Query.limit(chunk.length)]
         );
-        users.push(...response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc)));
+        users.push(...response.documents.map(doc => mapDocument<UserEntity>(doc)));
       } catch (error) {
         throw new Error(`Failed to get users by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
       }
@@ -71,7 +71,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
         ]
       );
       if (response.documents.length === 0) return null;
-      return fromAppwriteDoc<UserEntity>(response.documents[0]!);
+      return mapDocument<UserEntity>(response.documents[0]!);
     } catch (error) {
       throw new Error(`Failed to get user by email: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

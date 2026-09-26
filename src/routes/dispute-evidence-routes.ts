@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireVerifiedKyc, hasAdminPermission } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
@@ -203,6 +203,10 @@ router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVe
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';
     const userId = req.user?.userId ?? '';
+
+    if (req.user?.role === 'admin' && !hasAdminPermission(req.user, 'disputes:manage')) {
+      return sendErrorResponse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'You do not have permission to verify dispute evidence', { requestId });
+    }
 
     const result = await verifyEvidence({
       evidenceId,
