@@ -7,6 +7,7 @@ import { updateAdminPermissions, inviteOrAddUser } from '../../services/admin-se
 import { userRepository } from '../../repositories/user-repository.js';
 import { auditLogRepository } from '../../repositories/audit-log-repository.js';
 import { users } from '../../config/appwrite.js';
+import { subscriptionRepository } from '../../repositories/subscription-repository.js';
 
 describe('Admin Permissions & RBAC Middleware', () => {
   let app: express.Express;
@@ -207,11 +208,15 @@ describe('Admin Permissions & RBAC Middleware', () => {
         name: 'Alice Cooper',
       } as any);
       const auditSpy = jest.spyOn(auditLogRepository, 'create').mockResolvedValue({} as any);
+      const planSpy = jest.spyOn(subscriptionRepository, 'upsertForUser').mockResolvedValue({ id: 'appwrite-user-1', plan: 'pro', status: 'active' } as any);
 
       const res = await inviteOrAddUser(
         { name: 'Alice Cooper', email: 'alice@example.com', role: 'freelancer' },
         'admin-actor-1'
       );
+
+      expect(planSpy).toHaveBeenCalledWith('appwrite-user-1', expect.objectContaining({ plan: 'pro', status: 'active' }));
+      expect(res.data?.plan).toBe('pro');
 
       expect(res.success).toBe(true);
       expect(res.data?.user.id).toBe('appwrite-user-1');
@@ -258,6 +263,50 @@ describe('Admin Permissions & RBAC Middleware', () => {
       expect(dbSpy).toHaveBeenCalledWith(expect.objectContaining({
         permissions: ['kyc:view', 'kyc:manage'],
       }));
+    });
+
+    it('does not write a subscription for admins, who are already Pro', async () => {
+      jest.spyOn(userRepository, 'emailExists').mockResolvedValue(false);
+      jest.spyOn(users, 'create').mockResolvedValue({ $id: 'appwrite-admin-3' } as any);
+      jest.spyOn(users, 'updateEmailVerification').mockResolvedValue({} as any);
+      jest.spyOn(userRepository, 'createUser').mockResolvedValue({ id: 'appwrite-admin-3', email: 'a3@example.com', role: 'admin', name: 'Admin Three' } as any);
+      jest.spyOn(auditLogRepository, 'create').mockResolvedValue({} as any);
+      const planSpy = jest.spyOn(subscriptionRepository, 'upsertForUser');
+
+      const res = await inviteOrAddUser({ name: 'Admin Three', email: 'a3@example.com', role: 'admin' }, 'super-admin-1');
+
+      expect(res.success).toBe(true);
+      expect(res.data?.plan).toBe('pro');
+      expect(planSpy).not.toHaveBeenCalled();
+    });
+
+    it('leaves the account on Free when the admin turns Pro off', async () => {
+      jest.spyOn(userRepository, 'emailExists').mockResolvedValue(false);
+      jest.spyOn(users, 'create').mockResolvedValue({ $id: 'appwrite-free-1' } as any);
+      jest.spyOn(users, 'updateEmailVerification').mockResolvedValue({} as any);
+      jest.spyOn(userRepository, 'createUser').mockResolvedValue({ id: 'appwrite-free-1', email: 'f1@example.com', role: 'freelancer', name: 'Free One' } as any);
+      jest.spyOn(auditLogRepository, 'create').mockResolvedValue({} as any);
+      const planSpy = jest.spyOn(subscriptionRepository, 'upsertForUser');
+
+      const res = await inviteOrAddUser({ name: 'Free One', email: 'f1@example.com', role: 'freelancer', grantPro: false }, 'admin-actor-1');
+
+      expect(res.success).toBe(true);
+      expect(res.data?.plan).toBe('free');
+      expect(planSpy).not.toHaveBeenCalled();
+    });
+
+    it('still creates the account, reported as Free, when the Pro grant fails', async () => {
+      jest.spyOn(userRepository, 'emailExists').mockResolvedValue(false);
+      jest.spyOn(users, 'create').mockResolvedValue({ $id: 'appwrite-emp-1' } as any);
+      jest.spyOn(users, 'updateEmailVerification').mockResolvedValue({} as any);
+      jest.spyOn(userRepository, 'createUser').mockResolvedValue({ id: 'appwrite-emp-1', email: 'e1@example.com', role: 'employer', name: 'Emp One' } as any);
+      jest.spyOn(auditLogRepository, 'create').mockResolvedValue({} as any);
+      jest.spyOn(subscriptionRepository, 'upsertForUser').mockRejectedValue(new Error('Appwrite down'));
+
+      const res = await inviteOrAddUser({ name: 'Emp One', email: 'e1@example.com', role: 'employer' }, 'admin-actor-1');
+
+      expect(res.success).toBe(true);
+      expect(res.data?.plan).toBe('free');
     });
 
     it('rolls back Appwrite user if database insertion fails', async () => {

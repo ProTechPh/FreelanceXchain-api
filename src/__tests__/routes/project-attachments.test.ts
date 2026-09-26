@@ -173,6 +173,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   registerRateLimiter: (req: any, res: any, next: any) => next(),
   passwordResetRateLimiter: (req: any, res: any, next: any) => next(),
   authRateLimiter: (req: any, res: any, next: any) => next(),
+  walletRateLimiter: (req: any, res: any, next: any) => next(),
   sensitiveRateLimiter: (req: any, res: any, next: any) => next(),
   withdrawalRateLimiter: (req: any, res: any, next: any) => next(),
   mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),

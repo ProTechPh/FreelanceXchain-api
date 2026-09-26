@@ -143,10 +143,15 @@ router.get('/users', authMiddleware, requirePermission('users:view'), apiRateLim
 router.post('/users', authMiddleware, requirePermission('users:manage'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
-  const { name, email, role, password, permissions, autoVerifyEmail } = req.body;
+  const { name, email, role, password, permissions, autoVerifyEmail, grantPro } = req.body;
 
   if (!adminUserId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  if (grantPro !== undefined && typeof grantPro !== 'boolean') {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'grantPro must be a boolean', { requestId });
     return;
   }
 
@@ -169,6 +174,7 @@ router.post('/users', authMiddleware, requirePermission('users:manage'), apiRate
     password,
     permissions,
     autoVerifyEmail: autoVerifyEmail ?? true,
+    grantPro: grantPro ?? true,
   }, adminUserId);
 
   if (!result.success) {
@@ -182,6 +188,7 @@ router.post('/users', authMiddleware, requirePermission('users:manage'), apiRate
 
   res.status(201).json({
     user: mapAdminUser(result.data.user),
+    plan: result.data.plan,
     ...(result.data.temporaryPassword !== undefined ? { temporaryPassword: result.data.temporaryPassword } : {}),
   });
 }));

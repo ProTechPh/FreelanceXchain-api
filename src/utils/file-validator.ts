@@ -253,8 +253,25 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
  * @param url - File URL to validate
  * @returns Array of error messages (empty if valid)
  */
+// Files uploaded through the API are stored with a relative proxy URL (see
+// getSecureFileUrl in storage-uploader), served by GET /api/files/access with
+// its own authorization check. A relative path cannot leave this origin, so it
+// needs no SSRF host check. The pattern is strict: Appwrite-style IDs only, no
+// `..`, no extra segments.
+const APPWRITE_ID = '(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]{1,36}';
+const FILE_PROXY_PATH = new RegExp(`^/api/files/access/${APPWRITE_ID}/${APPWRITE_ID}$`);
+
+export function isFileProxyPath(url: string): boolean {
+  return FILE_PROXY_PATH.test(url);
+}
+
 function validateFileUrl(url: string): string[] {
   const errors: string[] = [];
+
+  if (url.startsWith('/')) {
+    if (!isFileProxyPath(url)) errors.push('Invalid URL format');
+    return errors;
+  }
 
   try {
     const parsedUrl = new URL(url);

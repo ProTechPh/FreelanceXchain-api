@@ -133,6 +133,32 @@ export async function invalidateEntitlement(userId: string): Promise<void> {
 }
 
 /**
+ * Give an account Pro without a Stripe subscription, e.g. accounts an admin
+ * creates in user management. The record has no Stripe customer, so no
+ * webhook ever touches it and billing shows it as not self-manageable; it
+ * stays Pro until an admin changes it. Returns false (and logs) on failure so
+ * the caller can report the account as Free rather than claim a grant that
+ * did not happen.
+ */
+export async function grantComplimentaryPro(userId: string): Promise<boolean> {
+  try {
+    const entity = await subscriptionRepository.upsertForUser(userId, {
+      plan: 'pro',
+      status: 'active',
+      cancel_at_period_end: false,
+    });
+    await invalidateEntitlement(userId);
+    return Boolean(entity);
+  } catch (error) {
+    logger.error('Failed to grant complimentary Pro', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+/**
  * A user's current billing state.
  *
  * Absence of a subscription document IS the free tier — there is no backfill
