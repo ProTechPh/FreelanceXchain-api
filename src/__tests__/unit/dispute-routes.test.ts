@@ -28,6 +28,9 @@ jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () =
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'freelancer' }; next(); },
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -267,6 +270,9 @@ describe('Dispute Routes - Resolve validation (admin)', () => {
     jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
       authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'admin-1', role: 'admin' }; next(); },
       requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+      hasAdminPermission: () => true,
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),

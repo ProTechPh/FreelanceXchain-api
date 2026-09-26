@@ -28,6 +28,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', id: 'user-1', role: 'freelancer' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  hasAdminPermission: () => true,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -306,6 +308,8 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
       authMiddleware: mockAuthNoUser,
       requireRole: () => (_req: any, _res: any, next: any) => next(),
       requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+      hasAdminPermission: () => true,
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
@@ -449,6 +453,8 @@ describe('notification-routes - ?? "" param fallback coverage', () => {
       },
       requireRole: () => (_req: any, _res: any, next: any) => next(),
       requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+      hasAdminPermission: () => true,
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
