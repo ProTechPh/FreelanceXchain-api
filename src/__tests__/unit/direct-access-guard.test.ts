@@ -81,6 +81,26 @@ describe('directAccessGuard middleware', () => {
     expect(nextFn).toHaveBeenCalled();
   });
 
+  it('allows public read-only endpoints without internal secret', () => {
+    // @ts-expect-error test override
+    config.server.internalApiSecret = 'test-secret-12345';
+
+    const publicPaths = [
+      '/api/reputation/leaderboard',
+      '/api/reputation/leaderboard?limit=5',
+      '/api/skills',
+      '/api/skills?page=1',
+      '/api/skills/search',
+      '/api/skills/categories',
+    ];
+
+    for (const path of publicPaths) {
+      nextFn = jest.fn();
+      directAccessGuard(createMockReq(path, {}), mockRes as Response, nextFn);
+      expect(nextFn).toHaveBeenCalled();
+    }
+  });
+
   it('blocks direct browser navigation when sec-fetch-dest is document', () => {
     const req = createMockReq('/api/freelancers', { 'sec-fetch-dest': 'document' });
     directAccessGuard(req, mockRes as Response, nextFn);
