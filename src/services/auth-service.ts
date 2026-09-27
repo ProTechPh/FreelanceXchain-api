@@ -18,6 +18,11 @@ import {
   sendAccountDeletedEmail,
 } from './email-delivery-service.js';
 import {
+  checkAccountLockout,
+  recordFailedLogin,
+  resetFailedLogins,
+} from '../utils/login-security.js';
+import {
   RegisterInput,
   LoginInput,
   AuthResult,
@@ -466,6 +471,19 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
 export async function login(input: LoginInput): Promise<AuthResponse> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
+  // Enforce brute-force account lockout defense
+  const lockoutStatus = checkAccountLockout(normalizedEmail);
+  if (lockoutStatus.isLocked) {
+    logger.warn('Login attempt blocked: account is temporarily locked', {
+      email: normalizedEmail,
+      remainingMinutes: lockoutStatus.remainingMinutes,
+    });
+    return {
+      code: 'ACCOUNT_LOCKED',
+      message: `Your account has been temporarily locked due to repeated login failures. Please try again after ${lockoutStatus.remainingMinutes ?? 15} minutes or reset your password.`,
+    };
+  }
+
   try {
     const sessionSecret = await createEmailPasswordSessionHelper(normalizedEmail, input.password);
     const authenticatedAccount = new Account(createUserClient(sessionSecret));
@@ -475,6 +493,7 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       accountUser = await authenticatedAccount.get();
     } catch (mfaError: unknown) {
       if (getErrorType(mfaError) === 'user_more_factors_required') {
+        resetFailedLogins(normalizedEmail);
         return {
           code: 'MFA_REQUIRED',
           message: 'Multi-factor authentication required',
@@ -507,13 +526,33 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       };
     }
 
+    // Reset failed login counter upon successful authentication
+    resetFailedLogins(normalizedEmail);
+
     return await createAuthResult(publicUser, sessionSecret, sessionSecret);
   } catch (error: unknown) {
     logger.error('Login failed', { error: getErrorMessage(error), email: normalizedEmail });
     
+    const failRecord = recordFailedLogin(normalizedEmail);
+    if (failRecord.isLocked) {
+      logger.warn('Account locked after repeated failed login attempts', {
+        email: normalizedEmail,
+        lockedUntil: failRecord.lockedUntil,
+      });
+      return {
+        code: 'ACCOUNT_LOCKED',
+        message: 'Your account has been temporarily locked due to repeated login failures. Please try again after 15 minutes or reset your password.',
+      };
+    }
+
+    const message =
+      failRecord.remainingAttempts < 3
+        ? `Invalid email or password. ${failRecord.remainingAttempts} attempt${failRecord.remainingAttempts === 1 ? '' : 's'} remaining before your account is locked.`
+        : 'Invalid email or password';
+
     return {
       code: 'INVALID_CREDENTIALS',
-      message: 'Invalid email or password',
+      message,
     };
   }
 }
@@ -664,6 +703,15 @@ export async function resetPasswordWithRecovery(
       secret,
       password: newPassword,
     });
+
+    try {
+      const resetUser = await userRepository.getUserById(userId);
+      if (resetUser?.email) {
+        resetFailedLogins(resetUser.email);
+      }
+    } catch {
+      // non-blocking
+    }
 
     logger.info('Password reset completed via Appwrite updateRecovery', { userId });
     return { success: true };

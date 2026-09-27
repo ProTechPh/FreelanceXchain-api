@@ -101,7 +101,8 @@ router.get('/range', authMiddleware, requirePermission('audit:view'), async (req
       return;
     }
 
-    const logs = await auditLogService.getAuditLogsByDateRange(startDate, endDate);
+    const limit = req.query.limit ? Math.min(1000, Math.max(1, Number(req.query.limit))) : undefined;
+    const logs = await auditLogService.getAuditLogsByDateRange(startDate, endDate, limit);
     sendSuccessResponse(res, 200, { logs }, getRequestId(req));
   } catch (error) {
     sendServerError(res, error);

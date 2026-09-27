@@ -81,6 +81,26 @@ describe('MessageRepository', () => {
     });
   });
 
+  describe('getConversationById', () => {
+    it('should return conversation when found', async () => {
+      mockDatabases.getDocument.mockResolvedValueOnce({
+        $id: 'c1',
+        participant1_id: 'u1',
+        participant2_id: 'u2',
+        last_message_at: '2025-01-01',
+      });
+      const result = await messageRepository.getConversationById('c1');
+      expect(result).not.toBeNull();
+      expect(result?.id).toBe('c1');
+    });
+
+    it('should return null when not found or error', async () => {
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
+      const result = await messageRepository.getConversationById('c1');
+      expect(result).toBeNull();
+    });
+  });
+
   describe('getUserConversations', () => {
     it('should return paginated conversations', async () => {
       const convs = [

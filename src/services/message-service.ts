@@ -8,6 +8,7 @@ import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/m
 import { notificationEmitter } from './notification-delivery-service.js';
 import { sendGatedEmail, sendMessageReceivedEmail } from './email-delivery-service.js';
 import { generateId } from '../utils/id.js';
+import { userSummaryCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
@@ -196,7 +197,18 @@ export async function getConversations(
         const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
 
         try {
-          const otherUser = await userRepository.getUserById(otherUserId);
+          let otherUser = userSummaryCache.get(otherUserId);
+          if (!otherUser) {
+            const fetchedUser = await userRepository.getUserById(otherUserId);
+            if (fetchedUser) {
+              otherUser = {
+                id: fetchedUser.id,
+                name: fetchedUser.name,
+                email: fetchedUser.email,
+              };
+              userSummaryCache.set(otherUserId, otherUser);
+            }
+          }
 
           if (!otherUser) {
             logger.warn('Conversation has missing participant, skipping from results', {
@@ -208,11 +220,7 @@ export async function getConversations(
 
           return {
             ...conv,
-            otherUser: {
-              id: otherUser.id,
-              name: otherUser.name,
-              email: otherUser.email,
-            },
+            otherUser,
           } as ConversationWithDetails;
         } catch (error) {
           logger.error('Error fetching user details for conversation', {
@@ -246,16 +254,16 @@ export async function getConversationMessages(
   options: PaginationOptions = {}
 ): Promise<ServiceResult<PaginatedResult<MessageEntity>>> {
   try {
-    const _conversation = await messageRepository.findConversation(
-      userId,
-      // We need the other participant; findConversation requires both IDs
-      // Instead, use getUserConversations to find this conversation
-      '' // placeholder
-    );
-
-    // Alternative: fetch all conversations and find this one
-    const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
-    const conv = userConversations.find(c => c.id === conversationId);
+    // Fast path: direct conversation lookup by ID
+    let conv: ConversationEntity | null = null;
+    if (typeof messageRepository.getConversationById === 'function') {
+      conv = await messageRepository.getConversationById(conversationId);
+    }
+    // Fallback: in case getConversationById is unavailable or mocked via getUserConversations
+    if (!conv) {
+      const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
+      conv = userConversations.find(c => c.id === conversationId) ?? null;
+    }
 
     if (!conv) {
       return errorResult('CONVERSATION_NOT_FOUND', 'Conversation not found');
@@ -290,8 +298,16 @@ export async function markConversationAsRead(
   userId: string
 ): Promise<ServiceResult<void>> {
   try {
-    const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
-    const conv = userConversations.find(c => c.id === conversationId);
+    // Fast path: direct conversation lookup by ID
+    let conv: ConversationEntity | null = null;
+    if (typeof messageRepository.getConversationById === 'function') {
+      conv = await messageRepository.getConversationById(conversationId);
+    }
+    // Fallback: in case getConversationById is unavailable or mocked via getUserConversations
+    if (!conv) {
+      const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
+      conv = userConversations.find(c => c.id === conversationId) ?? null;
+    }
 
     if (!conv) {
       return errorResult('CONVERSATION_NOT_FOUND', 'Conversation not found');

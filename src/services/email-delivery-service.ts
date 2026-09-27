@@ -21,7 +21,8 @@ type EmailTemplate =
   | 'kyc_rejected'
   | 'weekly_digest'
   | 'account_deletion_code'
-  | 'account_deleted';
+  | 'account_deleted'
+  | 'login_alert';
 
 type EmailData = {
   to: string;
@@ -475,6 +476,36 @@ export async function sendAccountDeletedEmail(
       ...data,
       recipientName,
       deletionDate: data.deletionDate ?? new Date().toUTCString(),
+    },
+  });
+}
+
+export async function sendNewDeviceLoginAlertEmail(
+  to: string,
+  data: {
+    recipientName?: string | undefined;
+    userName?: string | undefined;
+    ip: string;
+    device: string;
+    browser: string;
+    timestamp?: string | undefined;
+    securityUrl?: string | undefined;
+  },
+): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName ?? data.userName ?? 'FreelanceXchain Member';
+  const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
+  const securityUrl = data.securityUrl ?? `${frontendUrl}/forgot-password`;
+  const timestamp = data.timestamp ?? new Date().toUTCString();
+
+  return sendEmail({
+    to,
+    subject: 'Security Alert: New Sign-In to Your Account',
+    template: 'login_alert',
+    data: {
+      ...data,
+      recipientName,
+      securityUrl,
+      timestamp,
     },
   });
 }

@@ -222,11 +222,9 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'deliverable_files', type: 'string', size: 50000, required: false, default: '[]' },
       { name: 'rejection_reason', type: 'string', size: 5000, required: false },
       { name: 'revision_count', type: 'integer', required: false, default: 0 },
-      { name: 'notes', type: 'string', size: 5000, required: false },
     ],
     indexes: [
       { key: 'contract_id_due_date', type: DatabasesIndexType.Key, attributes: ['contract_id', 'due_date'], orders: [OrderBy.Asc, OrderBy.Asc] },
-      { key: 'project_id', type: DatabasesIndexType.Key, attributes: ['project_id'] },
     ],
   },
   {
@@ -430,7 +428,6 @@ const COLLECTIONS: CollectionDef[] = [
     name: 'Pending MFA Sessions',
     attributes: [
       { name: 'access_token', type: 'string', size: 10000, required: true },
-      { name: 'refresh_token', type: 'string', size: 10000, required: true },
       { name: 'user_id', type: 'string', size: 36, required: true },
       { name: 'factor_id', type: 'string', size: 255, required: true },
       { name: 'expires_at', type: 'integer', required: true },
@@ -795,8 +792,7 @@ const COLLECTIONS: CollectionDef[] = [
     name: 'App Ratings',
     // Feedback about FreelanceXchain itself, not about a counterparty. The
     // `reviews` collection above is the separate freelancer<->employer rating.
-    // Attributed to the submitter, so it must NOT inherit the world-readable
-    // default — see RESTRICTED_COLLECTIONS in createCollection().
+    // Attributed to the submitter. Reached only through the server's admin API key.
     attributes: [
       { name: 'user_id', type: 'string', size: 36, required: true },
       { name: 'user_role', type: 'string', size: 20, required: true },
@@ -822,8 +818,7 @@ const COLLECTIONS: CollectionDef[] = [
     // A user asking the platform for help, and the admin's reply. Distinct from
     // `disputes` (two users, real money, arbitration) and from `app_ratings`
     // above (one-way feedback nobody answers).
-    // Carries a named user's problem report, so it must NOT inherit the
-    // world-readable default — see RESTRICTED_COLLECTIONS in createCollection().
+    // Carries a named user's problem report. Reached only through the server's admin API key.
     attributes: [
       { name: 'user_id', type: 'string', size: 36, required: true },
       // Recorded so the admin queue can show who filed it; never used to gate
@@ -850,9 +845,7 @@ const COLLECTIONS: CollectionDef[] = [
   {
     id: 'subscriptions',
     name: 'Subscriptions',
-    // Holds Stripe customer/subscription ids, so it must NOT inherit the
-    // world-readable default applied to every other collection below. See
-    // RESTRICTED_COLLECTIONS in createCollection().
+    // Holds Stripe customer/subscription ids. Reached only through the server's admin API key.
     attributes: [
       { name: 'user_id', type: 'string', size: 36, required: true },
       { name: 'stripe_customer_id', type: 'string', size: 64, required: false },
@@ -951,40 +944,72 @@ async function ensureDatabase(): Promise<void> {
 }
 
 /**
- * Collections that must never be readable by `Role.any()`.
+ * Collection Permissions:
+ * All collections are configured as server-only (empty permissions []).
  *
- * The default permissions below are world-readable, which is wrong for billing
- * records (Stripe customer and subscription ids) and equally wrong for app
- * feedback, which carries a named user's opinion of the platform, and for
- * support tickets, which carry a named user's problem report. These
- * collections are reached only through the server's admin API key, so they get
- * an empty permission set — no client-SDK role can touch them at all.
+ * In our 3-tier architecture (Client -> Express API -> Appwrite), all database
+ * operations are mediated by the Express backend using the server's admin API key.
+ * By setting permissions to empty ([]), we ensure that no client SDK or unauthorized
+ * external actor can read, write, or tamper with collections directly via Appwrite's
+ * client endpoints. All business rules, access control, and ownership checks are
+ * strictly enforced at the Express API layer.
  */
-const RESTRICTED_COLLECTIONS = new Set(['subscriptions', 'app_ratings', 'support_tickets']);
-
 async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
   try {
-    await db.getCollection(DATABASE_ID, colDef.id);
+    const existing = await db.getCollection(DATABASE_ID, colDef.id);
     console.log(`  ✓ Collection "${colDef.name}" already exists`);
+    // Lockdown guard: if existing collection has client-accessible permissions, lock it down to server-only
+    if (existing.$permissions && existing.$permissions.length > 0) {
+      console.log(`    🔒 Locking down "${colDef.name}" permissions to server-only...`);
+      await db.updateCollection(DATABASE_ID, colDef.id, colDef.name, []);
+    }
   } catch {
     console.log(`  Creating collection "${colDef.name}"...`);
-    const permissions = RESTRICTED_COLLECTIONS.has(colDef.id)
-      ? []
-      : [
-        Permission.read(Role.any()),
-        Permission.create(Role.users()),
-        Permission.update(Role.users()),
-        Permission.delete(Role.users()),
-      ];
-    await db.createCollection(DATABASE_ID, colDef.id, colDef.name, permissions);
-    console.log(
-      `  ✓ Collection "${colDef.name}" created${RESTRICTED_COLLECTIONS.has(colDef.id) ? ' (server-only)' : ''}`
-    );
+    // Server-only collection: empty permissions array disables all direct client-SDK access
+    await db.createCollection(DATABASE_ID, colDef.id, colDef.name, []);
+    console.log(`  ✓ Collection "${colDef.name}" created (server-only)`);
   }
 }
 
 async function createIndexes(colDef: typeof COLLECTIONS[0]): Promise<void> {
+  const existingIndexes = new Set<string>();
+  const availableAttributes = new Set<string>();
+
+  try {
+    const [indexRes, attrRes] = await Promise.all([
+      db.listIndexes(DATABASE_ID, colDef.id),
+      db.listAttributes(DATABASE_ID, colDef.id),
+    ]);
+    for (const idx of indexRes.indexes) {
+      existingIndexes.add(idx.key);
+    }
+    for (const attr of attrRes.attributes) {
+      availableAttributes.add(attr.key);
+    }
+    // Include built-in Appwrite system attributes
+    availableAttributes.add('$id');
+    availableAttributes.add('$createdAt');
+    availableAttributes.add('$updatedAt');
+    availableAttributes.add('$permissions');
+  } catch {
+    // If listing fails, proceed to creation
+  }
+
   for (const index of colDef.indexes ?? []) {
+    if (existingIndexes.has(index.key)) {
+      console.log(`    ⊘ Index "${index.key}" already exists`);
+      continue;
+    }
+
+    // Guard: check if all attributes required for the index exist in the collection
+    if (availableAttributes.size > 0) {
+      const missingAttr = index.attributes.find((attrName: string) => !availableAttributes.has(attrName));
+      if (missingAttr) {
+        console.log(`    ⊘ Index "${index.key}" skipped: attribute "${missingAttr}" is not in collection`);
+        continue;
+      }
+    }
+
     try {
       await db.createIndex(
         DATABASE_ID,
@@ -996,8 +1021,10 @@ async function createIndexes(colDef: typeof COLLECTIONS[0]): Promise<void> {
       );
       console.log(`    ✓ Index "${index.key}" (${index.attributes.join(', ')})`);
     } catch (e: any) {
-      if (e?.code === 409) {
+      if (e?.code === 409 || e?.message?.includes('already exists')) {
         console.log(`    ⊘ Index "${index.key}" already exists`);
+      } else if (e?.message?.includes('array attributes is not currently supported')) {
+        console.log(`    ⊘ Index "${index.key}" skipped (Appwrite does not support indexing array attributes)`);
       } else {
         console.error(`    ✗ Failed to create index "${index.key}":`, e?.message || e);
       }
@@ -1006,7 +1033,23 @@ async function createIndexes(colDef: typeof COLLECTIONS[0]): Promise<void> {
 }
 
 async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
+  const existingAttributes = new Set<string>();
+
+  try {
+    const attrRes = await db.listAttributes(DATABASE_ID, colDef.id);
+    for (const attr of attrRes.attributes) {
+      existingAttributes.add(attr.key);
+    }
+  } catch {
+    // If listing fails, proceed to creation
+  }
+
   for (const attr of colDef.attributes) {
+    if (existingAttributes.has(attr.name)) {
+      console.log(`    ⊘ Attribute "${attr.name}" already exists`);
+      continue;
+    }
+
     try {
       if (attr.type === 'string') {
         await db.createStringAttribute(
@@ -1052,8 +1095,10 @@ async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
       }
       console.log(`    ✓ Attribute "${attr.name}" (${attr.type})`);
     } catch (e: any) {
-      if (e?.code === 409) {
+      if (e?.code === 409 || e?.message?.includes('already exists')) {
         console.log(`    ⊘ Attribute "${attr.name}" already exists`);
+      } else if (e?.message?.includes('maximum number or size of attributes')) {
+        console.warn(`    ⚠️ Attribute "${attr.name}" skipped (collection reached maximum schema row size)`);
       } else {
         console.error(`    ✗ Failed to create attribute "${attr.name}":`, e?.message || e);
       }

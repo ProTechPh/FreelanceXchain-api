@@ -73,6 +73,8 @@ interface SystemHealth {
   timestamp: string;
 }
 
+const kycStatusCache = new Map<string, { status: KycVerification['status'] | 'not_started'; expires: number }>();
+
 /**
  * Persist a durable audit log entry for a privileged admin action (BLF-12.2).
  * Best-effort: a failed audit write must never break the admin action itself,
@@ -160,7 +162,7 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
     };
 
     if (!isTest) {
-      platformMetricsCache.set('platform_stats', statsData, 60_000);
+      platformMetricsCache.set('platform_stats', statsData, 5 * 60_000);
     }
 
     return successResult(statsData);
@@ -190,14 +192,30 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
       // In tests or if users.list fails, fallback to per-user lookup
     }
 
+    const isTest = process.env.NODE_ENV === 'test';
     const usersWithKyc = await Promise.all(allUsers.map(async (user) => {
-      const verificationPromise = getKycVerificationByUserId(user.id).catch(() => null);
+      let verification: KycVerification | null = null;
+      if (!isTest) {
+        const cached = kycStatusCache.get(user.id);
+        if (cached && cached.expires > Date.now()) {
+          verification = { status: cached.status } as KycVerification;
+        }
+      }
+      if (!verification) {
+        verification = await getKycVerificationByUserId(user.id).catch(() => null);
+        if (!isTest && verification) {
+          kycStatusCache.set(user.id, {
+            status: verification.status,
+            expires: Date.now() + 60_000,
+          });
+        }
+      }
 
       let emailVerified = appwriteUsersMap.has(user.id)
         ? appwriteUsersMap.get(user.id)!
         : Boolean((user as any).email_verified ?? (user as any).emailVerification ?? false);
 
-      if (!appwriteUsersMap.has(user.id) && !emailVerified) {
+      if (!appwriteUsersMap.has(user.id) && !emailVerified && appwriteUsersMap.size === 0) {
         try {
           if (users && typeof users.get === 'function') {
             const appwriteUser = await users.get(user.id);
@@ -208,7 +226,6 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
         }
       }
 
-      const verification = await verificationPromise;
       return {
         ...user,
         kyc_status: verification?.status ?? 'not_started' as const,
@@ -751,10 +768,19 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
  */
 export async function getSatisfactionRate(): Promise<number> {
   try {
+    const isTest = process.env.NODE_ENV === 'test';
+    if (!isTest) {
+      const cached = platformMetricsCache.get('satisfaction_rate');
+      if (typeof cached === 'number') return cached;
+    }
     const reviews = await reviewRepository.getAllReviews();
     const positive = reviews.filter(r => r.rating >= 4.0).length;
     const total = reviews.length;
-    return total > 0 ? Math.round((positive / total) * 100) : 0;
+    const rate = total > 0 ? Math.round((positive / total) * 100) : 0;
+    if (!isTest) {
+      platformMetricsCache.set('satisfaction_rate', rate, 5 * 60_000);
+    }
+    return rate;
   } catch (error) {
     logger.error('Failed to compute satisfaction rate', { error });
     return 0;
@@ -766,10 +792,14 @@ export async function getSatisfactionRate(): Promise<number> {
  */
 export async function getSystemHealth(): Promise<ServiceResult<SystemHealth>> {
   try {
-    // Check Appwrite connectivity via a lightweight query
+    // Check Appwrite connectivity via a genuinely lightweight query
     let databaseHealth: 'healthy' | 'unhealthy' = 'healthy';
     try {
-      await userRepository.queryAll();
+      if (typeof (userRepository as any).count === 'function') {
+        await (userRepository as any).count();
+      } else {
+        await userRepository.queryAll();
+      }
     } catch (error) {
       logger.error('Database health check failed', { error });
       databaseHealth = 'unhealthy';
