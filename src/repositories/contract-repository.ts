@@ -119,7 +119,12 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
         : null;
 
       const mapUser = (d: Models.Document | null) =>
-        d ? { id: d.$id, name: strField(d, 'name'), email: strField(d, 'email') } : null;
+        d ? {
+          id: d.$id,
+          name: strField(d, 'name'),
+          email: strField(d, 'email'),
+          wallet_address: strField(d, 'wallet_address'),
+        } : null;
 
       return {
         ...contract,
