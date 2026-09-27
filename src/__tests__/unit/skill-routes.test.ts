@@ -30,6 +30,7 @@ const mockDeleteUserCustomSkill = jest.fn<any>();
 const mockSearchUserCustomSkills = jest.fn<any>();
 const mockGetPendingSkillSuggestions = jest.fn<any>();
 const mockUpdateSkillSuggestionStatus = jest.fn<any>();
+const mockSuggestSkill = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/user-custom-skill-service.ts'), () => ({
   createUserCustomSkill: mockCreateUserCustomSkill,
@@ -40,6 +41,7 @@ jest.unstable_mockModule(resolveModule('src/services/user-custom-skill-service.t
   searchUserCustomSkills: mockSearchUserCustomSkills,
   getPendingSkillSuggestions: mockGetPendingSkillSuggestions,
   updateSkillSuggestionStatus: mockUpdateSkillSuggestionStatus,
+  suggestSkill: mockSuggestSkill,
 }));
 
 jest.unstable_mockModule(resolveModule('src/models/skill.ts'), () => ({}));
@@ -328,6 +330,49 @@ describe('Skill Routes', () => {
       });
       const res = await request(app).delete('/api/skills/custom/cs-1');
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /suggestions', () => {
+    it('should create suggestion on success', async () => {
+      mockSuggestSkill.mockResolvedValue({
+        success: true,
+        data: { message: 'Skill suggestion submitted for administrator review.' },
+      });
+      const res = await request(app)
+        .post('/api/skills/suggestions')
+        .send({ name: 'Solidity', description: 'Smart contract language', categoryName: 'Blockchain' });
+      expect(res.status).toBe(201);
+      expect(res.body.message).toContain('administrator review');
+    });
+
+    it('should return 400 on validation error', async () => {
+      const res = await request(app)
+        .post('/api/skills/suggestions')
+        .send({ name: '', description: '' });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 409 when skill exists globally', async () => {
+      mockSuggestSkill.mockResolvedValue({
+        success: false,
+        error: { code: 'SKILL_EXISTS_GLOBALLY', message: 'Skill already exists' },
+      });
+      const res = await request(app)
+        .post('/api/skills/suggestions')
+        .send({ name: 'React', description: 'Frontend library' });
+      expect(res.status).toBe(409);
+    });
+
+    it('should return 400 on other suggestion error', async () => {
+      mockSuggestSkill.mockResolvedValue({
+        success: false,
+        error: { code: 'SUGGESTION_FAILED', message: 'Failed to submit' },
+      });
+      const res = await request(app)
+        .post('/api/skills/suggestions')
+        .send({ name: 'New Skill', description: 'Valid description for skill' });
+      expect(res.status).toBe(400);
     });
   });
 
@@ -647,6 +692,7 @@ describe('skill-routes - custom skill edge cases', () => {
       searchUserCustomSkills: jest.fn(),
       getPendingSkillSuggestions: jest.fn(),
       updateSkillSuggestionStatus: jest.fn(),
+      suggestSkill: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/models/skill.ts'), () => ({}));
     jest.unstable_mockModule(resolveModule('src/models/user-custom-skill.ts'), () => ({}));
@@ -749,6 +795,7 @@ describe('skill-routes - userName fallback (line 583)', () => {
       searchUserCustomSkills: jest.fn(),
       getPendingSkillSuggestions: jest.fn(),
       updateSkillSuggestionStatus: jest.fn(),
+      suggestSkill: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/models/skill.ts'), () => ({}));
     jest.unstable_mockModule(resolveModule('src/models/user-custom-skill.ts'), () => ({}));

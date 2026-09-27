@@ -294,3 +294,35 @@ export async function updateSkillSuggestionStatus(
     return errorResult('UPDATE_FAILED', 'Failed to update skill suggestion status', [error instanceof Error ? error.message : 'Unknown error']);
   }
 }
+
+export async function suggestSkill(
+  userId: string,
+  userName: string,
+  input: { name: string; description: string; categoryName?: string }
+): Promise<ServiceResult<{ message: string }>> {
+  const trimmedName = input.name.trim();
+  const trimmedDesc = input.description.trim();
+
+  let globalMatch: SkillEntity | null = null;
+  try {
+    globalMatch = await skillRepository.getSkillByNameNormalized(trimmedName);
+  } catch (error) {
+    return errorResult('CHECK_FAILED', 'Failed to check existing skills', [error instanceof Error ? error.message : 'Unknown error']);
+  }
+
+  if (globalMatch) {
+    return errorResult('SKILL_EXISTS_GLOBALLY', `Skill "${trimmedName}" already exists in the global skill taxonomy. You can select it directly.`);
+  }
+
+  try {
+    await handleSkillSuggestion(userId, userName, {
+      name: trimmedName,
+      description: trimmedDesc,
+      yearsOfExperience: 0,
+      categoryName: input.categoryName,
+    });
+    return successResult({ message: 'Skill suggestion submitted for administrator review.' });
+  } catch (error) {
+    return errorResult('SUGGESTION_FAILED', 'Failed to submit skill suggestion', [error instanceof Error ? error.message : 'Unknown error']);
+  }
+}

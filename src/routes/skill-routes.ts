@@ -19,7 +19,8 @@ import {
   deleteUserCustomSkill,
   searchUserCustomSkills,
   getPendingSkillSuggestions,
-  updateSkillSuggestionStatus
+  updateSkillSuggestionStatus,
+  suggestSkill
 } from '../services/user-custom-skill-service.js';
 import { CreateUserCustomSkillInput, UpdateUserCustomSkillInput } from '../models/user-custom-skill.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -860,6 +861,90 @@ router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validate
   }
 
   res.status(204).send();
+}));
+
+/**
+ * @swagger
+ * /api/skills/suggestions:
+ *   post:
+ *     summary: Suggest a new skill for the global taxonomy (Admin review)
+ *     tags:
+ *       - Skill Suggestions
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - description
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Solidity"
+ *               description:
+ *                 type: string
+ *                 example: "Smart contract programming language for Ethereum"
+ *               categoryName:
+ *                 type: string
+ *                 example: "Blockchain Development"
+ *     responses:
+ *       201:
+ *         description: Skill suggestion submitted successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: Skill already exists in global taxonomy
+ */
+router.post('/suggestions', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const userName = req.user?.email || 'Unknown User';
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const { name, description, categoryName } = req.body;
+  const errors: { field: string; message: string }[] = [];
+
+  if (!name || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+    errors.push({ field: 'name', message: 'Skill name must be between 2 and 100 characters' });
+  }
+
+  if (!description || typeof description !== 'string' || description.trim().length < 5 || description.trim().length > 500) {
+    errors.push({ field: 'description', message: 'Description must be between 5 and 500 characters' });
+  }
+
+  if (categoryName !== undefined && (typeof categoryName !== 'string' || categoryName.trim().length > 100)) {
+    errors.push({ field: 'categoryName', message: 'Category name cannot exceed 100 characters' });
+  }
+
+  if (errors.length > 0) {
+    sendValidationError(res, errors, requestId);
+    return;
+  }
+
+  const result = await suggestSkill(userId, userName, {
+    name: name.trim(),
+    description: description.trim(),
+    ...(categoryName && typeof categoryName === 'string' && categoryName.trim() ? { categoryName: categoryName.trim() } : {}),
+  });
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'SKILL_EXISTS_GLOBALLY' ? 409 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
+    return;
+  }
+
+  res.status(201).json(result.data);
 }));
 
 /**

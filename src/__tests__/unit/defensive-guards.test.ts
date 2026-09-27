@@ -102,6 +102,7 @@ jest.unstable_mockModule(resolveModule('src/services/user-custom-skill-service.t
   updateUserCustomSkill: jest.fn<any>(),
   deleteUserCustomSkill: jest.fn<any>(),
   searchUserCustomSkills: jest.fn<any>(),
+  suggestSkill: jest.fn<any>(),
   getPendingSkillSuggestions: jest.fn<any>(),
   updateSkillSuggestionStatus: jest.fn<any>(),
 }));
