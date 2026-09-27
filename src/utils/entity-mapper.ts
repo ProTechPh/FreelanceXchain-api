@@ -264,6 +264,7 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
     name: entity.freelancer.name,
     email: entity.freelancer.email,
     hourlyRate: entity.freelancer.profile?.hourly_rate,
+    walletAddress: (entity.freelancer as any).wallet_address || (entity.freelancer as any).walletAddress,
   } : undefined;
   
   const employerData = entity.employer ? {
@@ -272,6 +273,7 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
     email: entity.employer.email,
     companyName: entity.employer.profile?.company_name,
     industry: entity.employer.profile?.industry,
+    walletAddress: (entity.employer as any).wallet_address || (entity.employer as any).walletAddress,
   } : undefined;
   
   return {
