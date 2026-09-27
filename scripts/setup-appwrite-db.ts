@@ -1734,12 +1734,15 @@ async function seedAuthUsers(usersList: Array<{ seedId: string; email: string; n
       await usersService.updateEmailVerification(u.seedId, true);
     } catch (e: any) {
       if (e?.code === 409) {
-        // User already exists; update password and email verification
+        // User already exists; update password and email verification using their actual ID
         try {
-          await usersService.updatePassword(u.seedId, DEMO_PASSWORD);
-          await usersService.updateEmailVerification(u.seedId, true);
-        } catch {
-          // non-critical if update skipped
+          const list = await usersService.list([Query.equal('email', u.email)]);
+          const existing = list.users[0];
+          const targetId = existing ? existing.$id : u.seedId;
+          await usersService.updatePassword(targetId, DEMO_PASSWORD);
+          await usersService.updateEmailVerification(targetId, true);
+        } catch (updateErr: any) {
+          console.warn(`      ⚠️ Could not update auth user for ${u.email}:`, updateErr?.message || updateErr);
         }
       } else {
         console.warn(`      ⚠️ Could not create auth user for ${u.email}:`, e?.message || e);
