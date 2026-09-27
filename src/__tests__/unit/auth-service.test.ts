@@ -702,6 +702,45 @@ describe('auth-service comprehensive coverage', () => {
       });
     });
 
+    it('should return DISPOSABLE_EMAIL when email is a known disposable provider', async () => {
+      const result = await register({
+        ...validInput,
+        email: 'throwaway@mailinator.com',
+      });
+      expect(result).toEqual({
+        code: 'DISPOSABLE_EMAIL',
+        message: 'Disposable email addresses are not allowed. Please use a permanent email address.',
+      });
+    });
+
+    it('should return DISPOSABLE_EMAIL when Appwrite rejects disposable email', async () => {
+      users.create.mockRejectedValueOnce({
+        type: 'user_email_disposable',
+        message: 'Disposable email addresses are not allowed. Please use a permanent email address.',
+        code: 400,
+      });
+
+      const result = await register(validInput);
+      expect(result).toEqual({
+        code: 'DISPOSABLE_EMAIL',
+        message: 'Disposable email addresses are not allowed. Please use a permanent email address.',
+      });
+    });
+
+    it('should return PASSWORD_PWNED when Appwrite rejects breached password', async () => {
+      users.create.mockRejectedValueOnce({
+        type: 'password_pwned',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+        code: 400,
+      });
+
+      const result = await register(validInput);
+      expect(result).toEqual({
+        code: 'PASSWORD_PWNED',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+      });
+    });
+
     it('should return INTERNAL_ERROR for other registration failures', async () => {
       users.create.mockRejectedValueOnce(new Error('Service unavailable'));
 
@@ -1004,6 +1043,20 @@ describe('auth-service comprehensive coverage', () => {
       );
     });
 
+    it('should return PASSWORD_PWNED when updatePassword receives a breached password', async () => {
+      global.mockAppwriteAccount.updatePassword.mockRejectedValueOnce({
+        type: 'password_pwned',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+        code: 400,
+      });
+
+      const result = await updatePassword('token', 'PwnedPass1!');
+      expect(result).toEqual({
+        code: 'PASSWORD_PWNED',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+      });
+    });
+
     it('should still succeed when deleteSessions throws an Error instance', async () => {
       global.mockAppwriteAccount.deleteSessions = jest.fn().mockRejectedValueOnce(new Error('session failure'));
 
@@ -1057,6 +1110,20 @@ describe('auth-service comprehensive coverage', () => {
       });
     });
 
+    it('should return PASSWORD_PWNED when recovery password is breached', async () => {
+      global.mockAppwriteAccount.updateRecovery.mockRejectedValueOnce({
+        type: 'password_pwned',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+        code: 400,
+      });
+
+      const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'PwnedPass123!');
+      expect(result).toEqual({
+        code: 'PASSWORD_PWNED',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+      });
+    });
+
     it('should return INTERNAL_ERROR on unexpected failure', async () => {
       global.mockAppwriteAccount.updateRecovery.mockRejectedValueOnce(new Error('Connection lost'));
 
@@ -1105,6 +1172,20 @@ describe('auth-service comprehensive coverage', () => {
       expect(result).toEqual({
         code: 'INVALID_CREDENTIALS',
         message: 'Current password is incorrect',
+      });
+    });
+
+    it('should return PASSWORD_PWNED when changePassword new password is breached', async () => {
+      global.mockAppwriteAccount.updatePassword.mockRejectedValueOnce({
+        type: 'password_pwned',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+        code: 400,
+      });
+
+      const result = await changePassword('access-token', 'OldPass1!', 'PwnedPass1@');
+      expect(result).toEqual({
+        code: 'PASSWORD_PWNED',
+        message: 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
       });
     });
 

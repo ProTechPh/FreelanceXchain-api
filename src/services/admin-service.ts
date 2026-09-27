@@ -641,6 +641,12 @@ async function createAuthUserInAppwrite(
     if (msg.includes('already exists') || (appwriteErr as any)?.code === 409) {
       return errorResult('DUPLICATE_EMAIL', 'An account with this email already exists in Auth provider');
     }
+    if ((appwriteErr as any)?.type === 'user_email_disposable' || msg.toLowerCase().includes('disposable')) {
+      return errorResult('VALIDATION_ERROR', 'Disposable email addresses are not allowed. Please use a permanent email address.');
+    }
+    if ((appwriteErr as any)?.type === 'password_pwned' || msg.toLowerCase().includes('data breach') || msg.toLowerCase().includes('pwned')) {
+      return errorResult('VALIDATION_ERROR', 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.');
+    }
     logger.error('Failed to create user in Appwrite Auth', { error: appwriteErr, email: normalizedEmail });
     return errorResult('INTERNAL_ERROR', 'Failed to create user in authentication provider');
   }
