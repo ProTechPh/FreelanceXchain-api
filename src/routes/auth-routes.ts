@@ -32,6 +32,8 @@ import {
   verifyAccountDeletionCode,
   isAuthError,
 } from '../services/auth-service.js';
+import { parseUserAgent } from '../utils/login-security.js';
+import { sendNewDeviceLoginAlertEmail } from '../services/email-delivery-service.js';
 import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter, walletRateLimiter } from '../middleware/rate-limiter.js';
 import { requireTurnstile } from '../middleware/turnstile-middleware.js';
@@ -312,6 +314,23 @@ router.post('/login', authRateLimiter, requireTurnstile('login'), asyncHandler(a
       error_message: result.message || 'Invalid email or password',
     });
 
+    if (result.code === 'ACCOUNT_LOCKED') {
+      void auditLogRepository.create({
+        user_id: null,
+        actor_id: null,
+        action: 'auth.account_locked',
+        resource_type: 'user',
+        resource_id: null,
+        payload: { email: validation.input!.email },
+        ip_address: ip,
+        user_agent: userAgent,
+        status: 'failure',
+        error_message: result.message,
+      });
+      sendErrorResponse(res, 423, 'ACCOUNT_LOCKED', result.message, { requestId });
+      return;
+    }
+
     if (result.code === 'EMAIL_NOT_VERIFIED') {
       sendErrorResponse(res, 403, 'EMAIL_NOT_VERIFIED', result.message, { requestId });
       return;
@@ -336,6 +355,22 @@ router.post('/login', authRateLimiter, requireTurnstile('login'), asyncHandler(a
 
   if (result.accessToken) {
     setAuthCookies(res, result.accessToken, result.refreshToken);
+  }
+
+  // Non-blocking security alert email on sign-in
+  if (result.user?.email) {
+    const userEmail = result.user.email;
+    const recipientName = result.user.name || userEmail.split('@')[0] || 'User';
+    const clientDevice = parseUserAgent(userAgent);
+    void sendNewDeviceLoginAlertEmail(userEmail, {
+      recipientName,
+      ip: ip || 'Unknown IP',
+      device: clientDevice.os ? `${clientDevice.os} (${clientDevice.device})` : clientDevice.device,
+      browser: clientDevice.browser,
+      timestamp: new Date().toUTCString(),
+    }).catch((err) => {
+      logger.warn('Failed to send login alert email', { error: err, email: userEmail });
+    });
   }
 
   res.status(200).json(result);
@@ -412,6 +447,35 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
 
   if (authResult.accessToken) {
     setAuthCookies(res, authResult.accessToken, authResult.refreshToken);
+  }
+
+  const { ip, userAgent } = extractClientInfo(req);
+  void auditLogRepository.create({
+    user_id: authResult.user.id,
+    actor_id: authResult.user.id,
+    action: 'auth.login_mfa_completed',
+    resource_type: 'user',
+    resource_id: authResult.user.id,
+    payload: { email: authResult.user.email, role: authResult.user.role },
+    ip_address: ip,
+    user_agent: userAgent,
+    status: 'success',
+    error_message: null,
+  });
+
+  if (authResult.user?.email) {
+    const userEmail = authResult.user.email;
+    const recipientName = authResult.user.name || userEmail.split('@')[0] || 'User';
+    const clientDevice = parseUserAgent(userAgent);
+    void sendNewDeviceLoginAlertEmail(userEmail, {
+      recipientName,
+      ip: ip || 'Unknown IP',
+      device: clientDevice.os ? `${clientDevice.os} (${clientDevice.device})` : clientDevice.device,
+      browser: clientDevice.browser,
+      timestamp: new Date().toUTCString(),
+    }).catch((err) => {
+      logger.warn('Failed to send MFA login alert email', { error: err, email: userEmail });
+    });
   }
 
   res.status(200).json(authResult);

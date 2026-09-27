@@ -326,6 +326,10 @@ export class BaseRepository<T extends BaseEntity> {
     }
   }
 
+  async count(queries: string[] = []): Promise<number> {
+    return this.countWithQueries(queries);
+  }
+
   protected async countWithQueries(queries: string[]): Promise<number> {
     try {
       const response = await this.timedQuery('countWithQueries', () =>

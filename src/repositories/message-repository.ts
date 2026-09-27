@@ -127,6 +127,19 @@ export const messageRepository = {
     }
   },
 
+  async getConversationById(conversationId: string): Promise<ConversationEntity | null> {
+    try {
+      const doc = await databases.getDocument(
+        DATABASE_ID,
+        CONVERSATIONS_COLLECTION,
+        conversationId
+      );
+      return mapConversation(doc);
+    } catch {
+      return null;
+    }
+  },
+
   async getUserConversations(userId: string, limit: number, offset: number) {
     try {
       const [slot1, slot2] = await Promise.all([

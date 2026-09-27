@@ -24,8 +24,10 @@ export class AuditLogService {
     return this.auditLogRepo.getByAction(action, limit);
   }
 
-  async getAuditLogsByDateRange(startDate: Date, endDate: Date): Promise<AuditLogEntry[]> {
-    return this.auditLogRepo.getByDateRange(startDate, endDate);
+  async getAuditLogsByDateRange(startDate: Date, endDate: Date, limit?: number): Promise<AuditLogEntry[]> {
+    return limit !== undefined
+      ? this.auditLogRepo.getByDateRange(startDate, endDate, limit)
+      : this.auditLogRepo.getByDateRange(startDate, endDate);
   }
 
   async getFailedActions(limit = 100): Promise<AuditLogEntry[]> {

@@ -346,24 +346,24 @@ curl -X POST https://api.freelancexchain.com/api/contracts \
 
 ### Appwrite Collection Permissions
 
-Collections are created by `scripts/setup-appwrite-db.ts` with default Appwrite permissions: public read (`Role.any()`), authenticated create/update/delete (`Role.users()`). These form a baseline security boundary only — the application enforces fine-grained rules.
+Collections are configured by `scripts/setup-appwrite-db.ts` as server-only with empty permissions (`[]`). This ensures no client SDK or direct external API call can read, create, update, or delete collection documents directly. All data access is strictly mediated by the Express API using the server's admin API key, where authentication, authorization, and ownership checks are applied.
 
 ### Application-Level Access Patterns
 
 - **User-owned resources** (profiles, notifications): Repository/service queries filter by user ID (e.g. `Query.equal('user_id', ...)`)
 - **Shared resources** (contracts): Access checked for both freelancer and employer parties in the service layer
-- **Public read** (skills, categories): Readable by anyone per collection permissions
-- **Open discovery** (projects with `status = 'open'`): Publicly readable; drafts and completed projects are gated by owner checks
+- **Public read** (skills, categories): Read endpoints accessible through public API routes
+- **Open discovery** (projects with `status = 'open'`): Publicly readable via API; drafts and completed projects are gated by owner checks
 
 ### Defense in Depth
 
-Appwrite permissions operate alongside application-level security:
+Our multi-layered security architecture enforces boundaries at every tier:
 
 1. **Transport**: HTTPS/TLS
 2. **Authentication**: Bearer token validation (`authMiddleware`, `validateToken`)
-3. **Authorization**: Role-based access control middleware (`requireRole`)
-4. **Database**: Appwrite collection permissions
-5. **Repository layer**: Explicit user ID filtering as fallback
+3. **Authorization**: Role-based access control middleware (`requireRole`, `requirePermission`)
+4. **Database Isolation**: Server-only Appwrite collection permissions (`[]`), preventing direct client-to-database access
+5. **Repository layer**: Explicit user ID filtering and ownership checks on every operation
 
 ### Testing Access Control
 

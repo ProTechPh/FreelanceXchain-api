@@ -201,6 +201,16 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('EMAIL_NOT_VERIFIED');
     });
+
+    it('should return 423 when account is temporarily locked', async () => {
+      mockLogin.mockResolvedValue({
+        code: 'ACCOUNT_LOCKED',
+        message: 'Your account has been temporarily locked due to repeated login failures. Please try again after 15 minutes or reset your password.',
+      });
+      const res = await request(app).post('/api/auth/login').send({ email: 'locked@test.com', password: 'AnyPassword1!' });
+      expect(res.status).toBe(423);
+      expect(res.body.error.code).toBe('ACCOUNT_LOCKED');
+    });
   });
 
   describe('POST /login/mfa-verify', () => {
