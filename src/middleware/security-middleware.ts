@@ -195,21 +195,6 @@ export function directAccessGuard(req: Request, res: Response, next: NextFunctio
         return;
     }
 
-    // 4b. Genuinely public, read-only API endpoints that require no authentication.
-    // These are safe to expose without the internal secret because they return only
-    // public aggregate data and are rate-limited by apiRateLimiter on the route level.
-    if (
-        path === '/api/reputation/leaderboard' ||
-        path.startsWith('/api/reputation/leaderboard?') ||
-        path === '/api/skills' ||
-        path.startsWith('/api/skills?') ||
-        path.startsWith('/api/skills/search') ||
-        path.startsWith('/api/skills/categories')
-    ) {
-        next();
-        return;
-    }
-
     // 5. Block direct browser navigation to API endpoints
     const secFetchDest = req.headers['sec-fetch-dest'];
     const secFetchMode = req.headers['sec-fetch-mode'];
