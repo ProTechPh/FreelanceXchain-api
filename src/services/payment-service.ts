@@ -36,6 +36,7 @@ import { SagaOrchestrator } from '../utils/saga-orchestrator.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
+import { toEthUnits } from '../utils/index.js';
 import { paymentSummaryCache } from '../utils/cache.js';
 const MIN_MILESTONE_AMOUNT = 0.0001; // Minimum milestone amount in ETH
 const MAX_CONTRACT_AMOUNT = 1_000_000; // Maximum contract amount in ETH
@@ -954,7 +955,7 @@ export async function getContractPaymentHistory(
         milestoneId: p.milestone_id,
         payerId: p.payer_id,
         payeeId: p.payee_id,
-        amount: p.amount,
+        amount: toEthUnits(p.amount, p.payment_type),
         currency: p.currency,
         txHash: p.tx_hash,
         status: p.status,
@@ -1003,7 +1004,7 @@ export async function getMyPayments(
         milestoneId: p.milestone_id,
         payerId: p.payer_id,
         payeeId: p.payee_id,
-        amount: p.amount,
+        amount: toEthUnits(p.amount, p.payment_type),
         currency: p.currency,
         txHash: p.tx_hash,
         status: p.status,
