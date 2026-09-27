@@ -10,6 +10,7 @@ import { favoriteRepository } from '../repositories/favorites-repository.js';
 import { account as adminAccount, createUserClient, users } from '../config/appwrite.js';
 import { UserRole, type AdminPermission } from '../models/user.js';
 import { getErrorMessage } from '../utils/index.js';
+import { isDisposableEmail } from '../utils/disposable-email.js';
 import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
@@ -350,12 +351,40 @@ async function sendVerificationEmail(sessionSecret: string, userId: string, emai
 }
 
 function toAuthError(error: unknown): AuthError {
-  if (getErrorMessage(error)?.includes('already exists') || getErrorCode(error) === 409) {
+  const errorType = getErrorType(error);
+  const errorMessage = getErrorMessage(error);
+  const errorCode = getErrorCode(error);
+
+  if (errorMessage?.includes('already exists') || errorCode === 409 || errorType === 'user_already_exists') {
     return {
       code: 'DUPLICATE_EMAIL',
       message: 'An account with this email already exists',
     };
   }
+
+  if (
+    errorType === 'user_email_disposable' ||
+    errorMessage?.toLowerCase().includes('disposable') ||
+    errorMessage?.toLowerCase().includes('temporary email')
+  ) {
+    return {
+      code: 'DISPOSABLE_EMAIL',
+      message: 'Disposable email addresses are not allowed. Please use a permanent email address.',
+    };
+  }
+
+  if (
+    errorType === 'password_pwned' ||
+    errorMessage?.toLowerCase().includes('data breach') ||
+    errorMessage?.toLowerCase().includes('pwned') ||
+    errorMessage?.toLowerCase().includes('exposed in a known data breach')
+  ) {
+    return {
+      code: 'PASSWORD_PWNED',
+      message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+    };
+  }
+
   return {
     code: 'INTERNAL_ERROR',
     message: 'Failed to create user',
@@ -421,6 +450,13 @@ function buildAuthResult(publicUser: UserEntity, sessionSecret: string): AuthRes
 
 export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
   const normalizedEmail = input.email.toLowerCase().trim();
+
+  if (await isDisposableEmail(normalizedEmail)) {
+    return {
+      code: 'DISPOSABLE_EMAIL',
+      message: 'Disposable email addresses are not allowed. Please use a permanent email address.',
+    };
+  }
 
   try {
     await ensureEmailIsUnique(normalizedEmail);
@@ -723,6 +759,18 @@ export async function resetPasswordWithRecovery(
     logger.error('Password reset with recovery failed', { error: errorMessage, type: errorType, userId });
 
     if (
+      errorType === 'password_pwned' ||
+      lowerMsg.includes('data breach') ||
+      lowerMsg.includes('pwned') ||
+      lowerMsg.includes('exposed in a known data breach')
+    ) {
+      return {
+        code: 'PASSWORD_PWNED',
+        message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+      };
+    }
+
+    if (
       lowerMsg.includes('recent') ||
       lowerMsg.includes('history') ||
       lowerMsg.includes('previous') ||
@@ -776,7 +824,23 @@ export async function updatePassword(accessToken: string, newPassword: string): 
 
     return { success: true };
   } catch (error: unknown) {
-    logger.error('Password update failed', { error: getErrorMessage(error) });
+    const errorType = getErrorType(error);
+    const errorMessage = getErrorMessage(error) || '';
+    const lowerMsg = errorMessage.toLowerCase();
+
+    if (
+      errorType === 'password_pwned' ||
+      lowerMsg.includes('data breach') ||
+      lowerMsg.includes('pwned') ||
+      lowerMsg.includes('exposed in a known data breach')
+    ) {
+      return {
+        code: 'PASSWORD_PWNED',
+        message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+      };
+    }
+
+    logger.error('Password update failed', { error: errorMessage });
 
     return {
       code: 'INTERNAL_ERROR',
@@ -829,11 +893,24 @@ export async function changePassword(
   } catch (error: unknown) {
     const errorType = getErrorType(error);
     const errorMessage = getErrorMessage(error) || '';
+    const lowerMsg = errorMessage.toLowerCase();
+
+    if (
+      errorType === 'password_pwned' ||
+      lowerMsg.includes('data breach') ||
+      lowerMsg.includes('pwned') ||
+      lowerMsg.includes('exposed in a known data breach')
+    ) {
+      return {
+        code: 'PASSWORD_PWNED',
+        message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
+      };
+    }
 
     if (
       errorType === 'user_invalid_credentials' ||
-      errorMessage.toLowerCase().includes('credential') ||
-      errorMessage.toLowerCase().includes('password')
+      lowerMsg.includes('credential') ||
+      lowerMsg.includes('invalid credentials')
     ) {
       return {
         code: 'INVALID_CREDENTIALS',

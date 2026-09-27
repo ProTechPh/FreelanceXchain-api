@@ -54,6 +54,8 @@ export type AuthResult = {
 export type AuthError = {
   code:
   | 'DUPLICATE_EMAIL'
+  | 'DISPOSABLE_EMAIL'
+  | 'PASSWORD_PWNED'
   | 'INVALID_CREDENTIALS'
   | 'TOKEN_EXPIRED'
   | 'INVALID_TOKEN'

@@ -216,10 +216,15 @@ router.post('/register', registerRateLimiter, requireTurnstile('signup'), asyncH
   const result = await register(validation.input!);
 
   if (isAuthError(result)) {
+    const errorCode = result.code === 'DISPOSABLE_EMAIL'
+      ? 'DISPOSABLE_EMAIL'
+      : result.code === 'PASSWORD_PWNED'
+      ? 'PASSWORD_PWNED'
+      : 'REGISTRATION_FAILED';
     const message = result.code === 'DUPLICATE_EMAIL'
       ? 'An account with this email already exists. Please sign in or use a different email.'
       : result.message;
-    sendErrorResponse(res, 400, 'REGISTRATION_FAILED', message, { requestId });
+    sendErrorResponse(res, 400, errorCode, message, { requestId });
     return;
   }
 
@@ -1239,7 +1244,11 @@ router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req
     : await updatePassword((validation.accessToken || validation.secret)!, validation.password!);
 
   if (isAuthError(result)) {
-    const statusCode = result.code === 'INVALID_TOKEN' ? 401 : result.code === 'VALIDATION_ERROR' ? 400 : 500;
+    const statusCode = result.code === 'INVALID_TOKEN'
+      ? 401
+      : result.code === 'VALIDATION_ERROR' || result.code === 'PASSWORD_PWNED'
+      ? 400
+      : 500;
     sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
     return;
   }
@@ -1296,7 +1305,7 @@ router.post('/change-password', authMiddleware, passwordResetRateLimiter, asyncH
   const result = await changePassword(accessToken, validation.currentPassword!, validation.newPassword!);
 
   if (isAuthError(result)) {
-    const statusCode = result.code === 'INVALID_CREDENTIALS' || result.code === 'VALIDATION_ERROR' ? 400 : 500;
+    const statusCode = result.code === 'INVALID_CREDENTIALS' || result.code === 'VALIDATION_ERROR' || result.code === 'PASSWORD_PWNED' ? 400 : 500;
     sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
     return;
   }
