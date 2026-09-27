@@ -95,34 +95,28 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
       const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, id);
       const contract = mapDoc(doc);
 
-      // Fetch related entities
-      const [projectDoc, freelancerDoc, employerDoc] = await Promise.all([
+      // Fetch related entities and profiles concurrently (eliminates waterfall latency)
+      const [projectDoc, freelancerDoc, employerDoc, freelancerProfileResp, employerProfileResp] = await Promise.all([
         databases.getDocument(DATABASE_ID, 'projects', contract.project_id).catch(() => null),
         databases.getDocument(DATABASE_ID, 'users', contract.freelancer_id).catch(() => null),
         databases.getDocument(DATABASE_ID, 'users', contract.employer_id).catch(() => null),
+        databases.listDocuments(DATABASE_ID, 'freelancer_profiles', [
+          Query.equal('user_id', contract.freelancer_id),
+          Query.limit(1),
+        ]).catch(() => null),
+        databases.listDocuments(DATABASE_ID, 'employer_profiles', [
+          Query.equal('user_id', contract.employer_id),
+          Query.limit(1),
+        ]).catch(() => null),
       ]);
 
-      let freelancerProfile: Models.Document | null = null;
-      if (freelancerDoc) {
-        try {
-          const resp = await databases.listDocuments(DATABASE_ID, 'freelancer_profiles', [
-            Query.equal('user_id', contract.freelancer_id),
-            Query.limit(1),
-          ]);
-          freelancerProfile = resp.documents[0] ?? null;
-        } catch { /* ignore */ }
-      }
+      const freelancerProfile = (freelancerDoc && freelancerProfileResp)
+        ? (freelancerProfileResp.documents[0] ?? null)
+        : null;
 
-      let employerProfile: Models.Document | null = null;
-      if (employerDoc) {
-        try {
-          const resp = await databases.listDocuments(DATABASE_ID, 'employer_profiles', [
-            Query.equal('user_id', contract.employer_id),
-            Query.limit(1),
-          ]);
-          employerProfile = resp.documents[0] ?? null;
-        } catch { /* ignore */ }
-      }
+      const employerProfile = (employerDoc && employerProfileResp)
+        ? (employerProfileResp.documents[0] ?? null)
+        : null;
 
       const mapUser = (d: Models.Document | null) =>
         d ? { id: d.$id, name: strField(d, 'name'), email: strField(d, 'email') } : null;
@@ -219,7 +213,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   /**
    * Count contracts by status across both of the user's roles (freelancer + employer).
-   * Uses two count queries (Appwrite has no OR) — O(1) vs materializing every
+   * Uses two count queries (Appwrite has no OR) â€” O(1) vs materializing every
    * contract, and never truncates.
    */
   async countContractsByUserAndStatus(userId: string, status: ContractStatus): Promise<number> {

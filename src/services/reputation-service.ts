@@ -20,6 +20,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 import type { Review } from '../models/review.js';
+import { reputationCache } from '../utils/cache.js';
 
 
 export type RatingInput = {
@@ -341,10 +342,13 @@ export async function submitRating(
     logger.error('Failed to send review-received email', { error, rateeId, raterId: input.raterId });
   }
 
-  return successResult({
-    rating,
-    transactionHash,
-  });
+    // Invalidate cached reputation for ratee
+    reputationCache.deleteMatching((k: string) => k.startsWith(`rep:${rateeId}:`));
+
+    return successResult({
+      rating,
+      transactionHash,
+    });
   }); // BLF-9.1: end withLock
 }
 
@@ -355,6 +359,16 @@ export async function getReputation(
   userId: string,
   decayLambda: number = 0.01
 ): Promise<ServiceResult<ReputationScore>> {
+  const cacheKey = `rep:${userId}:${decayLambda}`;
+  const isTest = process.env.NODE_ENV === 'test' && process.env.ENABLE_MATCHING_CACHE_TEST !== 'true';
+
+  if (!isTest) {
+    const cached = reputationCache.get(cacheKey) as ReputationScore | undefined;
+    if (cached) {
+      return successResult(cached);
+    }
+  }
+
   try {
     const reviews = await reviewRepository.findAllByRevieweeId(userId);
 
@@ -375,13 +389,19 @@ export async function getReputation(
       ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 100) / 100
       : 0;
 
-    return successResult({
+    const result: ReputationScore = {
       userId,
       score,
       totalRatings: ratings.length,
       averageRating,
       ratings,
-    });
+    };
+
+    if (!isTest) {
+      reputationCache.set(cacheKey, result);
+    }
+
+    return successResult(result);
   } catch (error) {
     logger.error('Failed to get reputation', { error, userId });
     return errorResult('DATABASE_ERROR', 'Failed to get reputation');

@@ -50,34 +50,27 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
   ): Promise<{ items: PaymentEntity[]; total: number; hasMore: boolean }> {
     const { limit = 20, offset = 0 } = options;
     try {
-      // The payments collection has no `user_id` attribute — a payment
+      // The payments collection has no `user_id` attribute - a payment
       // involves a user as payer (money out) or payee (money in). Match both.
       const userQuery = Query.or([
         Query.equal('payer_id', userId),
         Query.equal('payee_id', userId),
       ]);
-      const countResponse = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          userQuery,
-          Query.limit(1),
-        ]
-      );
-      const total = countResponse.total;
 
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          userQuery,
-          Query.orderDesc('$createdAt'),
-          Query.limit(limit),
-          Query.offset(offset),
-        ]
+      const response = await this.timedQuery('findByUserId', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          COLLECTION_ID,
+          [
+            userQuery,
+            Query.orderDesc('$createdAt'),
+            Query.limit(limit),
+            Query.offset(offset),
+          ]
+        )
       );
       const items = response.documents.map(mapPayment);
-      return { items, total, hasMore: items.length === limit };
+      return { items, total: response.total, hasMore: offset + items.length < response.total };
     } catch (error) {
       throw new Error(`Failed to find payments: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

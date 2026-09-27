@@ -42,9 +42,7 @@ describe('ReviewRepository', () => {
   describe('findByRevieweeId', () => {
     it('returns paginated results with default options', async () => {
       const reviews = [{ $id: 'r1', reviewee_id: 'u1' }];
-      mockDatabases.listDocuments
-        .mockResolvedValueOnce({ documents: [], total: 1 })
-        .mockResolvedValueOnce({ documents: reviews, total: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
       const result = await ReviewRepository.findByRevieweeId('u1');
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.id).toBe('r1');
@@ -54,9 +52,7 @@ describe('ReviewRepository', () => {
 
     it('returns paginated results with custom limit and offset', async () => {
       const reviews = [{ $id: 'r1' }, { $id: 'r2' }];
-      mockDatabases.listDocuments
-        .mockResolvedValueOnce({ documents: [], total: 10 })
-        .mockResolvedValueOnce({ documents: reviews, total: 10 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 10 });
       const result = await ReviewRepository.findByRevieweeId('u1', { limit: 2, offset: 0 });
       expect(result.items).toHaveLength(2);
       expect(result.hasMore).toBe(true);
@@ -64,9 +60,7 @@ describe('ReviewRepository', () => {
     });
 
     it('returns empty items when no results', async () => {
-      mockDatabases.listDocuments
-        .mockResolvedValueOnce({ documents: [], total: 0 })
-        .mockResolvedValueOnce({ documents: [], total: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       const result = await ReviewRepository.findByRevieweeId('u1');
       expect(result.items).toEqual([]);
       expect(result.hasMore).toBe(false);

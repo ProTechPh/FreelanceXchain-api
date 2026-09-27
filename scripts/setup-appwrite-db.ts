@@ -303,7 +303,8 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
-      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'payer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['payer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'payee_id_createdAt', type: DatabasesIndexType.Key, attributes: ['payee_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'unique_tx_hash', type: DatabasesIndexType.Unique, attributes: ['tx_hash'] },
       { key: 'payee_id_status', type: DatabasesIndexType.Key, attributes: ['payee_id', 'status'] },
       { key: 'payer_id_status', type: DatabasesIndexType.Key, attributes: ['payer_id', 'status'] },

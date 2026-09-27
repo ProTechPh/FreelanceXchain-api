@@ -120,9 +120,8 @@ export const config = {
     privateKey: getEnvVarOptional('BLOCKCHAIN_PRIVATE_KEY'),
     // BLOCKCHAIN_MODE switches the blockchain backend: 'real' talks to actual
     // EVM contracts (dev → Ganache, prod → Polygon Amoy), 'simulated' emulates
-    // the ledger in Appwrite for tests/CI and as a no-config fallback. The
-    // `dev` and `prod` npm scripts force 'real' explicitly — the 'simulated'
-    // default ONLY applies when BLOCKCHAIN_MODE is unset. See
+    // the ledger in Appwrite for tests/CI and as a no-config fallback.
+    // Configured via .env or environment variables. Defaults to 'simulated' if unset. See
     // src/services/blockchain/README.md for the parity notes between modes.
     mode: getEnvVar('BLOCKCHAIN_MODE', 'simulated') as 'real' | 'simulated',
     arbiterAddress: getEnvVarOptional('PLATFORM_ARBITER_ADDRESS'),
