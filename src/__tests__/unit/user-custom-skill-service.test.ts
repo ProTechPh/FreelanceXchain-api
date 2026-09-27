@@ -978,4 +978,94 @@ describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
       expect(result.error.details[0]).toBe('Unknown error');
     }
   });
+
+  describe('suggestSkill', () => {
+    it('should submit new suggestion when skill does not exist', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetSkillSuggestionByName.mockResolvedValueOnce(null);
+      mockCreateSkillSuggestion.mockResolvedValueOnce({ id: 'sug-1' });
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Solidity',
+        description: 'Smart contracts language',
+        categoryName: 'Blockchain',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.message).toContain('administrator review');
+      }
+      expect(mockCreateSkillSuggestion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skill_name: 'Solidity',
+          skill_description: 'Smart contracts language',
+          category_name: 'Blockchain',
+        })
+      );
+    });
+
+    it('should bump existing suggestion if already submitted by another user', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetSkillSuggestionByName.mockResolvedValueOnce({ id: 'existing-sug-1', skill_name: 'Solidity' });
+      mockRecordSuggestionRequest.mockResolvedValueOnce({ id: 'existing-sug-1' });
+
+      const result = await suggestSkill('u2', 'Jane Doe', {
+        name: 'Solidity',
+        description: 'Smart contracts language',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockRecordSuggestionRequest).toHaveBeenCalledWith('existing-sug-1', 'u2');
+    });
+
+    it('should return error if skill already exists globally', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-1', name: 'React' });
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'React',
+        description: 'UI library',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SKILL_EXISTS_GLOBALLY');
+      }
+    });
+
+    it('should handle database error during check', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetSkillByNameNormalized.mockRejectedValueOnce(new Error('DB failure'));
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Solidity',
+        description: 'Smart contracts language',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('CHECK_FAILED');
+      }
+    });
+
+    it('should handle error during suggestion creation', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetSkillSuggestionByName.mockResolvedValueOnce(null);
+      mockCreateSkillSuggestion.mockRejectedValueOnce(new Error('Insert error'));
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Solidity',
+        description: 'Smart contracts language',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SUGGESTION_FAILED');
+      }
+    });
+  });
 });
+
