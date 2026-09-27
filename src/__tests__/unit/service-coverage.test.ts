@@ -72,6 +72,7 @@ const mockFunnelMetricsCache = { get: jest.fn(), set: jest.fn() };
 const mockCohortRetentionCache = { get: jest.fn(), set: jest.fn() };
 const mockChurnRiskCache = { get: jest.fn(), set: jest.fn() };
 const mockMarketplaceVelocityCache = { get: jest.fn(), set: jest.fn() };
+const mockUserSummaryCache = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), delete: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
   skillCache: mockSkillCache,
   projectCache: mockProjectCache,
@@ -88,6 +89,7 @@ jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
   cohortRetentionCache: mockCohortRetentionCache,
   churnRiskCache: mockChurnRiskCache,
   marketplaceVelocityCache: mockMarketplaceVelocityCache,
+  userSummaryCache: mockUserSummaryCache,
   allCaches: [mockSkillCache, mockProjectCache, mockFreelancerSearchCache],
   LRUCache: jest.fn().mockImplementation(() => ({ get: jest.fn(), set: jest.fn() })),
 }));
