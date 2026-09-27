@@ -413,11 +413,15 @@ export const idempotencyCache = createCache<{
   body?: any;
 }>('idempotency', 1000, 15 * 60_000);
 
+// Reputation cache: 500 entries, 60s TTL
+export const reputationCache = createCache<any>('reputation', 500, 60_000);
+
 const allCaches: (LRUCache<any> | RedisCache<any>)[] = [
   skillCache,
   projectCache,
   projectCategoryStatsCache,
   freelancerSearchCache,
+  reputationCache,
   idempotencyCache,
   platformMetricsCache,
   skillTrendsCache,

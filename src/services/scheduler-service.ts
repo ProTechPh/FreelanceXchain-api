@@ -390,6 +390,18 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
   try {
     const now = Date.now();
     const activeContracts = await contractRepository.findActiveContracts();
+    if (activeContracts.length === 0) return;
+
+    // Cache project lookups within this run so duplicate project IDs are only fetched once
+    const projectCacheMap = new Map<string, Promise<ProjectEntity | null>>();
+    const getProjectCached = (id: string) => {
+      let pending = projectCacheMap.get(id);
+      if (!pending) {
+        pending = projectRepository.getProjectById(id);
+        projectCacheMap.set(id, pending);
+      }
+      return pending;
+    };
 
     await Promise.all(
       activeContracts.map(async (contract) => {
@@ -397,7 +409,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
           const projectId = contract.project_id;
           if (!projectId) return;
 
-          const project = await projectRepository.getProjectById(projectId);
+          const project = await getProjectCached(projectId);
           if (!project) {
             logger.error('Failed to recover stuck releasing milestone for a contract', {
               contractId: contract.id,

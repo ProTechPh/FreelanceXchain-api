@@ -123,7 +123,7 @@ export class BaseRepository<T extends BaseEntity> {
       return await fn();
     } finally {
       const duration = performance.now() - start;
-      const slowThreshold = Number(process.env['SLOW_QUERY_THRESHOLD_MS']) || 1000;
+      const slowThreshold = Number(process.env['SLOW_QUERY_THRESHOLD_MS']) || 200;
       if (duration > slowThreshold) {
         logger.warn(`Slow query [${this.collectionName}.${operationName}]: ${duration.toFixed(2)}ms`);
       } else {

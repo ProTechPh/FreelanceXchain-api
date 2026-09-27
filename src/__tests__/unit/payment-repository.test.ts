@@ -49,9 +49,7 @@ describe('PaymentRepository', () => {
   describe('findByUserId', () => {
     it('should return paginated payments for a user', async () => {
       const payments = [{ $id: 'p1', payer_id: 'u1' }];
-      mockDatabases.listDocuments
-        .mockResolvedValueOnce({ documents: [], total: 1 })
-        .mockResolvedValueOnce({ documents: payments, total: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: payments, total: 1 });
       const result = await PaymentRepository.findByUserId('u1');
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -60,9 +58,7 @@ describe('PaymentRepository', () => {
 
     it('should handle custom options and hasMore=true', async () => {
       const payments = [{ $id: 'p1' }];
-      mockDatabases.listDocuments
-        .mockResolvedValueOnce({ documents: [], total: 5 })
-        .mockResolvedValueOnce({ documents: payments, total: 5 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: payments, total: 5 });
       const result = await PaymentRepository.findByUserId('u1', { limit: 1, offset: 0 });
       expect(result.items).toHaveLength(1);
       expect(result.hasMore).toBe(true);
@@ -75,9 +71,7 @@ describe('PaymentRepository', () => {
     });
 
     it('should throw on data query error', async () => {
-      mockDatabases.listDocuments
-        .mockResolvedValueOnce({ documents: [], total: 3 })
-        .mockRejectedValueOnce(new Error('data query failed'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('data query failed'));
       await expect(PaymentRepository.findByUserId('u1')).rejects.toThrow('Failed to find payments');
     });
   });

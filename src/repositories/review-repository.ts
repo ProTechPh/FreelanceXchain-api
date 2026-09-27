@@ -45,28 +45,20 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
   ): Promise<{ items: ReviewEntity[]; total: number; hasMore: boolean }> {
     const { limit = 20, offset = 0 } = options;
     try {
-      const countResponse = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('reviewee_id', revieweeId),
-          Query.limit(1),
-        ]
-      );
-      const total = countResponse.total;
-
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('reviewee_id', revieweeId),
-          Query.orderDesc('$createdAt'),
-          Query.limit(limit),
-          Query.offset(offset),
-        ]
+      const response = await this.timedQuery('findByRevieweeId', () =>
+        databases.listDocuments(
+          DATABASE_ID,
+          COLLECTION_ID,
+          [
+            Query.equal('reviewee_id', revieweeId),
+            Query.orderDesc('$createdAt'),
+            Query.limit(limit),
+            Query.offset(offset),
+          ]
+        )
       );
       const items = response.documents.map(doc => fromAppwriteDoc<ReviewEntity>(doc));
-      return { items, total, hasMore: items.length === limit };
+      return { items, total: response.total, hasMore: offset + items.length < response.total };
     } catch (error) {
       throw new Error(`Failed to find reviews: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

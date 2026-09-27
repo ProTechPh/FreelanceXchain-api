@@ -1149,12 +1149,10 @@ describe('Payment Repository — branch coverage', () => {
   it('should handle findByUserId with hasMore=true', async () => {
     const { paymentRepository: PaymentRepository } = await import('../../repositories/payment-repository.js');
 
-    mockDatabases.listDocuments
-      .mockResolvedValueOnce({ documents: [], total: 5 })
-      .mockResolvedValueOnce({
-        documents: [{ $id: 'p1' }, { $id: 'p2' }],
-        total: 5,
-      });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'p1' }, { $id: 'p2' }],
+      total: 5,
+    });
 
     const result = await PaymentRepository.findByUserId('u1', { limit: 2, offset: 0 });
     expect(result.hasMore).toBe(true);
