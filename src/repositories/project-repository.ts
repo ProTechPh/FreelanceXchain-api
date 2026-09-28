@@ -122,12 +122,20 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   async getProjectsByIds(ids: string[]): Promise<ProjectEntity[]> {
     if (ids.length === 0) return [];
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [Query.equal('$id', ids), Query.limit(ids.length)]
-      );
-      return response.documents.map(mapDoc);
+      const uniqueIds = [...new Set(ids)];
+      const projects: ProjectEntity[] = [];
+      for (let i = 0; i < uniqueIds.length; i += 100) {
+        const chunk = uniqueIds.slice(i, i + 100);
+        const response = await this.timedQuery('getProjectsByIds', () =>
+          databases.listDocuments(
+            DATABASE_ID,
+            COLLECTION_ID,
+            [Query.equal('$id', chunk), Query.limit(chunk.length)]
+          )
+        );
+        projects.push(...response.documents.map(mapDoc));
+      }
+      return projects;
     } catch (error) {
       // Throw (like user-repository's getUsersByIds) so favorites enrichment
       // surfaces the failure as an error instead of silently dropping targets.

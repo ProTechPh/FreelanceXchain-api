@@ -31,18 +31,30 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () =>
 }));
 
 const mockGetContractById = jest.fn();
+const mockGetContractsByIds = jest.fn();
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
-  contractRepository: { getContractById: mockGetContractById },
+  contractRepository: {
+    getContractById: mockGetContractById,
+    getContractsByIds: mockGetContractsByIds,
+  },
 }));
 
 const mockGetProjectById = jest.fn();
+const mockGetProjectsByIds = jest.fn();
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
-  projectRepository: { getProjectById: mockGetProjectById },
+  projectRepository: {
+    getProjectById: mockGetProjectById,
+    getProjectsByIds: mockGetProjectsByIds,
+  },
 }));
 
 const mockFindByContractId = jest.fn();
+const mockFindByContractIds = jest.fn();
 jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
-  paymentRepository: { findByContractId: mockFindByContractId },
+  paymentRepository: {
+    findByContractId: mockFindByContractId,
+    findByContractIds: mockFindByContractIds,
+  },
 }));
 
 const service = await import('../../services/escrow-reconciliation-service.js');
@@ -113,6 +125,17 @@ function seedCleanScenario() {
 describe('reconcileContractPayments', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetContractsByIds.mockImplementation(async (ids: string[]) =>
+      (await Promise.all(ids.map(id => mockGetContractById(id)))).filter(Boolean)
+    );
+    mockGetProjectsByIds.mockImplementation(async (ids: string[]) =>
+      (await Promise.all(ids.map(id => mockGetProjectById(id)))).filter(Boolean)
+    );
+    mockFindByContractIds.mockImplementation(async (ids: string[]) => {
+      const grouped = new Map();
+      await Promise.all(ids.map(async id => grouped.set(id, await mockFindByContractId(id))));
+      return grouped;
+    });
   });
 
   it('returns no issues for a consistent contract', async () => {
@@ -128,6 +151,42 @@ describe('reconcileContractPayments', () => {
     const result = await service.reconcileContractPayments();
     expect(result).toEqual({ checkedContracts: 0, issues: [] });
     expect(mockGetEscrowState).not.toHaveBeenCalled();
+  });
+
+  it('batch-loads database read models for the whole reconciliation run', async () => {
+    mockListDocuments.mockResolvedValue({
+      documents: [
+        { address: '0x1', contract_id: 'c1' },
+        { address: '0x2', contract_id: 'c2' },
+      ],
+      total: 2,
+    });
+    mockGetEscrowState.mockImplementation(async (address: string) => makeEscrow({
+      address,
+      contractId: address === '0x1' ? 'c1' : 'c2',
+    }));
+    mockGetContractsByIds.mockResolvedValue([
+      makeContract({ id: 'c1', project_id: 'p1' }),
+      makeContract({ id: 'c2', project_id: 'p2' }),
+    ]);
+    mockGetProjectsByIds.mockResolvedValue([
+      makeProject(),
+      { ...makeProject(), id: 'p2' },
+    ]);
+    mockFindByContractIds.mockResolvedValue(new Map([
+      ['c1', [makePayment(), makePayment({ id: 'dep1', payment_type: 'escrow_deposit', milestone_id: null, amount: 1000 })]],
+      ['c2', [makePayment({ id: 'pay2', contract_id: 'c2' }), makePayment({ id: 'dep2', contract_id: 'c2', payment_type: 'escrow_deposit', milestone_id: null, amount: 1000 })]],
+    ]));
+
+    const result = await service.reconcileContractPayments();
+
+    expect(result.checkedContracts).toBe(2);
+    expect(mockGetContractsByIds).toHaveBeenCalledTimes(1);
+    expect(mockGetProjectsByIds).toHaveBeenCalledTimes(1);
+    expect(mockFindByContractIds).toHaveBeenCalledTimes(1);
+    expect(mockGetContractById).not.toHaveBeenCalled();
+    expect(mockGetProjectById).not.toHaveBeenCalled();
+    expect(mockFindByContractId).not.toHaveBeenCalled();
   });
 
   it('skips registry entries missing an address or contract id', async () => {

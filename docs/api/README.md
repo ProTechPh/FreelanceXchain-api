@@ -10,7 +10,6 @@
 | [Authentication API](auth.md) | User registration, login, token refresh, OAuth integration, and password recovery |
 | [Billing API](billing.md) | Subscription plans, Pro tier checkout sessions, Stripe Customer Portal, and entitlement management |
 | [Contract API](contracts.md) | Contract listing and retrieval |
-| [Crypto News API](crypto-news.md) | Proxy for the free cryptocurrency.cv news API: news, search, sentiment, prices, Fear & Greed, market movers |
 | [Dispute API](disputes.md) | Dispute creation, evidence submission, resolution, and retrieval |
 | [KYC Verification API](kyc.md) | Identity verification, face match, liveness checks, document submission, and admin review |
 | [Notification API](notifications.md) | Notification retrieval, marking as read, and unread counts |

@@ -6,6 +6,7 @@ import { userRepository } from '../repositories/user-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import { platformMetricsCache } from '../utils/cache.js';
+import type { UserRole } from '../models/user.js';
 
 export type ReputationScore = {
   userId: string;
@@ -284,14 +285,34 @@ export async function getReputationHistory(
   }
 }
 
-/**
- * Get platform leaderboard
- */
+export type ReputationLeaderboardRole = Extract<UserRole, 'freelancer' | 'employer'>;
+
+export type ReputationLeaderboardEntry = {
+  userId: string;
+  userName: string;
+  role: ReputationLeaderboardRole;
+  averageRating: number;
+  totalRatings: number;
+  rankingScore: number;
+};
+
+const LEADERBOARD_PRIOR_RATING = 4;
+const LEADERBOARD_PRIOR_WEIGHT = 5;
+
+function getConfidenceWeightedRating(sum: number, count: number): number {
+  return Math.round(
+    ((sum + LEADERBOARD_PRIOR_RATING * LEADERBOARD_PRIOR_WEIGHT) /
+      (count + LEADERBOARD_PRIOR_WEIGHT)) * 100,
+  ) / 100;
+}
+
+/** Get a role-specific platform leaderboard. */
 export async function getReputationLeaderboard(
-  limit: number = 10
-): Promise<ServiceResult<Array<{ userId: string; userName: string; averageRating: number; totalRatings: number }>>> {
+  limit: number = 10,
+  role: ReputationLeaderboardRole = 'freelancer',
+): Promise<ServiceResult<ReputationLeaderboardEntry[]>> {
   const isTest = process.env.NODE_ENV === 'test';
-  const cacheKey = `leaderboard:${limit}`;
+  const cacheKey = `leaderboard:${role}:${limit}`;
   if (!isTest) {
     const cached = platformMetricsCache.get(cacheKey);
     if (cached) return successResult(cached);
@@ -310,26 +331,32 @@ export async function getReputationLeaderboard(
       userStats.set(revieweeId, existing);
     }
 
-    // Filter users with >= 3 ratings, compute average
-    const candidates = Array.from(userStats.entries()).reduce<Array<{ userId: string; averageRating: number; totalRatings: number }>>((acc, [userId, stats]) => {
+    // A minimum sample keeps one-off ratings out. Confidence weighting then
+    // prevents a three-review perfect score from outranking a long, proven
+    // record by default.
+    const candidates = Array.from(userStats.entries()).reduce<Array<{ userId: string; averageRating: number; totalRatings: number; rankingScore: number }>>((acc, [userId, stats]) => {
       if (stats.count >= 3) {
         acc.push({
           userId,
           averageRating: Math.round((stats.sum / stats.count) * 10) / 10,
           totalRatings: stats.count,
+          rankingScore: getConfidenceWeightedRating(stats.sum, stats.count),
         });
       }
       return acc;
-    }, [])
-      .sort((a, b) => b.averageRating - a.averageRating || b.totalRatings - a.totalRatings)
-      .slice(0, limit);
+    }, []);
 
-    const leaderboard = await Promise.all(
+    const enriched = await Promise.all(
       candidates.map(async (entry) => {
         const user = await userRepository.getUserById(entry.userId);
-        return { ...entry, userName: user?.name || 'Unknown' };
-      })
+        if (user?.role !== role) return null;
+        return { ...entry, userName: user.name || 'Unknown', role };
+      }),
     );
+    const leaderboard = enriched
+      .filter((entry): entry is ReputationLeaderboardEntry => entry !== null)
+      .sort((a, b) => b.rankingScore - a.rankingScore || b.totalRatings - a.totalRatings)
+      .slice(0, limit);
 
     if (!isTest) {
       platformMetricsCache.set(cacheKey, leaderboard, 60_000);

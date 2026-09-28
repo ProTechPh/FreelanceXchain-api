@@ -15,6 +15,9 @@ const SENSITIVE_PATTERNS = {
   
   // API keys and secrets
   apiKey: /(?:api[_-]?key|apikey|api[_-]?secret|secret[_-]?key)[\s:=]+['"]?([a-zA-Z0-9_-]{20,})['"]?/gi,
+
+  // Provider-prefixed keys can appear after generic labels such as `key:`.
+  providerApiKey: /\b(?:sk|pk)_(?:live|test)_[a-zA-Z0-9_-]{10,}\b/gi,
   
   // Passwords
   password: /(?:password|passwd|pwd)[\s:=]+['"]?([^'"\s]{6,})['"]?/gi,
@@ -25,8 +28,9 @@ const SENSITIVE_PATTERNS = {
   // Email addresses (for PII protection)
   email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
   
-  // Phone numbers (international format)
-  phone: /\+?\d{1,4}?[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}/g,
+  // Phone-number candidates. A digit-count check below prevents operational
+  // values such as `792.34ms` and ISO dates from being treated as PII.
+  phone: /(?<![\w.])\+?(?:\(\d{1,4}\)|\d{1,4})(?:[-.\s]?\d{1,4}){2,4}(?![\w.])/g,
   
   // Social Security Numbers (US format)
   ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
@@ -100,12 +104,16 @@ export function sanitizeString(input: string): string {
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.apiKey, (match, group1) => 
     match.replace(group1, REDACTED)
   );
+  sanitized = sanitized.replace(SENSITIVE_PATTERNS.providerApiKey, '[REDACTED_API_KEY]');
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.password, (match, group1) => 
     match.replace(group1, REDACTED)
   );
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.creditCard, '[REDACTED_CC]');
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.email, '[REDACTED_EMAIL]');
-  sanitized = sanitized.replace(SENSITIVE_PATTERNS.phone, '[REDACTED_PHONE]');
+  sanitized = sanitized.replace(SENSITIVE_PATTERNS.phone, (candidate) => {
+    const digitCount = candidate.replace(/\D/g, '').length;
+    return digitCount >= 10 && digitCount <= 15 ? '[REDACTED_PHONE]' : candidate;
+  });
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.ssn, '[REDACTED_SSN]');
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.authHeader, (match, group1) => 
     match.replace(group1, REDACTED)
@@ -252,6 +260,7 @@ export function containsSensitiveData(input: string): boolean {
   // Reset lastIndex for global regexes before testing
   SENSITIVE_PATTERNS.jwt.lastIndex = 0;
   SENSITIVE_PATTERNS.apiKey.lastIndex = 0;
+  SENSITIVE_PATTERNS.providerApiKey.lastIndex = 0;
   SENSITIVE_PATTERNS.password.lastIndex = 0;
   SENSITIVE_PATTERNS.creditCard.lastIndex = 0;
   SENSITIVE_PATTERNS.email.lastIndex = 0;
@@ -260,13 +269,21 @@ export function containsSensitiveData(input: string): boolean {
   SENSITIVE_PATTERNS.authHeader.lastIndex = 0;
   SENSITIVE_PATTERNS.privateKey.lastIndex = 0;
 
+  const containsPhone = Array.from(input.matchAll(SENSITIVE_PATTERNS.phone))
+    .some(match => {
+      const digitCount = match[0].replace(/\D/g, '').length;
+      return digitCount >= 10 && digitCount <= 15;
+    });
+  SENSITIVE_PATTERNS.phone.lastIndex = 0;
+
   return (
     SENSITIVE_PATTERNS.jwt.test(input) ||
     SENSITIVE_PATTERNS.apiKey.test(input) ||
+    SENSITIVE_PATTERNS.providerApiKey.test(input) ||
     SENSITIVE_PATTERNS.password.test(input) ||
     SENSITIVE_PATTERNS.creditCard.test(input) ||
     SENSITIVE_PATTERNS.email.test(input) ||
-    SENSITIVE_PATTERNS.phone.test(input) ||
+    containsPhone ||
     SENSITIVE_PATTERNS.ssn.test(input) ||
     SENSITIVE_PATTERNS.authHeader.test(input) ||
     SENSITIVE_PATTERNS.privateKey.test(input)

@@ -91,25 +91,6 @@ export const config = {
     model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
     timeoutMs: getEnvVarNumber('LLM_TIMEOUT_MS', 6000),
   },
-  cryptoNews: {
-    // Upstream provider for the crypto news proxy (cryptocurrency.cv free API).
-    // Basic news/market endpoints work without a key; set CRYPTO_NEWS_API_KEY to
-    // unlock premium endpoints and higher rate limits (sent as X-API-Key).
-    baseUrl: getEnvVar('CRYPTO_NEWS_BASE_URL', 'https://cryptocurrency.cv'),
-    apiKey: getEnvVarOptional('CRYPTO_NEWS_API_KEY'),
-    timeoutMs: getEnvVarNumber('CRYPTO_NEWS_TIMEOUT_MS', 10000),
-    // In-memory response cache TTL (ms). Repeated frontend calls for the same
-    // path+params are served from cache instead of hitting the upstream rate
-    // limit. Set 0 to disable caching entirely.
-    cacheTtlMs: getEnvVarNumber('CRYPTO_NEWS_CACHE_TTL_MS', 60000),
-  },
-  cryptoPanic: {
-    // Secondary news source (https://cryptopanic.com/developers/api/).
-    // CryptoPanic requires an auth token; unauthenticated public requests are no longer supported.
-    baseUrl: getEnvVar('CRYPTOPANIC_BASE_URL', 'https://cryptopanic.com/api/v1'),
-    authToken: getEnvVarOptional('CRYPTOPANIC_AUTH_TOKEN'),
-    timeoutMs: getEnvVarNumber('CRYPTOPANIC_TIMEOUT_MS', 8000),
-  },
   // NOTE: No JWT signing config here. Auth tokens are issued and validated by
   // Appwrite (session JWTs via account.get/createSession) — the app never signs
   // or verifies its own tokens, so JWT_SECRET-style env vars would be dead

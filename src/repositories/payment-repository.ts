@@ -44,6 +44,31 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
     }
   }
 
+  /** Batch-fetch payment logs for many contracts and group them by contract ID. */
+  async findByContractIds(contractIds: string[]): Promise<Map<string, PaymentEntity[]>> {
+    const paymentsByContract = new Map<string, PaymentEntity[]>();
+    const uniqueIds = [...new Set(contractIds)];
+
+    try {
+      for (let i = 0; i < uniqueIds.length; i += 100) {
+        const chunk = uniqueIds.slice(i, i + 100);
+        const payments = await this.fetchAll([
+          Query.equal('contract_id', chunk),
+          Query.orderDesc('$createdAt'),
+        ]);
+
+        for (const payment of payments) {
+          const group = paymentsByContract.get(payment.contract_id) ?? [];
+          group.push(payment);
+          paymentsByContract.set(payment.contract_id, group);
+        }
+      }
+      return paymentsByContract;
+    } catch (error) {
+      throw new Error(`Failed to find payments: ${getErrorMessageOr(error, 'Unknown error')}`);
+    }
+  }
+
   async findByUserId(
     userId: string,
     options: { limit?: number; offset?: number } = {}

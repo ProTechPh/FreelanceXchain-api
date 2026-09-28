@@ -333,8 +333,9 @@ describe('reputation-routes branch coverage', () => {
   // GET /leaderboard — parseInt fallback
   it('GET /leaderboard with limit', async () => {
     mockReputationAggService.getReputationLeaderboard.mockResolvedValue(ok([]));
-    const res = await request(app).get('/api/reputation/leaderboard?limit=5');
+    const res = await request(app).get('/api/reputation/leaderboard?limit=5&role=employer');
     expect(res.status).toBe(200);
+    expect(mockReputationAggService.getReputationLeaderboard).toHaveBeenCalledWith(5, 'employer');
   });
 
   it('GET /leaderboard without limit (fallback to 10)', async () => {

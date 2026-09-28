@@ -46,6 +46,25 @@ describe('PaymentRepository', () => {
     });
   });
 
+  describe('findByContractIds', () => {
+    it('batch-fetches and groups payments for multiple contracts', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', contract_id: 'c1' },
+          { $id: 'p2', contract_id: 'c2' },
+          { $id: 'p3', contract_id: 'c1' },
+        ],
+        total: 3,
+      });
+
+      const result = await PaymentRepository.findByContractIds(['c1', 'c2']);
+
+      expect(result.get('c1')?.map((payment: any) => payment.id)).toEqual(['p1', 'p3']);
+      expect(result.get('c2')?.map((payment: any) => payment.id)).toEqual(['p2']);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('findByUserId', () => {
     it('should return paginated payments for a user', async () => {
       const payments = [{ $id: 'p1', payer_id: 'u1' }];

@@ -90,6 +90,25 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     return this.getById(id);
   }
 
+  /** Batch-fetch contracts by document ID, respecting Appwrite's 100-value cap. */
+  async getContractsByIds(ids: string[]): Promise<ContractEntity[]> {
+    const uniqueIds = [...new Set(ids)];
+    const contracts: ContractEntity[] = [];
+
+    for (let i = 0; i < uniqueIds.length; i += 100) {
+      const chunk = uniqueIds.slice(i, i + 100);
+      const response = await this.timedQuery('getContractsByIds', () =>
+        databases.listDocuments(DATABASE_ID, COLLECTION_ID, [
+          Query.equal('$id', chunk),
+          Query.limit(chunk.length),
+        ])
+      );
+      contracts.push(...response.documents.map(mapDoc));
+    }
+
+    return contracts;
+  }
+
   async getContractByIdWithRelations(id: string): Promise<ContractWithRelations | null> {
     try {
       const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, id);
