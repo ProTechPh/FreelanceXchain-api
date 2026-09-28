@@ -278,8 +278,10 @@ router.post('/rate', authMiddleware, apiRateLimiter, validate(submitRatingSchema
 router.get('/leaderboard', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query['limit'] as string) || 10;
+    const requestedRole = req.query['role'];
+    const role = requestedRole === 'employer' ? 'employer' : 'freelancer';
 
-    const result = await getReputationLeaderboard(limit);
+    const result = await getReputationLeaderboard(limit, role);
 
     if (!result.success) {
       return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });

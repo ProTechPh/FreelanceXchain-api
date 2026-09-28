@@ -70,6 +70,24 @@ describe('ContractRepository', () => {
     });
   });
 
+  describe('getContractsByIds', () => {
+    it('batch-fetches contracts instead of issuing one getDocument per id', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          toAppwriteDoc({ id: 'c1', project_id: 'p1' }),
+          toAppwriteDoc({ id: 'c2', project_id: 'p2' }),
+        ],
+        total: 2,
+      });
+
+      const result = await repo.getContractsByIds(['c1', 'c2']);
+
+      expect(result.map((contract: any) => contract.id)).toEqual(['c1', 'c2']);
+      expect(mockListDocuments).toHaveBeenCalledTimes(1);
+      expect(mockGetDocument).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getContractByIdWithRelations', () => {
     it('should return contract with relations', async () => {
       const contract = { id: 'c1', project_id: 'p1', freelancer_id: 'f1', employer_id: 'e1', status: 'active' };

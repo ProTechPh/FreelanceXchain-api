@@ -42,6 +42,13 @@ describe('log-sanitizer', () => {
       expect(result).not.toContain('abcdefghijklmnopqrstuvwxyz1234');
     });
 
+    it('should redact provider-prefixed API keys without an api-key label', () => {
+      const result = sanitizeString('API call failed with key: sk_live_1234567890abcdef');
+
+      expect(result).toContain('[REDACTED_API_KEY]');
+      expect(result).not.toContain('1234567890abcdef');
+    });
+
     it('should redact passwords', () => {
       const result = sanitizeString('password: secret123');
       expect(result).toContain('[REDACTED]');
@@ -58,6 +65,16 @@ describe('log-sanitizer', () => {
       const result = sanitizeString('Contact: +1-234-567-8901');
       expect(result).toContain('[REDACTED_PHONE]');
       expect(result).not.toContain('+1-234-567-8901');
+    });
+
+    it('should preserve decimal query durations', () => {
+      const message = 'Slow query [projects.getById]: 792.34ms';
+      expect(sanitizeString(message)).toBe(message);
+    });
+
+    it('should preserve ISO dates in operational messages', () => {
+      const message = 'Scheduler started at 2026-09-28T10:00:00.000Z';
+      expect(sanitizeString(message)).toBe(message);
     });
 
     it('should redact private keys', () => {

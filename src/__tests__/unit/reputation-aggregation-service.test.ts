@@ -295,6 +295,59 @@ describe('Reputation Aggregation Service', () => {
   });
 
   describe('getReputationLeaderboard', () => {
+    it('excludes employers from the freelancer leaderboard', async () => {
+      const { getReputationLeaderboard } = await importModule();
+
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'r1', reviewee_id: 'freelancer-1', rating: 5 },
+          { $id: 'r2', reviewee_id: 'freelancer-1', rating: 5 },
+          { $id: 'r3', reviewee_id: 'freelancer-1', rating: 5 },
+          { $id: 'r4', reviewee_id: 'employer-1', rating: 5 },
+          { $id: 'r5', reviewee_id: 'employer-1', rating: 5 },
+          { $id: 'r6', reviewee_id: 'employer-1', rating: 5 },
+        ],
+        total: 6,
+      });
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({ $id: 'freelancer-1', name: 'Fran', role: 'freelancer' })
+        .mockResolvedValueOnce({ $id: 'employer-1', name: 'Em', role: 'employer' });
+
+      const result = await getReputationLeaderboard(10, 'freelancer');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        expect.objectContaining({ userId: 'freelancer-1', userName: 'Fran', role: 'freelancer' }),
+      ]);
+    });
+
+    it('uses rating confidence so a proven record outranks three perfect reviews', async () => {
+      const { getReputationLeaderboard } = await importModule();
+
+      const reviews = [
+        ...Array.from({ length: 3 }, (_, index) => ({
+          $id: `new-${index}`,
+          reviewee_id: 'newcomer',
+          rating: 5,
+        })),
+        ...Array.from({ length: 20 }, (_, index) => ({
+          $id: `proven-${index}`,
+          reviewee_id: 'proven',
+          rating: index < 18 ? 5 : 4,
+        })),
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: reviews.length });
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({ $id: 'newcomer', name: 'New', role: 'freelancer' })
+        .mockResolvedValueOnce({ $id: 'proven', name: 'Proven', role: 'freelancer' });
+
+      const result = await getReputationLeaderboard(10, 'freelancer');
+
+      expect(result.success).toBe(true);
+      expect(result.data[0].userId).toBe('proven');
+      expect(result.data[0].rankingScore).toBeGreaterThan(result.data[1].rankingScore);
+    });
+
     it('should return empty array when no reviews', async () => {
       const { getReputationLeaderboard } = await importModule();
 
@@ -324,9 +377,9 @@ describe('Reputation Aggregation Service', () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 10 });
       // getDocument for user names (3 candidates)
       mockDatabases.getDocument
-        .mockResolvedValueOnce({ $id: 'user-3', name: 'Charlie' })
-        .mockResolvedValueOnce({ $id: 'user-1', name: 'Alice' })
-        .mockResolvedValueOnce({ $id: 'user-2', name: 'Bob' });
+        .mockResolvedValueOnce({ $id: 'user-1', name: 'Alice', role: 'freelancer' })
+        .mockResolvedValueOnce({ $id: 'user-2', name: 'Bob', role: 'freelancer' })
+        .mockResolvedValueOnce({ $id: 'user-3', name: 'Charlie', role: 'freelancer' });
 
       const result = await getReputationLeaderboard();
 
@@ -350,7 +403,7 @@ describe('Reputation Aggregation Service', () => {
         { $id: 'r5', reviewee_id: 'user-2', rating: 5 },
       ];
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 5 });
-      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'user-1', name: 'Alice' });
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'user-1', name: 'Alice', role: 'freelancer' });
 
       const result = await getReputationLeaderboard();
 
@@ -370,7 +423,7 @@ describe('Reputation Aggregation Service', () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 30 });
       // 3 candidates * 1 getDocument each
       for (let i = 0; i < 3; i++) {
-        mockDatabases.getDocument.mockResolvedValueOnce({ $id: `user-${i}`, name: `User ${i}` });
+        mockDatabases.getDocument.mockResolvedValueOnce({ $id: `user-${i}`, name: `User ${i}`, role: 'freelancer' });
       }
 
       const result = await getReputationLeaderboard(3);
@@ -388,7 +441,7 @@ describe('Reputation Aggregation Service', () => {
         { $id: 'r3', reviewee_id: 'user-1', rating: 5 },
       ];
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 3 });
-      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'user-1', name: null });
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'user-1', name: null, role: 'freelancer' });
 
       const result = await getReputationLeaderboard();
 

@@ -58,17 +58,6 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       apiUrl: 'http://localhost:8000',
       model: 'claude-haiku-4.5',
     },
-    cryptoNews: {
-      baseUrl: 'https://cryptocurrency.cv',
-      apiKey: undefined,
-      timeoutMs: 10000,
-      cacheTtlMs: 60000,
-    },
-    cryptoPanic: {
-      baseUrl: 'https://cryptopanic.com/api/v1',
-      authToken: undefined,
-      timeoutMs: 8000,
-    },
     blockchain: {
       rpcUrl: 'http://localhost:8545',
       privateKey: '0x' + 'a'.repeat(64),

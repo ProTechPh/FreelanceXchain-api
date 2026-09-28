@@ -1174,12 +1174,15 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         total: 1,
       });
 
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'p1',
-      milestones: JSON.stringify([
-        { id: 'm1', status: 'releasing', updated_at: oldTimestamp },
-        { id: 'm2', status: 'pending', updated_at: oldTimestamp },
-      ]),
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'p1',
+        milestones: JSON.stringify([
+          { id: 'm1', status: 'releasing', updated_at: oldTimestamp },
+          { id: 'm2', status: 'pending', updated_at: oldTimestamp },
+        ]),
+      }],
+      total: 1,
     });
 
     if (callback) {
@@ -1196,6 +1199,35 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
     }
   });
 
+  it('batch-loads projects for all active contracts', async () => {
+    const { initializeScheduler } = await importScheduler();
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'c1', project_id: 'p1' },
+          { $id: 'c2', project_id: 'p2' },
+        ],
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', milestones: '[]' },
+          { $id: 'p2', milestones: '[]' },
+        ],
+        total: 2,
+      });
+    mockDatabases.getDocument.mockResolvedValue({ $id: 'unused', milestones: '[]' });
+
+    callback?.();
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+    expect(mockDatabases.getDocument).not.toHaveBeenCalled();
+  });
+
   it('should handle milestones as object (not JSON string)', async () => {
     const { initializeScheduler } = await importScheduler();
     initializeScheduler();
@@ -1208,11 +1240,14 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         total: 1,
       });
 
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'p1',
-      milestones: [
-        { id: 'm1', status: 'releasing', updated_at: oldTimestamp },
-      ],
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'p1',
+        milestones: [
+          { id: 'm1', status: 'releasing', updated_at: oldTimestamp },
+        ],
+      }],
+      total: 1,
     });
 
     if (callback) {
@@ -1234,8 +1269,9 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         total: 1,
       });
 
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'p1',
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'p1' }],
+      total: 1,
     });
 
     if (callback) {
@@ -1257,12 +1293,15 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         total: 1,
       });
 
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'p1',
-      milestones: JSON.stringify([
-        { id: 'm1', status: 'releasing' },
-        { id: 'm2', status: 'releasing', updated_at: oldTimestamp },
-      ]),
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'p1',
+        milestones: JSON.stringify([
+          { id: 'm1', status: 'releasing' },
+          { id: 'm2', status: 'releasing', updated_at: oldTimestamp },
+        ]),
+      }],
+      total: 1,
     });
 
     if (callback) {
@@ -1291,11 +1330,14 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         total: 1,
       });
 
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'p1',
-      milestones: JSON.stringify([
-        { id: 'm1', status: 'releasing', updated_at: recentTimestamp },
-      ]),
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'p1',
+        milestones: JSON.stringify([
+          { id: 'm1', status: 'releasing', updated_at: recentTimestamp },
+        ]),
+      }],
+      total: 1,
     });
 
     if (callback) {
@@ -1352,7 +1394,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
         total: 1,
       });
 
-    mockDatabases.getDocument.mockRejectedValueOnce(new Error('Project not found'));
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Project not found'));
 
     if (callback) {
       callback();
