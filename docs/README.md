@@ -19,7 +19,6 @@ REST API endpoints (also available via Swagger at `/api-docs`).
 - [API Reference Overview](api/README.md)
 - [Authentication](api/auth.md) - Registration, login, OAuth, token refresh, password recovery
 - [Billing & Subscriptions](api/billing.md) - Plans, Pro checkout sessions, Customer Portal, Stripe webhooks
-- [Crypto News](api/crypto-news.md) - Proxy for the free cryptocurrency.cv news API (news, search, sentiment, prices)
 - [AI Matching](api/matching.md) - Project/freelancer recommendations, skill extraction, gap analysis
 - [Projects](api/projects.md) - CRUD, milestones, listing
 - [Proposals](api/proposals.md) - Submit, accept, reject, withdraw, employer history

@@ -57,6 +57,13 @@ export type ReconciliationResult = {
 
 type PaymentRecord = Awaited<ReturnType<typeof paymentRepository.findByContractId>>[number];
 
+type ReconciliationSnapshot = {
+  contractsById: Map<string, ContractEntity>;
+  projectsById: Map<string, ProjectEntity>;
+  paymentsByContractId: Map<string, PaymentRecord[]>;
+  paymentsError: unknown | null;
+};
+
 /** Minimal structural view of the escrow ledger state (EscrowState is private to escrow-contract). */
 type LedgerState = {
   address: string;
@@ -282,7 +289,8 @@ function checkPaymentsLog(
  */
 async function reconcileContract(
   escrowAddress: string,
-  contractId: string
+  contractId: string,
+  snapshot: ReconciliationSnapshot
 ): Promise<ReconciliationIssue[]> {
   const issues: ReconciliationIssue[] = [];
 
@@ -297,7 +305,7 @@ async function reconcileContract(
     return issues;
   }
 
-  const contract = await contractRepository.getContractById(contractId);
+  const contract = snapshot.contractsById.get(contractId) ?? null;
   if (!contract) {
     issues.push(issue(
       'critical',
@@ -309,7 +317,7 @@ async function reconcileContract(
   }
 
   const project = contract.project_id
-    ? await projectRepository.getProjectById(contract.project_id)
+    ? snapshot.projectsById.get(contract.project_id) ?? null
     : null;
   if (!project) {
     issues.push(issue(
@@ -325,10 +333,10 @@ async function reconcileContract(
 
   // A fetch failure is reported once and the record-level checks are skipped so
   // one failed read doesn't cascade into false deposit/record/settled alerts.
-  let payments: PaymentRecord[] | null = null;
-  try {
-    payments = await paymentRepository.findByContractId(contractId);
-  } catch (error) {
+  let payments: PaymentRecord[] | null = snapshot.paymentsByContractId.get(contractId) ?? [];
+  if (snapshot.paymentsError !== null) {
+    const error = snapshot.paymentsError;
+    payments = null;
     issues.push(issue(
       'warning',
       'PAYMENTS_FETCH_FAILED',
@@ -342,6 +350,28 @@ async function reconcileContract(
   }
 
   return issues;
+}
+
+async function loadReconciliationSnapshot(
+  escrowDocs: Array<{ address: string; contractId: string }>
+): Promise<ReconciliationSnapshot> {
+  const contractIds = [...new Set(escrowDocs.map(doc => doc.contractId))];
+  const contracts = await contractRepository.getContractsByIds(contractIds);
+  const projectIds = [...new Set(contracts.map(contract => contract.project_id).filter(Boolean))];
+
+  const [projects, paymentsResult] = await Promise.all([
+    projectRepository.getProjectsByIds(projectIds),
+    paymentRepository.findByContractIds(contractIds)
+      .then(value => ({ value, error: null as unknown | null }))
+      .catch(error => ({ value: new Map<string, PaymentRecord[]>(), error })),
+  ]);
+
+  return {
+    contractsById: new Map(contracts.map(contract => [contract.id, contract])),
+    projectsById: new Map(projects.map(project => [project.id, project])),
+    paymentsByContractId: paymentsResult.value,
+    paymentsError: paymentsResult.error,
+  };
 }
 
 /** Fetch every escrow registry entry (cursor pagination — no row truncation). */
@@ -381,10 +411,12 @@ export async function reconcileContractPayments(): Promise<ReconciliationResult>
 
   try {
     const escrowDocs = await fetchAllEscrowDocs();
+    if (escrowDocs.length === 0) return { checkedContracts, issues };
+    const snapshot = await loadReconciliationSnapshot(escrowDocs);
 
     for (const doc of escrowDocs) {
       try {
-        const contractIssues = await reconcileContract(doc.address, doc.contractId);
+        const contractIssues = await reconcileContract(doc.address, doc.contractId, snapshot);
         checkedContracts += 1;
         issues.push(...contractIssues);
       } catch (error) {
