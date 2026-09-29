@@ -310,4 +310,34 @@ describe('Contracts Config', () => {
       expect(getContractAddress('milestoneRegistry')).toBe('0xMainnetMilestone');
     });
   });
+
+  describe('ganache network address loading (lines 30-32)', () => {
+    it('should load ganache escrow address from env', async () => {
+      process.env.GANACHE_ESCROW_ADDRESS = '0xGanacheEscrow';
+      jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+        config: { blockchain: { rpcUrl: 'http://localhost:7545', privateKey: '0x123', mode: 'simulated' } },
+      }));
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('escrow')).toBe('0xGanacheEscrow');
+    });
+
+    it('should load ganache agreement address from env', async () => {
+      process.env.GANACHE_AGREEMENT_ADDRESS = '0xGanacheAgreement';
+      jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+        config: { blockchain: { rpcUrl: 'http://localhost:7545', privateKey: '0x123', mode: 'simulated' } },
+      }));
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('agreement')).toBe('0xGanacheAgreement');
+    });
+
+    it('should load ganache dispute address from env', async () => {
+      process.env.GANACHE_DISPUTE_ADDRESS = '0xGanacheDispute';
+      jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+        config: { blockchain: { rpcUrl: 'http://localhost:7545', privateKey: '0x123', mode: 'simulated' } },
+      }));
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('disputeResolution')).toBe('0xGanacheDispute');
+    });
+  });
+
 });

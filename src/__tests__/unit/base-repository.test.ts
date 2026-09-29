@@ -192,4 +192,25 @@ describe('BaseRepository - fetchAll', () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.badArray).toBe('[1, 2, 3');
   });
+
+  it('should log warning on slow query when duration exceeds threshold', async () => {
+    const origThreshold = process.env['SLOW_QUERY_THRESHOLD_MS'];
+    process.env['SLOW_QUERY_THRESHOLD_MS'] = '0.00001';
+    try {
+      mockListDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      await repo.testFetchAll();
+    } finally {
+      if (origThreshold !== undefined) {
+        process.env['SLOW_QUERY_THRESHOLD_MS'] = origThreshold;
+      } else {
+        delete process.env['SLOW_QUERY_THRESHOLD_MS'];
+      }
+    }
+  });
+
+  it('should call count() which forwards to countWithQueries', async () => {
+    mockListDocuments.mockResolvedValueOnce({ documents: [], total: 42 });
+    const count = await repo.count();
+    expect(count).toBe(42);
+  });
 });

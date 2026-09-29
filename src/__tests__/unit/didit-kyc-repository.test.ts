@@ -62,6 +62,40 @@ describe('DiditKycRepository', () => {
       const result = await createKycVerification({ id: 'k1' } as any);
       expect(result).toBeNull();
     });
+
+    it('should query allowed keys via listAttributes and handle created_at, updated_at, extra metadata', async () => {
+      mockDatabases.listAttributes = jest.fn().mockResolvedValueOnce({
+        attributes: [
+          { key: 'user_id' },
+          { key: 'status' },
+          { key: 'metadata' },
+          { key: 'created_at' },
+          { key: 'updated_at' },
+        ],
+      });
+      mockDatabases.createDocument.mockImplementationOnce((_db, _col, _id, data) => Promise.resolve(toAppwriteDoc(data)));
+
+      const result = await createKycVerification({
+        user_id: 'u-attr',
+        status: 'pending',
+        date_of_birth: '1990-01-01',
+        metadata: '{"extra":1}',
+      } as any);
+
+      expect(result).not.toBeNull();
+    });
+
+    it('should handle invalid JSON in metadata string', async () => {
+      mockDatabases.createDocument.mockImplementationOnce((_db, _col, _id, data) => Promise.resolve(toAppwriteDoc(data)));
+
+      const result = await createKycVerification({
+        user_id: 'u-attr2',
+        status: 'pending',
+        metadata: 'invalid-json{',
+      } as any);
+
+      expect(result).not.toBeNull();
+    });
   });
 
   describe('getKycVerificationById', () => {

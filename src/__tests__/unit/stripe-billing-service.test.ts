@@ -543,4 +543,76 @@ describe('stripe-billing-service', () => {
       expect(await svc.getPlanPrices()).toEqual([]);
     });
   });
+
+  describe('coverage gap branches', () => {
+    it('L210: returns the customer-creation failure instead of continuing to checkout', async () => {
+      mockGetUserById.mockResolvedValue(null);
+
+      const result = await svc.createCheckoutSession({ userId: 'ghost', requestId: 'req-1' });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('USER_NOT_FOUND');
+      expect(stripeApi.checkout.sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('L280: refuses a portal session when billing is not configured', async () => {
+      stripeConfigured = false;
+
+      expect((await svc.createPortalSession({ userId: 'u1' })).error.code).toBe('BILLING_NOT_CONFIGURED');
+    });
+
+    it('L36: falls back to an unknown-error detail when the Stripe error has no message', async () => {
+      stripeApi.checkout.sessions.create.mockRejectedValue({ type: 'StripeInvalidRequestError' });
+
+      const result = await svc.createCheckoutSession({ userId: 'u1', requestId: 'req-1' });
+
+      expect(result.error.code).toBe('STRIPE_REQUEST_INVALID');
+      expect(result.error.message).toBe('Unknown Stripe error');
+    });
+
+    it('L119: omits the name field when the user record has no name', async () => {
+      mockGetUserById.mockResolvedValue({ id: 'u1', email: 'u1@example.com' });
+
+      const result = await svc.ensureStripeCustomer('u1');
+
+      expect(result.success).toBe(true);
+      const [params] = stripeApi.customers.create.mock.calls[0];
+      expect(params.email).toBe('u1@example.com');
+      expect(params).not.toHaveProperty('name');
+    });
+
+    it('L147: names STRIPE_ANNUAL_PRICE_ID when the annual config holds a Product id', async () => {
+      mockConfig.stripe.annualPriceId = 'prod_WRONG';
+
+      const result = await svc.createCheckoutSession({ userId: 'u1', requestId: 'req-1', interval: 'year' });
+
+      expect(result.error.code).toBe('STRIPE_PRICE_MISCONFIGURED');
+      expect(result.error.message).toContain('STRIPE_ANNUAL_PRICE_ID');
+    });
+
+    it('L155: reports billing unconfigured when no monthly price is set', async () => {
+      mockConfig.stripe.monthlyPriceId = undefined;
+
+      expect((await svc.createCheckoutSession({ userId: 'u1', requestId: 'req-1' })).error.code)
+        .toBe('BILLING_NOT_CONFIGURED');
+    });
+
+    it('L347: treats a missing emailVerification flag as unverified', async () => {
+      mockAppwriteUsersGet.mockResolvedValue({});
+
+      expect(await svc.getBillingEligibility('u1')).toMatchObject({
+        canSubscribe: false,
+        subscribeBlockedReason: 'email_unverified',
+      });
+    });
+
+    it('L441/L442: reports null amount and currency when Stripe returns a price without them', async () => {
+      stripeApi.prices.retrieve.mockResolvedValue({ id: 'price_m' });
+
+      const prices = await svc.getPlanPrices();
+
+      expect(prices[0]).toMatchObject({ interval: 'month', priceId: 'price_m', unitAmount: null, currency: null });
+      expect(prices[1]).toMatchObject({ interval: 'year', priceId: 'price_y', unitAmount: null, currency: null });
+    });
+  });
 });

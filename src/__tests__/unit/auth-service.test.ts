@@ -51,6 +51,36 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
   },
 }));
 
+const mockFreelancerProfileRepository = {
+  getProfileByUserId: jest.fn().mockResolvedValue(null),
+  delete: jest.fn().mockResolvedValue(true),
+};
+const mockEmployerProfileRepository = {
+  getProfileByUserId: jest.fn().mockResolvedValue(null),
+  delete: jest.fn().mockResolvedValue(true),
+};
+const mockEmailPreferenceRepository = {
+  findByUserId: jest.fn().mockResolvedValue(null),
+  delete: jest.fn().mockResolvedValue(true),
+};
+const mockFavoriteRepository = {
+  findByUser: jest.fn().mockResolvedValue([]),
+  delete: jest.fn().mockResolvedValue(true),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
+  freelancerProfileRepository: mockFreelancerProfileRepository,
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: mockEmployerProfileRepository,
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/email-preference-repository.ts'), () => ({
+  emailPreferenceRepository: mockEmailPreferenceRepository,
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/favorites-repository.ts'), () => ({
+  favoriteRepository: mockFavoriteRepository,
+}));
+
 const mockSendAccountDeletionCodeEmail = jest.fn().mockResolvedValue({ success: true });
 const mockSendAccountDeletedEmail = jest.fn().mockResolvedValue({ success: true });
 
@@ -149,6 +179,7 @@ const {
   deleteUserAccount,
   requestAccountDeletion,
   verifyAccountDeletionCode,
+  disconnectUserWallet,
 } = await import('../../services/auth-service.js');
 
 const { userRepository } = await import('../../repositories/user-repository.js');
@@ -1600,6 +1631,25 @@ describe('auth-service comprehensive coverage', () => {
         expect.objectContaining({ email: 'test@example.com' })
       );
     });
+
+    it('keeps the anti-enumeration response when the temporary session has no secret', async () => {
+      userRepository.getUserByEmail.mockResolvedValueOnce(defaultUser);
+      users.createSession.mockResolvedValueOnce({ $id: 'session-without-secret' });
+
+      await expect(resendConfirmationEmail('test@example.com')).resolves.toEqual({ success: true });
+    });
+
+    it('logs a warning when temporary-session cleanup fails', async () => {
+      userRepository.getUserByEmail.mockResolvedValueOnce(defaultUser);
+      users.createSession.mockResolvedValueOnce({ $id: 'temporary-session', secret: 'temporary-secret' });
+      users.deleteSession.mockRejectedValueOnce(new Error('cleanup unavailable'));
+
+      await expect(resendConfirmationEmail('test@example.com')).resolves.toEqual({ success: true });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Failed to clean up temporary session used for email verification',
+        expect.objectContaining({ email: 'test@example.com' }),
+      );
+    });
   });
 
   describe('verifyEmail', () => {
@@ -2313,6 +2363,15 @@ describe('auth-service - updateUserWallet', () => {
     expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
   });
 
+  it('returns USER_NOT_FOUND when the wallet update is not persisted', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+    userRepository.updateUser.mockResolvedValueOnce(null);
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
+  });
+
   it('should return UPDATE_FAILED when the update throws', async () => {
     userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
     userRepository.updateUser.mockRejectedValueOnce(new Error('DB error'));
@@ -2320,6 +2379,57 @@ describe('auth-service - updateUserWallet', () => {
     const result = await updateUserWallet('u-1', '0x123');
 
     expect(result).toEqual({ code: 'UPDATE_FAILED', message: 'Failed to update wallet address' });
+  });
+
+  describe('disconnectUserWallet', () => {
+    it('returns USER_NOT_FOUND when the user does not exist', async () => {
+      userRepository.getUserById.mockResolvedValueOnce(null);
+
+      await expect(disconnectUserWallet('missing')).resolves.toEqual({
+        code: 'USER_NOT_FOUND', message: 'User not found',
+      });
+    });
+
+    it.each([
+      ['freelancer', 'active'],
+      ['employer', 'disputed'],
+    ])('blocks disconnecting when a %s contract is %s', async (side, status) => {
+      userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
+      contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
+        items: side === 'freelancer' ? [{ status }] : [], total: side === 'freelancer' ? 1 : 0,
+      });
+      contractRepository.getContractsByEmployer.mockResolvedValueOnce({
+        items: side === 'employer' ? [{ status }] : [], total: side === 'employer' ? 1 : 0,
+      });
+
+      const result = await disconnectUserWallet('u-1');
+
+      expect(result).toMatchObject({ code: 'ACTIVE_CONTRACTS_EXIST' });
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('disconnects safely when contract lookups are unavailable', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
+      contractRepository.getContractsByFreelancer.mockRejectedValueOnce(new Error('freelancer contracts unavailable'));
+      contractRepository.getContractsByEmployer.mockRejectedValueOnce(new Error('employer contracts unavailable'));
+      userRepository.updateUser.mockResolvedValueOnce({ id: 'u-1', wallet_address: '' });
+
+      await expect(disconnectUserWallet('u-1')).resolves.toEqual({
+        success: true, message: 'Wallet disconnected successfully.',
+      });
+      expect(userRepository.updateUser).toHaveBeenCalledWith('u-1', { wallet_address: '' });
+    });
+
+    it('returns UPDATE_FAILED when clearing the wallet throws', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
+      contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+      contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+      userRepository.updateUser.mockRejectedValueOnce(new Error('database unavailable'));
+
+      await expect(disconnectUserWallet('u-1')).resolves.toEqual({
+        code: 'UPDATE_FAILED', message: 'Failed to disconnect wallet.',
+      });
+    });
   });
 
   describe('Account Deletion Service', () => {
@@ -2333,6 +2443,14 @@ describe('auth-service - updateUserWallet', () => {
     beforeEach(() => {
       mockSendAccountDeletionCodeEmail.mockClear();
       mockSendAccountDeletedEmail.mockClear();
+      mockFreelancerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
+      mockFreelancerProfileRepository.delete.mockReset().mockResolvedValue(true);
+      mockEmployerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
+      mockEmployerProfileRepository.delete.mockReset().mockResolvedValue(true);
+      mockEmailPreferenceRepository.findByUserId.mockReset().mockResolvedValue(null);
+      mockEmailPreferenceRepository.delete.mockReset().mockResolvedValue(true);
+      mockFavoriteRepository.findByUser.mockReset().mockResolvedValue([]);
+      mockFavoriteRepository.delete.mockReset().mockResolvedValue(true);
     });
 
     describe('requestAccountDeletion', () => {
@@ -2373,6 +2491,42 @@ describe('auth-service - updateUserWallet', () => {
             expiresMinutes: 15,
           })
         );
+      });
+
+      it('masks short email names and tolerates notification failure', async () => {
+        userRepository.getUserById.mockResolvedValueOnce({ ...mockUser, email: 'a@example.com', name: '' });
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        mockSendAccountDeletionCodeEmail.mockRejectedValueOnce(new Error('mail unavailable'));
+
+        const result = await requestAccountDeletion('del-user-short-email');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(result).toMatchObject({ success: true, email: 'a***@example.com' });
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Failed to send account deletion confirmation code email',
+          expect.objectContaining({ userId: 'del-user-short-email' }),
+        );
+      });
+
+      it('returns REQUEST_FAILED when loading the user fails', async () => {
+        userRepository.getUserById.mockRejectedValueOnce(new Error('database unavailable'));
+
+        await expect(requestAccountDeletion('del-user-1')).resolves.toEqual({
+          code: 'REQUEST_FAILED',
+          message: 'Failed to request account deletion code. Please try again.',
+        });
+      });
+
+      it('returns REQUEST_FAILED when a contract provider throws synchronously', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockImplementationOnce(() => {
+          throw new Error('contract provider unavailable');
+        });
+
+        await expect(requestAccountDeletion('del-user-1')).resolves.toMatchObject({
+          code: 'REQUEST_FAILED',
+        });
       });
     });
 
@@ -2417,6 +2571,38 @@ describe('auth-service - updateUserWallet', () => {
           message: expect.stringContaining('expired or was not requested'),
         });
       });
+
+      it('invalidates the code after five failed attempts', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        await requestAccountDeletion('user-too-many-attempts');
+
+        for (let attempt = 0; attempt < 5; attempt++) {
+          expect(verifyAccountDeletionCode('user-too-many-attempts', 'wrong')).toMatchObject({
+            code: 'INVALID_CONFIRMATION_CODE',
+          });
+        }
+
+        expect(verifyAccountDeletionCode('user-too-many-attempts', 'wrong')).toMatchObject({
+          code: 'MAX_ATTEMPTS_EXCEEDED',
+        });
+      });
+
+      it('removes expired codes before verification', async () => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        await requestAccountDeletion('user-expired-code');
+        jest.advanceTimersByTime(16 * 60 * 1000);
+
+        expect(verifyAccountDeletionCode('user-expired-code', 'wrong')).toMatchObject({
+          code: 'INVALID_CONFIRMATION_CODE',
+        });
+        jest.useRealTimers();
+      });
     });
 
     describe('deleteUserAccount', () => {
@@ -2452,6 +2638,401 @@ describe('auth-service - updateUserWallet', () => {
         });
         expect(userRepository.deleteUser).toHaveBeenCalledWith('del-user-1');
       });
+
+      it('cleans freelancer data, preferences, favorites, and tolerates provider failures', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'profile-1' });
+        mockEmailPreferenceRepository.findByUserId.mockResolvedValueOnce({ id: 'pref-1' });
+        mockFavoriteRepository.findByUser.mockResolvedValueOnce([{ id: 'fav-1' }, { id: 'fav-2' }]);
+        users.delete.mockRejectedValueOnce(new Error('auth provider unavailable'));
+        mockSendAccountDeletedEmail.mockRejectedValueOnce(new Error('mail unavailable'));
+
+        const result = await deleteUserAccount('del-user-1');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(result.success).toBe(true);
+        expect(mockFreelancerProfileRepository.delete).toHaveBeenCalledWith('profile-1');
+        expect(mockEmailPreferenceRepository.delete).toHaveBeenCalledWith('pref-1');
+        expect(mockFavoriteRepository.delete).toHaveBeenCalledTimes(2);
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Failed to delete user from Appwrite auth service', expect.any(Object),
+        );
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Failed to send account deletion notification email', expect.any(Object),
+        );
+      });
+
+      it('cleans employer profile data', async () => {
+        userRepository.getUserById.mockResolvedValueOnce({ ...mockUser, role: 'employer' });
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        mockEmployerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'employer-profile-1' });
+
+        const result = await deleteUserAccount('del-user-1');
+
+        expect(result.success).toBe(true);
+        expect(mockEmployerProfileRepository.delete).toHaveBeenCalledWith('employer-profile-1');
+      });
+
+      it('returns DELETE_FAILED when deleting the public user fails', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+        userRepository.deleteUser.mockRejectedValueOnce(new Error('database unavailable'));
+
+        await expect(deleteUserAccount('del-user-1')).resolves.toEqual({
+          code: 'DELETE_FAILED',
+          message: 'Failed to delete account. Please try again or contact support.',
+        });
+      });
+
+      it('returns DELETE_FAILED when a contract provider throws synchronously', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.getContractsByFreelancer.mockImplementationOnce(() => {
+          throw new Error('contract provider unavailable');
+        });
+
+        await expect(deleteUserAccount('del-user-1')).resolves.toMatchObject({
+          code: 'DELETE_FAILED',
+        });
+      });
     });
+  });
+});
+
+describe('auth-service - remaining coverage gaps', () => {
+  const PWNED_FALLBACK_MESSAGE =
+    'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    const maa = global.mockAppwriteAccount;
+    maa.get.mockReset().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com' });
+    maa.createEmailPasswordSession.mockReset().mockResolvedValue({ secret: 'test-session-secret' });
+    maa.deleteSession.mockReset().mockResolvedValue({});
+    maa.createRecovery.mockReset().mockResolvedValue({});
+    maa.updateRecovery.mockReset().mockResolvedValue({});
+    maa.updatePassword.mockReset().mockResolvedValue({});
+    maa.createMFAChallenge.mockReset().mockResolvedValue({ $id: 'challenge-id' });
+    maa.createSession.mockReset().mockResolvedValue({ secret: 'new-session-secret' });
+
+    userRepository.emailExists.mockReset().mockResolvedValue(false);
+    userRepository.createUser.mockReset().mockImplementation(async (user) => ({
+      ...user,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    userRepository.getUserByEmail.mockReset().mockResolvedValue(null);
+    userRepository.getUserById.mockReset().mockResolvedValue(null);
+    userRepository.update.mockReset().mockResolvedValue({});
+    userRepository.updateUser.mockReset().mockResolvedValue({});
+    userRepository.deleteUser.mockReset().mockResolvedValue(true);
+
+    users.create.mockReset().mockResolvedValue({ $id: 'test-appwrite-user-id' });
+    users.delete.mockReset().mockResolvedValue({});
+
+    contractRepository.getContractsByFreelancer.mockReset().mockResolvedValue({ items: [], total: 0 });
+    contractRepository.getContractsByEmployer.mockReset().mockResolvedValue({ items: [], total: 0 });
+    getKycVerificationByUserId.mockReset().mockResolvedValue(null);
+
+    mockFreelancerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
+    mockFreelancerProfileRepository.delete.mockReset().mockResolvedValue(true);
+    mockEmployerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
+    mockEmployerProfileRepository.delete.mockReset().mockResolvedValue(true);
+    mockEmailPreferenceRepository.findByUserId.mockReset().mockResolvedValue(null);
+    mockEmailPreferenceRepository.delete.mockReset().mockResolvedValue(true);
+    mockFavoriteRepository.findByUser.mockReset().mockResolvedValue([]);
+    mockFavoriteRepository.delete.mockReset().mockResolvedValue(true);
+    mockSendAccountDeletionCodeEmail.mockReset().mockResolvedValue({ success: true });
+    mockSendAccountDeletedEmail.mockReset().mockResolvedValue({ success: true });
+
+    process.env.PUBLIC_URL = 'http://localhost:3000';
+    process.env.FRONTEND_URL = 'http://localhost:3000';
+  });
+
+  // L101: extractAppwriteTokenSecret early-returns for an empty secret
+  it('L101: returns registration-required when verifying an empty secret', async () => {
+    const result = await verifyAuthToken('user-1', '');
+
+    expect(result).toMatchObject({
+      code: 'AUTH_REQUIRE_REGISTRATION',
+      accessToken: 'new-session-secret',
+    });
+  });
+
+  // L384: toAuthError PASSWORD_PWNED message fallback (error has no message)
+  it('L384: uses the default breach message when the pwned error carries no message', async () => {
+    users.create.mockRejectedValueOnce({ type: 'password_pwned' });
+
+    const result = await register({ email: 'test@example.com', password: 'Password1!', role: 'freelancer' });
+
+    expect(result).toEqual({ code: 'PASSWORD_PWNED', message: PWNED_FALLBACK_MESSAGE });
+  });
+
+  // L755 + L769: resetPasswordWithRecovery catch with a message-less pwned error
+  it('L755/L769: maps a message-less pwned recovery error to PASSWORD_PWNED with the default message', async () => {
+    global.mockAppwriteAccount.updateRecovery.mockRejectedValueOnce({ type: 'password_pwned' });
+
+    const result = await resetPasswordWithRecovery('user-123', 'secret-abc', 'NewPass123!');
+
+    expect(result).toEqual({ code: 'PASSWORD_PWNED', message: PWNED_FALLBACK_MESSAGE });
+  });
+
+  // L828 + L839: updatePassword catch with a message-less pwned error
+  it('L828/L839: maps a message-less pwned password update to PASSWORD_PWNED with the default message', async () => {
+    global.mockAppwriteAccount.updatePassword.mockRejectedValueOnce({ type: 'password_pwned' });
+
+    const result = await updatePassword('token', 'NewPass1!');
+
+    expect(result).toEqual({ code: 'PASSWORD_PWNED', message: PWNED_FALLBACK_MESSAGE });
+  });
+
+  // L895 + L906: changePassword catch with a message-less pwned error
+  it('L895/L906: maps a message-less pwned password change to PASSWORD_PWNED with the default message', async () => {
+    global.mockAppwriteAccount.updatePassword.mockRejectedValueOnce({ type: 'password_pwned' });
+
+    const result = await changePassword('access-token', 'OldPass1!', 'NewPass2@');
+
+    expect(result).toEqual({ code: 'PASSWORD_PWNED', message: PWNED_FALLBACK_MESSAGE });
+  });
+
+  // L1206: challengeMFA message fallback when the error has no message
+  it('L1206: returns an empty INTERNAL_ERROR message when the MFA challenge error has no message', async () => {
+    global.mockAppwriteAccount.createMFAChallenge.mockRejectedValueOnce({});
+
+    const result = await challengeMFA('access-token', 'email');
+
+    expect(result).toEqual({ code: 'INTERNAL_ERROR', message: '' });
+  });
+
+  // L1468 + L1469: ensureNoActiveContracts .catch(() => null) callbacks
+  it('L1468/L1469: survives contract lookup failures when requesting account deletion', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-fl-reject' });
+    contractRepository.getContractsByFreelancer.mockRejectedValueOnce(new Error('freelancer contracts unavailable'));
+    contractRepository.getContractsByEmployer.mockRejectedValueOnce(new Error('employer contracts unavailable'));
+
+    const result = await requestAccountDeletion('del-fl-reject');
+
+    expect(result).toMatchObject({ success: true });
+    expect(contractRepository.getContractsByFreelancer).toHaveBeenCalledWith('del-fl-reject', { limit: 50 });
+    expect(contractRepository.getContractsByEmployer).toHaveBeenCalledWith('del-fl-reject', { limit: 50 });
+  });
+
+  // L1471: freelancer side of the active-contract check with a disputed contract
+  it('L1471: blocks deletion when a freelancer contract is disputed', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-fl-disputed' });
+    contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
+      items: [{ id: 'c-1', status: 'disputed' }],
+      total: 1,
+    });
+
+    const result = await requestAccountDeletion('del-fl-disputed');
+
+    expect(result).toMatchObject({ code: 'ACTIVE_CONTRACTS_EXIST' });
+  });
+
+  // L1472: employer side of the active-contract check with a disputed contract
+  it('L1472: blocks deletion when an employer contract is disputed', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-emp-disputed', role: 'employer' });
+    contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+    contractRepository.getContractsByEmployer.mockResolvedValueOnce({
+      items: [{ id: 'c-2', status: 'disputed' }],
+      total: 1,
+    });
+
+    const result = await requestAccountDeletion('del-emp-disputed');
+
+    expect(result).toMatchObject({ code: 'ACTIVE_CONTRACTS_EXIST' });
+  });
+
+  // L1524: maskEmail early return when the address has no @ separator
+  it('L1524: returns the unmasked email when it contains no @ separator', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'del-no-at',
+      email: 'plaintext-address',
+    });
+
+    const result = await requestAccountDeletion('del-no-at');
+
+    expect(result).toMatchObject({ success: true, email: 'plaintext-address' });
+    expect(mockSendAccountDeletionCodeEmail).toHaveBeenCalledWith(
+      'plaintext-address',
+      expect.objectContaining({ confirmationCode: expect.stringMatching(/^\d{6}$/) }),
+    );
+  });
+
+  // L1581 + L1584 + L1585: no email on file -> no masked address in the response
+  it('L1581-L1585: omits masked email details when the user has no email on file', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-no-email', email: '' });
+
+    const result = await requestAccountDeletion('del-no-email');
+
+    expect(result).toEqual({
+      success: true,
+      message: 'A 6-digit confirmation code has been sent to your registered email.',
+    });
+    expect(result).not.toHaveProperty('email');
+    expect(mockSendAccountDeletionCodeEmail).not.toHaveBeenCalled();
+  });
+
+  // L1568: recipient name fallback when the account has no name and empty local part
+  it('L1568: falls back to "User" for the code email when the account has no display name', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'del-unnamed',
+      email: '@example.com',
+      name: '',
+    });
+
+    const result = await requestAccountDeletion('del-unnamed');
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockSendAccountDeletionCodeEmail).toHaveBeenCalledWith(
+      '@example.com',
+      expect.objectContaining({ recipientName: 'User' }),
+    );
+  });
+
+  // L1481 + L1492 + L1497: cleanup lookup .catch callbacks on the freelancer path
+  it('L1481/L1492/L1497: survives freelancer cleanup lookup failures', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-fl-lookup' });
+    mockFreelancerProfileRepository.getProfileByUserId.mockRejectedValueOnce(new Error('profile lookup failed'));
+    mockEmailPreferenceRepository.findByUserId.mockRejectedValueOnce(new Error('preferences lookup failed'));
+    mockFavoriteRepository.findByUser.mockRejectedValueOnce(new Error('favorites lookup failed'));
+
+    const result = await deleteUserAccount('del-fl-lookup');
+
+    expect(result).toMatchObject({ success: true });
+  });
+
+  // L1483 + L1494 + L1499: cleanup delete .catch callbacks on the freelancer path
+  it('L1483/L1494/L1499: tolerates freelancer cleanup delete failures', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-fl-delete' });
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'fl-profile' });
+    mockFreelancerProfileRepository.delete.mockRejectedValueOnce(new Error('profile delete failed'));
+    mockEmailPreferenceRepository.findByUserId.mockResolvedValueOnce({ id: 'pref-1' });
+    mockEmailPreferenceRepository.delete.mockRejectedValueOnce(new Error('pref delete failed'));
+    mockFavoriteRepository.findByUser.mockResolvedValueOnce([{ id: 'fav-1' }]);
+    mockFavoriteRepository.delete.mockRejectedValueOnce(new Error('favorite delete failed'));
+
+    const result = await deleteUserAccount('del-fl-delete');
+
+    expect(result).toMatchObject({ success: true });
+  });
+
+  // L1486: employer cleanup lookup .catch callback
+  it('L1486: survives employer profile lookup failure during cleanup', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-emp-lookup', role: 'employer' });
+    mockEmployerProfileRepository.getProfileByUserId.mockRejectedValueOnce(new Error('employer profile lookup failed'));
+
+    const result = await deleteUserAccount('del-emp-lookup');
+
+    expect(result).toMatchObject({ success: true });
+  });
+
+  // L1488: employer cleanup delete .catch callback
+  it('L1488: tolerates employer profile delete failure during cleanup', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-emp-delete', role: 'employer' });
+    mockEmployerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'emp-profile' });
+    mockEmployerProfileRepository.delete.mockRejectedValueOnce(new Error('employer profile delete failed'));
+
+    const result = await deleteUserAccount('del-emp-delete');
+
+    expect(result).toMatchObject({ success: true });
+  });
+
+  // L1652: deletion recipient name fallback for the Appwrite notification email
+  it('L1652: falls back to "User" for the deletion email when the account has no display name', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'del-unnamed-2',
+      email: '@example.com',
+      name: '',
+    });
+
+    const result = await deleteUserAccount('del-unnamed-2');
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockSendAccountDeletedEmail).toHaveBeenCalledWith(
+      '@example.com',
+      expect.objectContaining({ recipientName: 'User' }),
+    );
+  });
+
+  // L1706: disputed freelancer contract blocks wallet disconnect
+  it('L1706: blocks wallet disconnect when a freelancer contract is disputed', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'disc-fl',
+      wallet_address: '0x123',
+    });
+    contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
+      items: [{ status: 'disputed' }],
+      total: 1,
+    });
+    contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+
+    const result = await disconnectUserWallet('disc-fl');
+
+    expect(result).toMatchObject({ code: 'ACTIVE_CONTRACTS_EXIST' });
+    expect(userRepository.updateUser).not.toHaveBeenCalled();
+  });
+
+  // L983 + L988: admin display-name fallbacks and permissions spread
+  it('L983/L988: derives the admin display name and includes permissions', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'admin-1',
+      role: 'admin',
+      name: '',
+      email: '@example.com',
+      permissions: ['users:view'],
+    });
+
+    const result = await getCurrentUserWithKyc('admin-1');
+
+    expect(result).toMatchObject({
+      name: 'Admin',
+      role: 'admin',
+      permissions: ['users:view'],
+    });
+  });
+
+  // L1000: approved KYC full name wins as the display name
+  it('L1000: prefers the approved KYC full name as the display name', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'kyc-user-1',
+      name: 'Sam',
+      email: 'sam@example.com',
+    });
+    getKycVerificationByUserId.mockResolvedValueOnce({
+      status: 'approved',
+      first_name: 'Jane',
+      last_name: 'Doe',
+    });
+
+    const result = await getCurrentUserWithKyc('kyc-user-1');
+
+    expect(result).toMatchObject({ name: 'Jane Doe', kycStatus: 'approved' });
+  });
+
+  // L1002: display-name fallback chain when name is empty and local part is empty
+  it('L1002: falls back to "User" when there is no name and an empty email local part', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({
+      ...defaultUser,
+      id: 'kyc-user-2',
+      name: '',
+      email: '@example.com',
+    });
+    getKycVerificationByUserId.mockResolvedValueOnce(null);
+
+    const result = await getCurrentUserWithKyc('kyc-user-2');
+
+    expect(result).toMatchObject({ name: 'User' });
   });
 });

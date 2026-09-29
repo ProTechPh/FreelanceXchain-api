@@ -113,6 +113,33 @@ describe('Logger', () => {
     });
   });
 
+  describe('logger bigint serialization (line 41)', () => {
+    it('should serialize bigint values in log metadata', async () => {
+      process.env.LOG_LEVEL = 'info';
+      const { logger } = await importModule();
+      logger.info('test message', { bigValue: BigInt(12345) });
+      expect(consoleOutput.some(o => o.level === 'log')).toBe(true);
+      const logEntry = JSON.parse(consoleOutput[0]!.args[0]);
+      expect(logEntry.meta.bigValue).toBe('12345');
+    });
+
+    it('should serialize bigint values in error metadata', async () => {
+      process.env.LOG_LEVEL = 'info';
+      const { logger } = await importModule();
+      logger.error('error message', new Error('fail'), { bigValue: BigInt('9007199254740991') });
+      const logEntry = JSON.parse(consoleOutput[0]!.args[0]);
+      expect(logEntry.meta.bigValue).toBe('9007199254740991');
+    });
+
+    it('should not throw when bigint is the only metadata value', async () => {
+      process.env.LOG_LEVEL = 'info';
+      const { logger } = await importModule();
+      expect(() => logger.info('only bigint', { bigValue: BigInt(0) })).not.toThrow();
+      const logEntry = JSON.parse(consoleOutput[0]!.args[0]);
+      expect(logEntry.meta.bigValue).toBe('0');
+    });
+  });
+
   describe('error logging', () => {
     it('should log error with Error object', async () => {
       process.env.LOG_LEVEL = 'info';

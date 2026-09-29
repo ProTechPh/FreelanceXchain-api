@@ -122,6 +122,18 @@ describe('AuditLogService', () => {
       expect(result).toEqual(logs);
       expect(mockGetByDateRange).toHaveBeenCalledWith(start, end);
     });
+
+    it('should forward an explicit limit to the repository', async () => {
+      const start = new Date('2025-01-01');
+      const end = new Date('2025-01-31');
+      const logs = [sampleLog()];
+      mockGetByDateRange.mockResolvedValue(logs);
+
+      const result = await service.getAuditLogsByDateRange(start, end, 25);
+
+      expect(result).toEqual(logs);
+      expect(mockGetByDateRange).toHaveBeenCalledWith(start, end, 25);
+    });
   });
 
   describe('getFailedActions', () => {
@@ -210,6 +222,33 @@ describe('AuditLogService', () => {
       const summary = await service.getAdminActivitySummary(new Date('2025-06-01'), new Date('2025-06-30'));
 
       expect(summary).toEqual({ items: [], totalActions: 0, activeAdmins: 0 });
+    });
+
+    it('should bucket logs with no usable created_at as unknown day', async () => {
+      const logs = [
+        sampleLog({ actor_id: 'admin-1', action: 'login', created_at: undefined }),
+        sampleLog({ id: 'log-2', actor_id: 'admin-1', action: 'login', created_at: undefined }),
+      ];
+      mockListForRange.mockResolvedValue(logs);
+
+      const summary = await service.getAdminActivitySummary(new Date('2025-06-01'), new Date('2025-06-30'));
+
+      expect(summary.totalActions).toBe(2);
+      expect(summary.activeAdmins).toBe(1);
+      expect(summary.items).toEqual([
+        { actor_id: 'admin-1', date: 'unknown', actions: { login: 2 }, total: 2 },
+      ]);
+    });
+
+    it('should bucket logs with an empty created_at as unknown day', async () => {
+      const logs = [sampleLog({ actor_id: 'admin-1', action: 'logout', created_at: '' })];
+      mockListForRange.mockResolvedValue(logs);
+
+      const summary = await service.getAdminActivitySummary(new Date('2025-06-01'), new Date('2025-06-30'));
+
+      expect(summary.items).toEqual([
+        { actor_id: 'admin-1', date: 'unknown', actions: { logout: 1 }, total: 1 },
+      ]);
     });
   });
 

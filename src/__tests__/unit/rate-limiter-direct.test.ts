@@ -52,7 +52,8 @@ function createRes() {
   const jsonMock = jest.fn().mockReturnThis();
   const statusMock = jest.fn().mockReturnThis();
   const setMock = jest.fn().mockReturnThis();
-  return { status: statusMock, json: jsonMock, set: setMock };
+  const redirectMock = jest.fn().mockReturnThis();
+  return { status: statusMock, json: jsonMock, set: setMock, redirect: redirectMock };
 }
 
 describe('Rate Limiter - Real Module Coverage', () => {
@@ -104,6 +105,24 @@ describe('Rate Limiter - Real Module Coverage', () => {
         expect.objectContaining({
           error: expect.objectContaining({ code: 'RATE_LIMIT_EXCEEDED' }),
         })
+      );
+    });
+
+    it('should redirect browser to login when rate limit exceeded on oauth path', async () => {
+      const limiter = rateLimiterFn('test-oauth-limit', { windowMs: 60000, maxRequests: 1 });
+      const req = createReq({
+        method: 'GET',
+        path: '/api/auth/oauth/github',
+        headers: { accept: 'text/html' },
+      });
+      const res = createRes();
+      const next = jest.fn();
+
+      await limiter(req, res, next);
+      await limiter(req, res, next);
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        expect.stringContaining('/login?error=')
       );
     });
 

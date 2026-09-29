@@ -190,11 +190,57 @@ describe('file-management-routes', () => {
       expect(res.status).toBe(400);
     });
 
+    it('returns 400 when bucket is not allowed for file management', async () => {
+      const res = await request(app).delete('/api/file-management/not-a-bucket/file-1');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_BUCKET');
+    });
+
     it('returns 500 when deleteFile throws', async () => {
       mockDeleteFile.mockRejectedValue(new Error('Disk error'));
 
       const res = await request(app).delete('/api/file-management/portfolio-images/file-1');
       expect(res.status).toBe(500);
+    });
+  });
+
+  describe('coverage gap branches', () => {
+    it('reports size 0 when the stored file has no sizeOriginal', async () => {
+      mockListUserFiles.mockResolvedValue({
+        success: true,
+        files: [
+          {
+            $id: 'file-1',
+            name: 'user-123_abc_legacy.png',
+            $createdAt: '2026-09-01T00:00:00Z',
+            $updatedAt: '2026-09-01T00:00:00Z',
+          },
+        ],
+      });
+
+      const res = await request(app).get('/api/file-management');
+
+      expect(res.status).toBe(200);
+      expect(res.body[0].size).toBe(0);
+    });
+
+    it('falls back to a default message when the quota failure carries no error', async () => {
+      mockGetFileQuota.mockResolvedValue({ success: false });
+
+      const res = await request(app).get('/api/file-management/quota');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('QUOTA_FAILED');
+      expect(res.body.error.message).toBe('Failed to calculate quota');
+    });
+
+    it('falls back to FILE_DELETE_FAILED when the delete failure carries no error', async () => {
+      mockDeleteFile.mockResolvedValue({ success: false });
+
+      const res = await request(app).delete('/api/file-management/portfolio-images/file-1');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('FILE_DELETE_FAILED');
     });
   });
 });

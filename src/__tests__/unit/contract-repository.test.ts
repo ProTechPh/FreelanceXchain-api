@@ -185,6 +185,12 @@ describe('ContractRepository', () => {
       expect(result.items[49]!.id).toBe('c249');
       expect(result.hasMore).toBe(false);
     });
+
+    it('should return empty result on error', async () => {
+      jest.spyOn(repo, 'paginatedWithQueries').mockRejectedValueOnce(new Error('DB failure'));
+      const result = await repo.getContractsByFreelancer('f1');
+      expect(result).toEqual({ items: [], hasMore: false, total: 0 });
+    });
   });
 
   describe('getContractsByEmployer', () => {
@@ -207,6 +213,12 @@ describe('ContractRepository', () => {
       expect(result.items).toHaveLength(50);
       expect(result.items[0]!.id).toBe('c200');
       expect(result.items[49]!.id).toBe('c249');
+    });
+
+    it('should return empty result on error', async () => {
+      jest.spyOn(repo, 'paginatedWithQueries').mockRejectedValueOnce(new Error('DB failure'));
+      const result = await repo.getContractsByEmployer('e1');
+      expect(result).toEqual({ items: [], hasMore: false, total: 0 });
     });
   });
 
@@ -497,5 +509,43 @@ describe('ContractRepository', () => {
       expect(result.freelancer.profile).toMatchObject({ id: 'fp1' });
       expect(result.freelancer.profile.hourly_rate).toBeUndefined();
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Remaining coverage gaps
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-repository.ts - Remaining coverage gaps', () => {
+  let repo: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetDocument.mockReset();
+    mockListDocuments.mockReset();
+    mockCreateDocument.mockReset();
+    mockUpdateDocument.mockReset();
+    mockDeleteDocument.mockReset();
+    repo = new ContractRepository();
+  });
+
+  // Line 288: getUserContracts swallows a rejected page query into an empty page.
+  it('getUserContracts returns an empty page when the paginated query rejects', async () => {
+    jest.spyOn(repo, 'paginatedWithQueries').mockRejectedValue(new Error('DB failure'));
+
+    const result = await repo.getUserContracts('u1');
+
+    expect(result).toEqual({ items: [], hasMore: false, total: 0 });
+  });
+
+  // Line 280: neither role result carries a `total`, so both default to 0.
+  it('getUserContracts defaults both missing totals to 0', async () => {
+    jest.spyOn(repo, 'paginatedWithQueries').mockResolvedValue({ items: [], hasMore: false });
+
+    const result = await repo.getUserContracts('u1');
+
+    expect(result.total).toBe(0);
+    expect(result.items).toEqual([]);
+    expect(result.hasMore).toBe(false);
   });
 });

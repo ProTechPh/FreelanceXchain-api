@@ -342,4 +342,57 @@ describe('stripe-webhook-service', () => {
     await expect(handleStripeEvent(evt('customer.created', {}))).resolves.toBeUndefined();
     expect(upsertForUser).not.toHaveBeenCalled();
   });
+
+  it('L69: signature failure with a non-Error throw logs String(error)', () => {
+    constructEvent.mockImplementation(() => { throw 'raw signature failure'; });
+
+    expect(verifyAndParseEvent('{}', 'sig')).toMatchObject({ ok: false, code: 'INVALID_SIGNATURE' });
+    expect(verifyAndParseEvent('{"a":1}', 'sig')).toMatchObject({ ok: false, message: 'Invalid signature' });
+  });
+
+  it('L78/L84/L170: subscription with no price or period end maps to free with null fields', async () => {
+    // No items at all: no price → plan free, no period end → null, price id → null.
+    const bare = subscription({ items: { data: [] } });
+    fetchSubscription.mockResolvedValue(bare);
+
+    await handleStripeEvent(evt('customer.subscription.updated', bare));
+
+    expect(upsertForUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      status: 'active',
+      plan: 'free',
+      stripe_price_id: null,
+      current_period_end: null,
+    }));
+  });
+
+  it('L134: uses the id of an expanded customer object', async () => {
+    const expanded = subscription({ customer: { id: 'cus_9' } });
+    fetchSubscription.mockResolvedValue(expanded);
+
+    await handleStripeEvent(evt('customer.subscription.updated', expanded));
+
+    expect(upsertForUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      stripe_customer_id: 'cus_9',
+    }));
+  });
+
+  it('L151: applies the event when the stored subscription has no watermark', async () => {
+    getByUserId.mockResolvedValue({ user_id: 'user-1' });
+    fetchSubscription.mockResolvedValue(subscription());
+
+    await handleStripeEvent(evt('customer.subscription.updated', subscription()));
+
+    expect(upsertForUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ status: 'active' }));
+  });
+
+  it('L196: applies the cancellation when the stored subscription has no watermark', async () => {
+    getByUserId.mockResolvedValue({ user_id: 'user-1' });
+
+    await handleStripeEvent(evt('customer.subscription.deleted', subscription()));
+
+    expect(upsertForUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      plan: 'free',
+      status: 'canceled',
+    }));
+  });
 });

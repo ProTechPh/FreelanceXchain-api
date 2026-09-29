@@ -79,7 +79,9 @@ function requireSessionSecret(session: { secret?: string }): string {
 }
 
 function extractSessionSecretFromCookies(cookieHeaders: string[] | string | null | undefined): string | undefined {
+  /* istanbul ignore next -- both call sites always pass an array literal, so cookieHeaders is never falsy */
   if (!cookieHeaders) return undefined;
+  /* istanbul ignore next -- both call sites always pass string arrays, never a bare string */
   const cookieStr = Array.isArray(cookieHeaders) ? cookieHeaders.join('; ') : cookieHeaders;
   
   const projectId = config.appwrite.projectId.toLowerCase();
@@ -1044,6 +1046,7 @@ export async function updateUserWallet(
     }
 
     if (normalizedExisting === normalizedRequested) {
+      /* istanbul ignore next -- equality above requires a non-nullish wallet_address, so ?? is unreachable */
       return { walletAddress: existing.wallet_address ?? walletAddress };
     }
 
@@ -1519,14 +1522,18 @@ function cleanExpiredDeletionCodes(): void {
 
 function maskEmail(email: string): string {
   const parts = email.split('@');
+  /* istanbul ignore next -- String.split with a non-empty separator always yields index 0 */
   const local = parts[0] ?? '';
   const domain = parts[1];
   if (!domain || !local) return email;
   if (local.length <= 2) {
+    /* istanbul ignore next -- local is proven non-empty by the guard above */
     const first = local[0] ?? '*';
     return `${first}***@${domain}`;
   }
+  /* istanbul ignore next -- local is proven non-empty by the guard above */
   const first = local[0] ?? '*';
+  /* istanbul ignore next -- local is proven non-empty by the guard above */
   const last = local[local.length - 1] ?? '*';
   return `${first}***${last}@${domain}`;
 }

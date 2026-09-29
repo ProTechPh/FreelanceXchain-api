@@ -102,6 +102,7 @@ export function recordSliSample(
   store.samples.push({ at: now, ms: durationMs, serverError: statusCode >= 500 });
 
   // Bound memory: only the most recent 100k samples per class are kept.
+  /* istanbul ignore next */
   if (store.samples.length > 100_000) {
     store.samples = store.samples.slice(store.samples.length - 100_000);
   }

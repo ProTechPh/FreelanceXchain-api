@@ -302,5 +302,17 @@ describe('idempotencyMiddleware', () => {
     expect(handledB).toBe(true);
     expect(mockResB.sentData).toEqual({ forUser: 'B' });
   });
+
+  it('should continue if cached entry has completed status but missing statusCode', async () => {
+    const { idempotencyCache } = await import('../../utils/cache.js');
+    const middleware = idempotencyMiddleware();
+    const req = createMockReq();
+    (req.headers as any)['idempotency-key'] = 'corrupt-key';
+    idempotencyCache.set('idempotency:user-123:corrupt-key', { status: 'completed' as any }, 60_000);
+    const mockRes = createMockRes();
+    const next = jest.fn();
+    middleware(req, mockRes.res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
 });
 

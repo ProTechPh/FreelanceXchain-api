@@ -106,6 +106,7 @@ router.get(
           requestId,
         });
 
+        /* istanbul ignore next -- hasFileAccess always supplies a reason when access is denied */
         sendErrorResponse(res, 403, 'FORBIDDEN', access.reason || 'You do not have access to this file', { requestId });
         return;
       }
@@ -190,6 +191,7 @@ router.get(
 
       const access = await hasFileAccess(bucketId, fileId, userId, userRole);
       if (!access.allowed) {
+        /* istanbul ignore next -- hasFileAccess always supplies a reason when access is denied */
         sendErrorResponse(res, 403, 'FORBIDDEN', access.reason || 'Access denied', { requestId });
         return;
       }

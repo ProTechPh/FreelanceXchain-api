@@ -1,4 +1,4 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -111,6 +111,14 @@ describe('auth-cookie-helpers', () => {
       const token = extractTokenFromRequest(req as any);
       expect(token).toBeUndefined();
     });
+
+    it('should parse cookie header directly and fallback when decodeURIComponent throws', () => {
+      const req = {
+        headers: { cookie: 'bad=%E0%A4%A; access_token=raw-cookie-token' },
+      };
+      const token = extractTokenFromRequest(req as any);
+      expect(token).toBe('raw-cookie-token');
+    });
   });
 
   describe('authMiddleware with Cookie Support', () => {
@@ -150,5 +158,69 @@ describe('auth-cookie-helpers', () => {
         role: 'freelancer',
       });
     });
+  });
+});
+
+describe('auth-cookie-helpers - production cookie hardening', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    process.env.NODE_ENV = 'production';
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+  });
+
+  it('uses __Host- prefixed cookie names in production', () => {
+    expect(getAuthCookieNames()).toEqual({
+      accessTokenCookie: '__Host-psifi.access-token',
+      refreshTokenCookie: '__Host-psifi.refresh-token',
+    });
+  });
+
+  it('sets secure, SameSite=None cookies with __Host- paths in production', () => {
+    const cookieMock = jest.fn();
+    const res = { cookie: cookieMock } as unknown as Response;
+
+    setAuthCookies(res, 'mock-access-token', 'mock-refresh-token');
+
+    expect(cookieMock).toHaveBeenCalledTimes(2);
+    expect(cookieMock).toHaveBeenCalledWith(
+      '__Host-psifi.access-token',
+      'mock-access-token',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+      }),
+    );
+    expect(cookieMock).toHaveBeenCalledWith(
+      '__Host-psifi.refresh-token',
+      'mock-refresh-token',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+      }),
+    );
+  });
+
+  it('clears production cookie names with secure SameSite=None options', () => {
+    const clearMock = jest.fn();
+    const res = { clearCookie: clearMock } as unknown as Response;
+
+    clearAuthCookies(res);
+
+    expect(clearMock).toHaveBeenCalledWith(
+      '__Host-psifi.access-token',
+      expect.objectContaining({ secure: true, sameSite: 'none', path: '/' }),
+    );
+    expect(clearMock).toHaveBeenCalledWith(
+      '__Host-psifi.refresh-token',
+      expect.objectContaining({ secure: true, sameSite: 'none', path: '/' }),
+    );
   });
 });

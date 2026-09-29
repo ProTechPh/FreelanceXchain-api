@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+﻿import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import type { Request, Response, NextFunction } from 'express';
 import { directAccessGuard } from '../../middleware/security-middleware.js';
 import { config } from '../../config/env.js';
@@ -8,23 +8,28 @@ describe('directAccessGuard middleware', () => {
   let nextFn: NextFunction;
   let originalInternalSecret: string | undefined;
 
-  function createMockReq(path: string, headers: Record<string, string> = {}) {
+  function createMockReq(path: string, headers: Record<string, string> = {}, method = 'GET') {
     return {
       path,
       url: path,
+      method,
       headers,
     } as unknown as Request;
   }
 
   let originalNodeEnv: string;
+  let originalEnableApiDocs: boolean;
 
   beforeEach(() => {
     originalNodeEnv = config.server.nodeEnv;
     originalInternalSecret = config.server.internalApiSecret;
+    originalEnableApiDocs = config.server.enableApiDocs;
     // @ts-expect-error test override
     config.server.nodeEnv = 'production';
     // @ts-expect-error test override
     config.server.internalApiSecret = undefined;
+    // @ts-expect-error test override
+    config.server.enableApiDocs = false;
 
     mockRes = {
       status: jest.fn().mockReturnThis() as any,
@@ -39,6 +44,15 @@ describe('directAccessGuard middleware', () => {
     config.server.nodeEnv = originalNodeEnv;
     // @ts-expect-error test restore
     config.server.internalApiSecret = originalInternalSecret;
+    // @ts-expect-error test restore
+    config.server.enableApiDocs = originalEnableApiDocs;
+  });
+
+  it('allows OPTIONS preflight requests', () => {
+    const req = createMockReq('/api/freelancers', {}, 'OPTIONS');
+    directAccessGuard(req, mockRes as Response, nextFn);
+    expect(nextFn).toHaveBeenCalled();
+    expect(mockRes.status).not.toHaveBeenCalled();
   });
 
   it('bypasses guard in development environment', () => {
@@ -48,6 +62,16 @@ describe('directAccessGuard middleware', () => {
     config.server.internalApiSecret = 'test-secret';
     directAccessGuard(createMockReq('/api/freelancers', {}), mockRes as Response, nextFn);
     expect(nextFn).toHaveBeenCalled();
+  });
+
+  it('bypasses guard in test environment', () => {
+    // @ts-expect-error test override
+    config.server.nodeEnv = 'test';
+    // @ts-expect-error test override
+    config.server.internalApiSecret = 'test-secret';
+    directAccessGuard(createMockReq('/api/freelancers', {}), mockRes as Response, nextFn);
+    expect(nextFn).toHaveBeenCalled();
+    expect(mockRes.status).not.toHaveBeenCalled();
   });
 
   it('allows health check and root endpoints without checks', () => {
@@ -78,6 +102,22 @@ describe('directAccessGuard middleware', () => {
 
     nextFn = jest.fn();
     directAccessGuard(createMockReq('/api/auth/oauth/google'), mockRes as Response, nextFn);
+    expect(nextFn).toHaveBeenCalled();
+  });
+
+  it('allows Swagger UI docs when api docs enabled', () => {
+    // @ts-expect-error test override
+    config.server.enableApiDocs = true;
+
+    directAccessGuard(createMockReq('/api-docs', {}), mockRes as Response, nextFn);
+    expect(nextFn).toHaveBeenCalled();
+
+    nextFn = jest.fn();
+    directAccessGuard(createMockReq('/api-docs/index.html', {}), mockRes as Response, nextFn);
+    expect(nextFn).toHaveBeenCalled();
+
+    nextFn = jest.fn();
+    directAccessGuard(createMockReq('/openapi.json', {}), mockRes as Response, nextFn);
     expect(nextFn).toHaveBeenCalled();
   });
 

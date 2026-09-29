@@ -122,6 +122,12 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     return mapProfile(doc);
   }
 
+  /** Normalizes like the other profile reads, so skills/experience are never raw JSON strings. */
+  override async getById(id: string): Promise<FreelancerProfileEntity | null> {
+    const profile = await super.getById(id);
+    return profile ? normalizeProfileEntity(profile) : null;
+  }
+
   async createProfile(profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>): Promise<FreelancerProfileEntity> {
     return normalizeProfileEntity(await this.create(profile));
   }

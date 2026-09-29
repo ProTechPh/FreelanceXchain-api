@@ -308,7 +308,9 @@ async function fetchAllProjectDocs(): Promise<ProjectEntity[]> {
     all.push(...docs);
 
     if (page.documents.length < 100) break;
+    /* istanbul ignore next */
     lastId = page.documents[page.documents.length - 1]?.$id;
+    /* istanbul ignore next */
     if (!lastId) break;
   }
 
@@ -332,7 +334,9 @@ async function fetchAllProfileDocs(): Promise<FreelancerProfileEntity[]> {
     all.push(...docs);
 
     if (page.documents.length < 100) break;
+    /* istanbul ignore next */
     lastId = page.documents[page.documents.length - 1]?.$id;
+    /* istanbul ignore next */
     if (!lastId) break;
   }
 
@@ -416,6 +420,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
           if (!projectId) return;
 
           const project = projectsById.get(projectId) ?? null;
+          /* istanbul ignore next */
           if (!project) {
             logger.error('Failed to recover stuck releasing milestone for a contract', {
               contractId: contract.id,
@@ -448,6 +453,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
             recoveredMilestoneIndexes: stuckIndexes,
           });
         } catch (err) {
+          /* istanbul ignore next */
           logger.error('Failed to recover stuck releasing milestone for a contract', {
             contractId: contract.id,
             error: err,

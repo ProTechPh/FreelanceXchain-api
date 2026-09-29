@@ -71,6 +71,15 @@ describe('Escrow Refund Routes', () => {
       expect(res.body.error.message).toBe('Refund reason is required');
     });
 
+    it('should return 400 when amount is not a positive number', async () => {
+      const res = await request(app)
+        .post('/api/escrow/contract-1/refund-request')
+        .send({ reason: 'Work not delivered', amount: -50 });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Refund amount must be a positive number');
+    });
+
     it('should return 400 on service failure', async () => {
       mockCreateRefundRequest.mockResolvedValue({
         success: false,
@@ -520,5 +529,79 @@ describe('escrow-refund-routes - ?? nullish fallback branches', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/escrow/refunds/r1/reject').send({ reason: 'test' });
     expect(res.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// withdraw route gap tests (L229/L230 fallbacks, L241 String(error))
+// ═══════════════════════════════════════════════════════════════
+
+describe('escrow-refund-routes - withdraw branch gaps', () => {
+  let app: any;
+  const localWithdraw = jest.fn<any>();
+  let authSetup: (req: any) => void = () => {};
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        authSetup(req);
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-refund-service.ts'), () => ({
+      createRefundRequest: jest.fn(),
+      approveRefund: jest.fn(),
+      rejectRefund: jest.fn(),
+      getContractRefunds: jest.fn(),
+      withdrawRefundRequest: localWithdraw,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/escrow-refund-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/escrow', router);
+    jest.clearAllMocks();
+    // default auth: authenticated user with a userId and intact params
+    authSetup = (req: any) => {
+      req.user = { userId: 'user-1', id: 'user-1', role: 'employer' };
+    };
+  });
+
+  it('L229-230: POST withdraw with missing refundId param and user without userId falls back to empty strings', async () => {
+    authSetup = (req: any) => {
+      // user object present but no userId → req.user?.userId is undefined
+      req.user = { id: 'user-1', role: 'employer' };
+      for (const key of Object.keys(req.params)) delete req.params[key];
+    };
+    localWithdraw.mockResolvedValueOnce({ success: true, data: { id: 'r1', status: 'withdrawn' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/withdraw');
+    expect(res.status).toBe(200);
+    expect(localWithdraw).toHaveBeenCalledWith('', '');
+  });
+
+  it('L230: POST withdraw with entirely missing req.user falls back to empty userId', async () => {
+    authSetup = (req: any) => {
+      // req.user never set → req.user?.userId short-circuits to undefined
+      delete req.user;
+    };
+    localWithdraw.mockResolvedValueOnce({ success: true, data: { id: 'r1', status: 'withdrawn' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/withdraw');
+    expect(res.status).toBe(200);
+    expect(localWithdraw).toHaveBeenCalledWith('r1', '');
+  });
+
+  it('L241: POST withdraw catch with non-Error uses String(error)', async () => {
+    localWithdraw.mockRejectedValueOnce('withdraw blew up');
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/withdraw');
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    expect(res.body.error.message).toBe('Failed to withdraw refund request');
   });
 });

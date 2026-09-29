@@ -81,7 +81,9 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   getEmailWebhookSecret: () => process.env['EMAIL_WEBHOOK_SECRET'],
 }));
 
-const { createApp } = await import('../../app.js');
+const { createApp, assertBlockchainConfigSafe } = await import('../../app.js');
+const { config } = await import('../../config/env.js');
+const { logger } = await import('../../config/logger.js');
 
 describe('App Integration Tests', () => {
   let app: Express;
@@ -94,12 +96,57 @@ describe('App Integration Tests', () => {
     jest.restoreAllMocks();
   });
 
+  describe('Blockchain config safety', () => {
+    it('should throw an error if BLOCKCHAIN_MODE is simulated in production', () => {
+      const origEnv = config.server.nodeEnv;
+      const origMode = config.blockchain.mode;
+      try {
+        config.server.nodeEnv = 'production';
+        config.blockchain.mode = 'simulated';
+        expect(() => assertBlockchainConfigSafe()).toThrow('BLOCKCHAIN_MODE=simulated is prohibited in production');
+      } finally {
+        config.server.nodeEnv = origEnv;
+        config.blockchain.mode = origMode;
+      }
+    });
+  });
+
+  describe('Compression', () => {
+    it('should skip compression when x-no-compression header is present', async () => {
+      const response = await request(app)
+        .get('/api-docs.json')
+        .set('x-no-compression', '1');
+      expect(response.status).toBe(200);
+    });
+  });
+
   describe('Swagger docs', () => {
     it('should serve swagger JSON when api docs are enabled', async () => {
       const response = await request(app).get('/api-docs.json');
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('openapi');
       expect(response.headers['content-type']).toContain('application/json');
+    });
+
+    it('should log a security warning when api docs are enabled in production', async () => {
+      const origEnv = config.server.nodeEnv;
+      const origMode = config.blockchain.mode;
+      const origDevGrant = config.stripe.devGrantPro;
+      const warnSpy = jest.spyOn(logger, 'warn');
+      try {
+        config.server.nodeEnv = 'production';
+        config.blockchain.mode = 'real';
+        config.stripe.devGrantPro = false;
+        await createApp();
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Swagger API documentation is active in production')
+        );
+      } finally {
+        config.server.nodeEnv = origEnv;
+        config.blockchain.mode = origMode;
+        config.stripe.devGrantPro = origDevGrant;
+        warnSpy.mockRestore();
+      }
     });
   });
 

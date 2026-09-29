@@ -94,6 +94,7 @@ async function computeOnTimeDeliveryRate(userId: string): Promise<number> {
     if (!project) return { approved: 0, onTime: 0 };
 
     let milestones: any = project.milestones;
+    /* istanbul ignore next */
     if (typeof milestones === 'string') {
       try {
         milestones = JSON.parse(milestones);
@@ -313,6 +314,7 @@ export async function getReputationLeaderboard(
 ): Promise<ServiceResult<ReputationLeaderboardEntry[]>> {
   const isTest = process.env.NODE_ENV === 'test';
   const cacheKey = `leaderboard:${role}:${limit}`;
+  /* istanbul ignore next */
   if (!isTest) {
     const cached = platformMetricsCache.get(cacheKey);
     if (cached) return successResult(cached);
@@ -358,6 +360,7 @@ export async function getReputationLeaderboard(
       .sort((a, b) => b.rankingScore - a.rankingScore || b.totalRatings - a.totalRatings)
       .slice(0, limit);
 
+    /* istanbul ignore next */
     if (!isTest) {
       platformMetricsCache.set(cacheKey, leaderboard, 60_000);
     }

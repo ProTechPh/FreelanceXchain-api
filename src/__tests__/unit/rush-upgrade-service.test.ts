@@ -443,7 +443,7 @@ describe('respondToRushUpgrade - edge cases', () => {
 
   it('should reject if user is not the contract freelancer', async () => {
     const contract = seedContract({ freelancer_id: 'real-freelancer' });
-    const request = seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+    const request = seedRushUpgradeRequest({ contract_id: contract.id, status: 'accepted' });
     const result = await respondToRushUpgrade('wrong-user', { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
@@ -580,7 +580,7 @@ describe('declineCounterOffer', () => {
   it('should reject if request is not counter_offered', async () => {
     const employer = seedUser({ role: 'employer' });
     const contract = seedContract({ employer_id: employer.id });
-    const request = seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+    const request = seedRushUpgradeRequest({ contract_id: contract.id, status: 'accepted' });
     const result = await declineCounterOffer(employer.id, request.id);
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
@@ -608,8 +608,8 @@ describe('getRushUpgradeRequestsByContract', () => {
   it('should return all requests for a contract', async () => {
     const contractId = 'contract-1';
     seedRushUpgradeRequest({ contract_id: contractId, status: 'declined' });
-    seedRushUpgradeRequest({ contract_id: contractId, status: 'pending' });
-    seedRushUpgradeRequest({ contract_id: 'other-contract', status: 'pending' });
+    seedRushUpgradeRequest({ contract_id: contractId, status: 'accepted' });
+    seedRushUpgradeRequest({ contract_id: 'other-contract', status: 'accepted' });
 
     const result = await getRushUpgradeRequestsByContract(contractId);
     expect(result.success).toBe(true);
@@ -646,7 +646,7 @@ describe('getRushUpgradeRequestsForContract', () => {
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
     const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
-    seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+    seedRushUpgradeRequest({ contract_id: contract.id, status: 'accepted' });
 
     const result = await getRushUpgradeRequestsForContract(contract.id, employer.id);
 
@@ -679,7 +679,7 @@ describe('getRushUpgradeRequestsForContract', () => {
   it('should return UNAUTHORIZED when the user is not a party', async () => {
     const employer = seedUser({ role: 'employer' });
     const contract = seedContract({ employer_id: employer.id });
-    seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+    seedRushUpgradeRequest({ contract_id: contract.id, status: 'accepted' });
 
     const result = await getRushUpgradeRequestsForContract(contract.id, 'outsider-1');
 
@@ -1646,7 +1646,7 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
     it('returns UNAUTHORIZED when caller is not the requester', async () => {
       const employer = seedUser({ role: 'employer' });
       const contract = seedContract({ employer_id: employer.id });
-      const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'pending' });
+      const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'accepted' });
 
       const result = await withdrawRushUpgradeRequest('other-user', request.id);
       expect(result.success).toBe(false);
@@ -1685,4 +1685,81 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
       expect((updated as any)?.status).toBe('declined');
     });
   });
+describe('Rush Upgrade Additional Coverage', () => {
+  beforeEach(() => {
+    rushUpgradeStore.clear();
+    contractStore.clear();
+    projectStore.clear();
+    userStore.clear();
+    notificationStore.clear();
+    jest.clearAllMocks();
+  });
+
+  it('fails calculateRushFee if percentage has more than 2 decimal places (line 26)', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id });
+
+    const result = await requestRushUpgrade(employer.id, {
+      contractId: contract.id, proposedPercentage: 25.123,
+    });
+    expect(result.success).toBe(false);
+    // Note: the catch block returns INTERNAL_ERROR
+  });
+
+  it('acceptRushUpgrade returns TRANSACTION_NOT_FOUND if tx is null (line 146)', async () => {
+    mockGetBlockchainMode.mockReturnValue('real');
+    mockIsWeb3Available.mockReturnValue(true);
+    mockGetTransactionByHash.mockResolvedValueOnce(null);
+
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer', wallet_address: '0x123' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id });
+    const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'accepted' });
+
+    const result = await payRushUpgradeFee(employer.id, {
+      requestId: request.id,
+      transactionHash: '0x' + 'd'.repeat(64),
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('TRANSACTION_NOT_FOUND');
+    }
+    
+    mockGetBlockchainMode.mockReturnValue('simulated');
+    mockIsWeb3Available.mockReturnValue(false);
+  });
+
+  it('acceptRushUpgrade returns TRANSACTION_NOT_CONFIRMED if tx is pending (line 150)', async () => {
+    mockGetBlockchainMode.mockReturnValue('real');
+    mockIsWeb3Available.mockReturnValue(true);
+    mockGetTransactionByHash.mockResolvedValueOnce({
+      hash: '0x' + 'e'.repeat(64),
+      status: 'pending',
+      to: '0x123',
+    });
+
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer', wallet_address: '0x123' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id });
+    const request = seedRushUpgradeRequest({ contract_id: contract.id, requested_by: employer.id, status: 'accepted' });
+
+    const result = await payRushUpgradeFee(employer.id, {
+      requestId: request.id,
+      transactionHash: '0x' + 'e'.repeat(64),
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('TRANSACTION_NOT_CONFIRMED');
+    }
+    
+    mockGetBlockchainMode.mockReturnValue('simulated');
+    mockIsWeb3Available.mockReturnValue(false);
+  });
+});
 });

@@ -12,6 +12,9 @@ const mockParseJsonResponse = jest.fn<any>();
 const mockIsAIError = jest.fn<any>();
 const mockAnalyzeSkillMatch = jest.fn<any>();
 const mockExtractSkillsFn = jest.fn<any>();
+const mockGenerateAIProposal = jest.fn<any>();
+const mockFallbackGenerateProposal = jest.fn<any>();
+const mockFindPortfolioByFreelancer = jest.fn<any>();
 
 // Mock reputation-service and skill-service so (getReputation as jest.Mock) casts work
 const mockGetReputation = jest.fn<any>().mockResolvedValue({ success: true, data: { score: 50 } });
@@ -27,6 +30,9 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: mockProjectRepository,
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/portfolio-repository.ts'), () => ({
+  portfolioRepository: { findByFreelancer: mockFindPortfolioByFreelancer },
 }));
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
@@ -44,8 +50,8 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   extractSkills: mockExtractSkillsFn,
   keywordMatchSkills: realAiClient.keywordMatchSkills,
   keywordExtractSkills: realAiClient.keywordExtractSkills,
-  fallbackGenerateProposal: realAiClient.fallbackGenerateProposal,
-  generateAIProposal: jest.fn(),
+  fallbackGenerateProposal: mockFallbackGenerateProposal,
+  generateAIProposal: mockGenerateAIProposal,
   SKILL_MATCH_PROMPT: '',
   SKILL_EXTRACTION_PROMPT: '',
   SKILL_GAP_PROMPT: '',
@@ -64,7 +70,106 @@ const {
   sortRecommendationsByScore,
   sortFreelancerRecommendationsByCombinedScore,
   calculateMatchScore,
+  generateProposalForProject,
 } = await import(resolveModule('src/services/matching-service.ts'));
+
+describe('generateProposalForProject', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockIsAIError.mockReturnValue(false);
+    mockFindPortfolioByFreelancer.mockResolvedValue([]);
+    mockGetReputation.mockResolvedValue({ success: true, data: { score: 4.5, totalRatings: 10 } });
+    global.__mockDatabases.getDocument.mockResolvedValue({ name: 'Ada Lovelace' });
+  });
+
+  it('returns PROJECT_NOT_FOUND without invoking proposal generation', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue(null);
+    mockProjectRepository.findProjectById.mockResolvedValue(null);
+
+    const result = await generateProposalForProject('freelancer-1', 'missing-project');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('PROJECT_NOT_FOUND');
+    expect(mockGenerateAIProposal).not.toHaveBeenCalled();
+  });
+
+  it('maps profile, reputation, portfolio, project skills, milestones, and custom notes', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      user_id: 'freelancer-1',
+      name: 'Profile Name',
+      bio: 'Security-focused smart contract engineer with extensive marketplace experience.',
+      skills: [{ name: 'Solidity' }, { name: 'React' }],
+    });
+    mockFindPortfolioByFreelancer.mockResolvedValue([
+      { title: 'Escrow', description: 'Milestone payments', skills: '["Solidity"]', project_url: 'https://example.com/escrow' },
+      { title: 'Empty metadata', description: 'Still usable', skills: 'null' },
+    ]);
+    mockProjectRepository.findProjectById.mockResolvedValue({
+      id: 'project-1', title: 'Marketplace', description: 'Build an escrow marketplace', budget: 5000,
+      deadline: '2026-12-31',
+      required_skills: [{ skill_name: 'Solidity' }, { skill_name: '' }],
+      milestones: [{ title: 'Contract', description: undefined, amount: undefined }],
+    });
+    const generated = { coverLetter: 'Generated', proposedRate: 5000, estimatedDuration: 14, proposedMilestones: [], highlights: [] };
+    mockGenerateAIProposal.mockResolvedValue(generated);
+
+    const result = await generateProposalForProject('freelancer-1', 'project-1', 'Available now');
+
+    expect(result).toEqual({ success: true, data: generated });
+    expect(mockGenerateAIProposal).toHaveBeenCalledWith(expect.objectContaining({
+      freelancerName: 'Ada Lovelace',
+      freelancerTitle: 'Security-focused smart contract engineer with extensive mark',
+      freelancerSkills: ['Solidity', 'React'],
+      reputationScore: 90,
+      completedProjectsCount: 10,
+      portfolioItems: [
+        { title: 'Escrow', description: 'Milestone payments', skills: ['Solidity'], projectUrl: 'https://example.com/escrow' },
+        { title: 'Empty metadata', description: 'Still usable', skills: [], projectUrl: undefined },
+      ],
+      projectSkills: ['Solidity'],
+      projectMilestones: [{ title: 'Contract', description: '', amount: 0 }],
+      customNotes: 'Available now',
+    }));
+  });
+
+  it('uses safe defaults when optional provider reads fail and falls back on an AI error', async () => {
+    global.__mockDatabases.getDocument.mockRejectedValue(new Error('user lookup failed'));
+    mockFindPortfolioByFreelancer.mockRejectedValue(new Error('portfolio lookup failed'));
+    mockGetReputation.mockRejectedValue(new Error('reputation lookup failed'));
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue(null);
+    mockProjectRepository.findProjectById.mockResolvedValue({
+      id: 'project-1', title: 'Marketplace', description: 'Build it', budget: 1000,
+      required_skills: [], milestones: [],
+    });
+    mockGenerateAIProposal.mockResolvedValue({ code: 'AI_DOWN', message: 'Unavailable', retryable: true });
+    mockIsAIError.mockReturnValue(true);
+    const fallback = { coverLetter: 'Fallback', proposedRate: 1000, estimatedDuration: 14, proposedMilestones: [], highlights: [] };
+    mockFallbackGenerateProposal.mockReturnValue(fallback);
+
+    const result = await generateProposalForProject('freelancer-1', 'project-1');
+
+    expect(result).toEqual({ success: true, data: fallback });
+    expect(mockFallbackGenerateProposal).toHaveBeenCalledWith(expect.objectContaining({
+      freelancerName: 'Freelancer',
+      freelancerTitle: 'Full-Stack Web3 Developer',
+      freelancerBio: '',
+      freelancerSkills: [],
+      reputationScore: 0,
+      completedProjectsCount: 0,
+      portfolioItems: [],
+    }));
+  });
+
+  it('returns INTERNAL_ERROR when a required provider read throws', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockRejectedValue(new Error('profiles unavailable'));
+    mockProjectRepository.findProjectById.mockResolvedValue(null);
+
+    const result = await generateProposalForProject('freelancer-1', 'project-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('INTERNAL_ERROR');
+  });
+});
 
 // Custom arbitraries for property-based testing
 const skillInfoArbitrary = () =>

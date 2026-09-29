@@ -5,6 +5,7 @@ import type { PaginatedResult } from '../repositories/types.js';
 import { transactionRepository, type TransactionEntity } from '../repositories/transaction-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { paymentRepository } from '../repositories/payment-repository.js';
+import { toEthUnits } from '../utils/index.js';
 
 export interface Transaction {
   id: string;
@@ -42,6 +43,24 @@ export interface TransactionInput {
   metadata?: unknown;
 }
 
+type LegacyPaymentEntity = Awaited<ReturnType<typeof paymentRepository.findByContractId>>[number];
+
+function mapLegacyPaymentToTransaction(payment: LegacyPaymentEntity): TransactionEntity {
+  return {
+    id: payment.id,
+    contract_id: payment.contract_id,
+    milestone_id: payment.milestone_id || undefined,
+    from_user_id: payment.payer_id,
+    to_user_id: payment.payee_id,
+    amount: toEthUnits(payment.amount, payment.payment_type),
+    type: payment.payment_type,
+    status: payment.status,
+    transaction_hash: payment.tx_hash || undefined,
+    created_at: payment.created_at,
+    updated_at: payment.updated_at,
+  };
+}
+
 /**
  * Get user's transactions with filters and pagination
  */
@@ -68,19 +87,7 @@ export async function getUserTransactions(
 
       const mappedPayments: TransactionEntity[] = pagedPayments.items
         .filter(p => !existingTxIds.has(p.id) && (!p.tx_hash || !existingHashes.has(p.tx_hash)))
-        .map(p => ({
-          id: p.id,
-          contract_id: p.contract_id,
-          milestone_id: p.milestone_id || undefined,
-          from_user_id: p.payer_id,
-          to_user_id: p.payee_id,
-          amount: p.amount,
-          type: p.payment_type,
-          status: p.status,
-          transaction_hash: p.tx_hash || undefined,
-          created_at: p.created_at,
-          updated_at: p.updated_at,
-        }));
+        .map(mapLegacyPaymentToTransaction);
 
       filtered = [...txList, ...mappedPayments]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -129,19 +136,7 @@ export async function getTransactionById(
     if (!transaction) {
       const payment = await paymentRepository.getById(transactionId).catch(() => null);
       if (payment) {
-        transaction = {
-          id: payment.id,
-          contract_id: payment.contract_id,
-          milestone_id: payment.milestone_id || undefined,
-          from_user_id: payment.payer_id,
-          to_user_id: payment.payee_id,
-          amount: payment.amount,
-          type: payment.payment_type,
-          status: payment.status,
-          transaction_hash: payment.tx_hash || undefined,
-          created_at: payment.created_at,
-          updated_at: payment.updated_at,
-        };
+        transaction = mapLegacyPaymentToTransaction(payment);
       }
     }
 
@@ -190,19 +185,7 @@ export async function getContractTransactions(
 
     const mappedPayments: TransactionEntity[] = paymentList
       .filter(p => !existingTxIds.has(p.id) && (!p.tx_hash || !existingHashes.has(p.tx_hash)))
-      .map(p => ({
-        id: p.id,
-        contract_id: p.contract_id,
-        milestone_id: p.milestone_id || undefined,
-        from_user_id: p.payer_id,
-        to_user_id: p.payee_id,
-        amount: p.amount,
-        type: p.payment_type,
-        status: p.status,
-        transaction_hash: p.tx_hash || undefined,
-        created_at: p.created_at,
-        updated_at: p.updated_at,
-      }));
+      .map(mapLegacyPaymentToTransaction);
 
     const combined = [...txList, ...mappedPayments]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());

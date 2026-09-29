@@ -57,4 +57,39 @@ describe('isDisposableEmail', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('should return false for email without domain', async () => {
+    expect(await isDisposableEmail('notanemail')).toBe(false);
+  });
+
+  it('should return cached result on repeated lookup', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = jest.fn<any>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ disposable: 'true' }),
+    });
+    (globalThis as any).fetch = fetchMock;
+    try {
+      expect(await isDisposableEmail('test@cached-disposable.com')).toBe(true);
+      expect(await isDisposableEmail('another@cached-disposable.com')).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should clear cache when cache size exceeds 2000', async () => {
+    const originalFetch = globalThis.fetch;
+    (globalThis as any).fetch = jest.fn<any>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ disposable: 'false' }),
+    });
+    try {
+      for (let i = 0; i <= 2005; i++) {
+        await isDisposableEmail(`test@d${i}.org`);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

@@ -2163,4 +2163,86 @@ describe('Dispute Service - Additional Branch Coverage', () => {
       expect(result.error.message).toBe('Connection timeout');
     }
   });
+
+  it('L276/L284: gated dispute emails fall back to localhost dispute URL when FRONTEND_URL is unset', async () => {
+    const { createDispute } = await importModule();
+    const { sendDisputeCreatedEmail } = await import('../../services/email-delivery-service.js');
+
+    const savedFrontendUrl = process.env['FRONTEND_URL'];
+    delete process.env['FRONTEND_URL'];
+    // Invoke the email-builder callback so the disputeUrl expression is evaluated
+    // (the default mock resolves without ever calling it).
+    mockSendGatedEmail.mockImplementation(async (_userId: string, _category: string, buildEmail: any) => {
+      return await buildEmail({ email: 'recipient@example.com', name: 'Recipient' });
+    });
+
+    try {
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', freelancer_id: 'fl-1', employer_id: 'emp-1',
+        status: 'active', total_amount: 1000, escrow_address: '0xabc',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1',
+        milestones: [{ id: 'm1', title: 'M1', amount: 500, status: 'submitted' }],
+      });
+      mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+      mockDisputeRepository.createDispute.mockResolvedValueOnce({
+        id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'emp-1',
+        reason: 'Quality issue', evidence: [], status: 'open', resolution: null,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'emp-1', reason: 'Quality issue',
+      });
+
+      expect(result.success).toBe(true);
+      // Both parties' emails used the fallback base URL (L276 freelancer, L284 employer).
+      expect(sendDisputeCreatedEmail).toHaveBeenCalledTimes(2);
+      expect(sendDisputeCreatedEmail).toHaveBeenNthCalledWith(
+        1, 'recipient@example.com',
+        expect.objectContaining({ disputeUrl: 'http://localhost:3000/disputes/d1' }),
+      );
+      expect(sendDisputeCreatedEmail).toHaveBeenNthCalledWith(
+        2, 'recipient@example.com',
+        expect.objectContaining({ disputeUrl: 'http://localhost:3000/disputes/d1' }),
+      );
+    } finally {
+      if (savedFrontendUrl === undefined) delete process.env['FRONTEND_URL'];
+      else process.env['FRONTEND_URL'] = savedFrontendUrl;
+      mockSendGatedEmail.mockReset().mockResolvedValue(true);
+    }
+  });
+
+  it('L587/L589: resolution defaults missing milestone amount to 0 and missing txHash to null', async () => {
+    const { resolveDispute } = await importModule();
+
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+    });
+    // Milestone intentionally has no `amount` field → Number(amount ?? 0) uses 0.
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted' }],
+    });
+    // Adapter result intentionally has no top-level `transactionHash` → ?? null.
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
+      receipt: { status: 'success' },
+    });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'e1', reason: 'r', evidence: [],
+      resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockBlockchainAdapter.resolveDispute).toHaveBeenCalledWith('0xescrow', 0, 10000);
+  });
 });

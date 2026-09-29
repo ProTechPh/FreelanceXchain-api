@@ -63,7 +63,7 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      return this.paginatedWithQueries(
+      return await this.paginatedWithQueries(
         [
           Query.equal('project_id', projectId),
           Query.notEqual('status', 'withdrawn'),
@@ -127,14 +127,51 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
   }
 
   async getProposalCountsByProjects(projectIds: string[]): Promise<Map<string, number>> {
-    const map = new Map<string, number>();
-    const counts = await Promise.all(
-      projectIds.map(pid => this.getProposalCountByProject(pid))
-    );
-    projectIds.forEach((pid, index) => {
-      map.set(pid, counts[index]!);
-    });
-    return map;
+    const counts = new Map<string, number>();
+    const uniqueProjectIds = [...new Set(projectIds)];
+    uniqueProjectIds.forEach(projectId => counts.set(projectId, 0));
+
+    if (uniqueProjectIds.length === 0) return counts;
+
+    const chunkSize = 100;
+    const pageSize = 100;
+
+    try {
+      for (let i = 0; i < uniqueProjectIds.length; i += chunkSize) {
+        const chunk = uniqueProjectIds.slice(i, i + chunkSize);
+        let lastId: string | undefined;
+
+        while (true) {
+          const queries = [
+            Query.equal('project_id', chunk),
+            Query.notEqual('status', 'withdrawn'),
+            Query.limit(pageSize),
+          ];
+          if (lastId) {
+            queries.push(Query.cursorAfter(lastId));
+          }
+
+          const response = await this.timedQuery('getProposalCountsByProjects', () =>
+            databases.listDocuments(DATABASE_ID, COLLECTION_ID, queries)
+          );
+
+          for (const doc of response.documents) {
+            const projectId = doc['project_id'];
+            if (doc['status'] !== 'withdrawn' && typeof projectId === 'string' && counts.has(projectId)) {
+              counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
+            }
+          }
+
+          if (response.documents.length < pageSize) break;
+          lastId = response.documents[response.documents.length - 1]?.$id;
+          if (!lastId) break;
+        }
+      }
+    } catch {
+      uniqueProjectIds.forEach(projectId => counts.set(projectId, 0));
+    }
+
+    return counts;
   }
 
   async getExistingProposal(projectId: string, freelancerId: string): Promise<ProposalEntity | null> {

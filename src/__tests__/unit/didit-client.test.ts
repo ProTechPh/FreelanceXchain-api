@@ -1377,4 +1377,37 @@ describe('didit-client - unparseable error bodies fall back to HTTP_ERROR', () =
       expect(result.error.error.message).toBe('AML screening failed with status 504');
     }
   });
+
+  it('falls back to /v3/session/{id}/ when /decision/ returns 404 (line 174)', async () => {
+    const { getVerificationSession } = await importModule();
+    const mockSession = {
+      session_id: 'session-404-fallback',
+      session_number: 1,
+      session_token: 'token-fallback',
+      status: 'Approved' as const,
+      workflow_id: 'workflow-fallback',
+      url: 'https://verify.didit.me/session-404-fallback',
+    };
+
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 404,
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => mockSession,
+      }) as any;
+
+    const result = await getVerificationSession('session-404-fallback');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.session_id).toBe('session-404-fallback');
+    }
+  });
 });
+

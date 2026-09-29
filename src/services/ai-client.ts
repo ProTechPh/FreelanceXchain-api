@@ -24,8 +24,6 @@ import {
 } from './ai-types.js';
 import { generateId } from '../utils/id.js';
 
-const MAX_RETRIES = 0;
-const INITIAL_RETRY_DELAY_MS = 300;
 const getRequestTimeoutMs = (): number => (typeof config?.llm?.timeoutMs === 'number' ? config.llm.timeoutMs : 3000);
 
 export const localSkillMatchCache = new LRUCache<SkillMatchResult>(500, 3600_000); // 1 hour
@@ -228,13 +226,6 @@ function buildApiUrl(): string {
 }
 
 /**
- * Sleep for a specified duration
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
  * Convert the internal AIRequest to the OpenAI-compatible payload.
  */
 function buildOpenAIRequest(request: AIRequest): Record<string, unknown> {
@@ -295,8 +286,7 @@ function parseOpenAIResponse(openAIResponse: OpenAICompletionResponse): AIRespon
  * Make HTTP request to AI API with retry logic (supports both Gemini and OpenAI-compatible formats)
  */
 async function makeAIRequest(
-  request: AIRequest,
-  retryCount: number = 0
+  request: AIRequest
 ): Promise<AIResponse | AIError> {
   if (!isAIAvailable()) {
     return {
@@ -333,12 +323,6 @@ async function makeAIRequest(
       const errorText = await response.text();
       const isRetryable = response.status >= 500 || response.status === 429;
 
-      if (isRetryable && retryCount < MAX_RETRIES) {
-        const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
-        await sleep(delay);
-        return makeAIRequest(request, retryCount + 1);
-      }
-
       return {
         code: `AI_HTTP_${response.status}`,
         message: `AI API error: ${errorText}`,
@@ -368,12 +352,6 @@ async function makeAIRequest(
     const isAbortError = error instanceof Error && error.name === 'AbortError';
     const isNetworkError = error instanceof TypeError;
     const isRetryable = isAbortError || isNetworkError;
-
-    if (isRetryable && retryCount < MAX_RETRIES) {
-      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
-      await sleep(delay);
-      return makeAIRequest(request, retryCount + 1);
-    }
 
     return {
       code: 'AI_NETWORK_ERROR',

@@ -718,3 +718,49 @@ describe('payment-routes - generic error code 400 branches', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('payment-routes - GET history with a nullish contractId param', () => {
+  let app: any;
+  const mockHistory = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'employer' };
+        // Strip path params so req.params['contractId'] ?? '' takes the fallback.
+        for (const key of Object.keys(req.params)) delete req.params[key];
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      requestMilestoneCompletion: jest.fn(),
+      approveMilestone: jest.fn(),
+      getContractPaymentStatus: jest.fn(),
+      getContractPaymentHistory: mockHistory,
+      getMyPayments: jest.fn(),
+      getPaymentSummary: jest.fn(),
+      disputeMilestone: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      createDispute: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/payment-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/payments', router);
+    jest.clearAllMocks();
+  });
+
+  it('L571: GET /contracts/:contractId/history uses "" when the param is nullish', async () => {
+    mockHistory.mockResolvedValueOnce({ success: true, data: { contractId: 'c-1', entries: [] } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/payments/contracts/c-1/history');
+    expect(res.status).toBe(200);
+    expect(mockHistory).toHaveBeenCalledWith('', 'user-1', 'employer');
+  });
+});

@@ -34,6 +34,7 @@ const mockVerifyEmail = jest.fn<any>();
 const mockDeleteUserAccount = jest.fn<any>();
 const mockRequestAccountDeletion = jest.fn<any>();
 const mockVerifyAccountDeletionCode = jest.fn<any>();
+const mockDisconnectUserWallet = jest.fn<any>().mockResolvedValue({ success: true, message: 'Wallet disconnected' });
 
 jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
@@ -69,7 +70,7 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   deleteUserAccount: mockDeleteUserAccount,
   requestAccountDeletion: mockRequestAccountDeletion,
   verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
-  disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
+  disconnectUserWallet: mockDisconnectUserWallet,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -746,6 +747,107 @@ describe('Auth Routes', () => {
       expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
     });
   });
+
+  describe('Login alert email and OAuth initiation', () => {
+    it('should trigger login alert email on successful login with user email', async () => {
+      mockLogin.mockResolvedValue({
+        accessToken: 'valid-token',
+        refreshToken: 'valid-refresh',
+        user: { id: 'u-email', email: 'alert@example.com', name: 'AlertUser', role: 'freelancer' },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'alert@example.com', password: 'Password123!' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toBe('valid-token');
+    });
+
+    it('should trigger login alert email on MFA verify login with user email', async () => {
+      mockChallengeMFA.mockResolvedValue({ challengeId: 'challenge-1' });
+      mockVerifyMFAChallenge.mockResolvedValue({ success: true });
+      mockValidateTokenAndGetUser.mockResolvedValue({
+        accessToken: 'mfa-tok',
+        refreshToken: 'mfa-ref',
+        user: { id: 'u-mfa', email: 'mfa@example.com', name: 'MfaUser', role: 'freelancer' },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login/mfa-verify')
+        .send({ mfaSessionToken: 'mfa-session', factorId: 'factor-1', code: '123456' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toBe('mfa-tok');
+    });
+
+    it('should serve implicit flow HTML on GET /callback with no parameters', async () => {
+      const res = await request(app).get('/api/auth/callback');
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('Processing OAuth callback');
+    });
+
+    it('should return JSON url on GET /oauth/:provider when format=json', async () => {
+      mockGetOAuthUrl.mockResolvedValue('https://github.com/login/oauth/authorize?client_id=123');
+
+      const res = await request(app)
+        .get('/api/auth/oauth/github?format=json')
+        .set('Accept', 'application/json');
+
+      expect(res.status).toBe(200);
+      expect(res.body.url).toContain('https://github.com');
+    });
+
+    it('should redirect to login on GET /oauth/:provider when getOAuthUrl fails and Accept includes text/html', async () => {
+      mockGetOAuthUrl.mockRejectedValue(new Error('OAuth provider offline'));
+
+      const res = await request(app)
+        .get('/api/auth/oauth/github')
+        .set('Accept', 'text/html');
+
+      expect(res.status).toBe(302);
+      expect(res.header['location']).toContain('/login?error=');
+    });
+
+    describe('DELETE /wallet', () => {
+      it('should disconnect wallet successfully', async () => {
+        mockDisconnectUserWallet.mockResolvedValue({
+          success: true,
+          message: 'Wallet address disconnected successfully',
+        });
+
+        const res = await request(app).delete('/api/auth/wallet');
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toBe('Wallet address disconnected successfully');
+        expect(res.body.walletAddress).toBe('');
+      });
+
+      it('should return 404 when user not found', async () => {
+        mockDisconnectUserWallet.mockResolvedValue({
+          code: 'USER_NOT_FOUND',
+          message: 'User not found',
+        });
+
+        const res = await request(app).delete('/api/auth/wallet');
+
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('USER_NOT_FOUND');
+      });
+
+      it('should return 400 when active contracts exist', async () => {
+        mockDisconnectUserWallet.mockResolvedValue({
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: 'Cannot disconnect wallet with active contracts',
+        });
+
+        const res = await request(app).delete('/api/auth/wallet');
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('ACTIVE_CONTRACTS_EXIST');
+      });
+    });
+  });
 });
 
 
@@ -1353,6 +1455,470 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
         expect(res.status).toBe(400);
         expect(res.body.error.code).toBe('ACTIVE_CONTRACTS_EXIST');
       });
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Remaining coverage gaps: extractClientInfo branches, security
+// alert emails, refresh cookie parsing, OAuth/password-reset
+// fallbacks, and account-deletion status codes
+// ═══════════════════════════════════════════════════════════════
+
+describe('auth-routes.ts - Remaining coverage gaps', () => {
+  let app: any;
+  let expressMod: any;
+  let supertest: any;
+  let authRouter: any;
+
+  const svcRegister = jest.fn<any>();
+  const svcLogin = jest.fn<any>();
+  const svcRefreshTokens = jest.fn<any>();
+  const svcLoginWithAppwrite = jest.fn<any>();
+  const svcRegisterWithAppwrite = jest.fn<any>();
+  const svcGetOAuthUrl = jest.fn<any>();
+  const svcExchangeCodeForSession = jest.fn<any>();
+  const svcResendConfirmationEmail = jest.fn<any>();
+  const svcVerifyEmail = jest.fn<any>();
+  const svcRequestPasswordReset = jest.fn<any>();
+  const svcResetPasswordWithRecovery = jest.fn<any>();
+  const svcUpdatePassword = jest.fn<any>();
+  const svcChangePassword = jest.fn<any>();
+  const svcGetCurrentUserWithKyc = jest.fn<any>();
+  const svcLogout = jest.fn<any>();
+  const svcEnrollMFA = jest.fn<any>();
+  const svcVerifyMFAEnrollment = jest.fn<any>();
+  const svcChallengeMFA = jest.fn<any>();
+  const svcVerifyMFAChallenge = jest.fn<any>();
+  const svcGetMFAFactors = jest.fn<any>();
+  const svcDisableMFA = jest.fn<any>();
+  const svcValidateTokenAndGetUser = jest.fn<any>();
+  const svcUpdateUserWallet = jest.fn<any>();
+  const svcRequestEmailOtp = jest.fn<any>();
+  const svcRequestMagicUrl = jest.fn<any>();
+  const svcVerifyAuthToken = jest.fn<any>();
+  const svcDeleteUserAccount = jest.fn<any>();
+  const svcRequestAccountDeletion = jest.fn<any>();
+  const svcVerifyAccountDeletionCode = jest.fn<any>();
+  const svcDisconnectUserWallet = jest.fn<any>();
+  const svcValidatePasswordStrength = jest.fn<any>();
+  const mockAuditCreate = jest.fn<any>();
+  const mockSendAlert = jest.fn<any>();
+  const mockValidateReset = jest.fn<any>();
+  const covLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
+
+  const makeApp = (pre?: (req: any, res: any, next: any) => void, withJson = true) => {
+    const a = expressMod();
+    if (withJson) a.use(expressMod.json());
+    if (pre) a.use(pre);
+    a.use('/api/auth', authRouter);
+    return a;
+  };
+
+  const noIp = (req: any, _res: any, next: any) => {
+    Object.defineProperty(req, 'ip', { get: () => undefined, configurable: true });
+    next();
+  };
+
+  beforeEach(async () => {
+    jest.resetModules();
+    // Register the auth-service replacement FIRST: capturing the real
+    // auth.schema below imports auth-service, which caches the mock
+    // instance for this registry state.
+    jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
+      register: svcRegister,
+      login: svcLogin,
+      refreshTokens: svcRefreshTokens,
+      isAuthError: (result: any) => result && typeof result === 'object' && 'code' in result && 'message' in result && !('user' in result) && !('success' in result),
+      validatePasswordStrength: svcValidatePasswordStrength,
+      loginWithAppwrite: svcLoginWithAppwrite,
+      registerWithAppwrite: svcRegisterWithAppwrite,
+      getOAuthUrl: svcGetOAuthUrl,
+      exchangeCodeForSession: svcExchangeCodeForSession,
+      resendConfirmationEmail: svcResendConfirmationEmail,
+      verifyEmail: svcVerifyEmail,
+      requestPasswordReset: svcRequestPasswordReset,
+      resetPasswordWithRecovery: svcResetPasswordWithRecovery,
+      updatePassword: svcUpdatePassword,
+      changePassword: svcChangePassword,
+      getCurrentUserWithKyc: svcGetCurrentUserWithKyc,
+      logout: svcLogout,
+      enrollMFA: svcEnrollMFA,
+      verifyMFAEnrollment: svcVerifyMFAEnrollment,
+      challengeMFA: svcChallengeMFA,
+      verifyMFAChallenge: svcVerifyMFAChallenge,
+      getMFAFactors: svcGetMFAFactors,
+      disableMFA: svcDisableMFA,
+      validateTokenAndGetUser: svcValidateTokenAndGetUser,
+      updateUserWallet: svcUpdateUserWallet,
+      requestEmailOtp: svcRequestEmailOtp,
+      requestMagicUrl: svcRequestMagicUrl,
+      verifyAuthToken: svcVerifyAuthToken,
+      deleteUserAccount: svcDeleteUserAccount,
+      requestAccountDeletion: svcRequestAccountDeletion,
+      verifyAccountDeletionCode: svcVerifyAccountDeletionCode,
+      disconnectUserWallet: svcDisconnectUserWallet,
+    }));
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: covLogger }));
+    jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+      sendNewDeviceLoginAlertEmail: mockSendAlert,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+      auditLogRepository: { create: mockAuditCreate },
+    }));
+
+    const realAuthSchema = await import('../../validators/auth.schema.js');
+    const realLoginSecurity = await import('../../utils/login-security.js');
+    jest.unstable_mockModule(resolveModule('src/validators/auth.schema.ts'), () => ({
+      ...realAuthSchema,
+      validatePasswordResetInput: mockValidateReset,
+    }));
+    // Real parseUserAgent never returns an empty os, so the
+    // `clientDevice.os ? ... : ...` fallback is unreachable without this.
+    jest.unstable_mockModule(resolveModule('src/utils/login-security.ts'), () => ({
+      ...realLoginSecurity,
+      parseUserAgent: () => ({ browser: 'JestBrowser', os: '', device: 'JestDevice', summary: '' }),
+    }));
+
+    expressMod = (await import('express')).default;
+    supertest = (await import('supertest')).default;
+    authRouter = (await import('../../routes/auth-routes.js')).default;
+    app = makeApp();
+    jest.clearAllMocks();
+
+    // clearAllMocks does not reset implementations — set defaults every time
+    svcValidatePasswordStrength.mockReturnValue({ valid: true, errors: [] });
+    svcRegister.mockResolvedValue({ accessToken: 'tok', refreshToken: 'ref', user: { id: 'u-1', email: 'test@test.com', role: 'freelancer' } });
+    svcLogin.mockResolvedValue({ accessToken: 'tok', refreshToken: 'ref', user: { id: 'u-1', email: 'test@test.com', name: 'Tester', role: 'freelancer' } });
+    svcRefreshTokens.mockResolvedValue({ accessToken: 'tok', refreshToken: 'ref', user: { id: 'u-1' } });
+    svcGetOAuthUrl.mockResolvedValue('https://provider.example/authorize');
+    svcRequestPasswordReset.mockResolvedValue({ success: true });
+    svcResetPasswordWithRecovery.mockResolvedValue({ success: true });
+    svcUpdatePassword.mockResolvedValue({ success: true });
+    svcChangePassword.mockResolvedValue({ success: true });
+    svcChallengeMFA.mockResolvedValue({ challengeId: 'challenge-1' });
+    svcVerifyMFAChallenge.mockResolvedValue({ success: true });
+    svcValidateTokenAndGetUser.mockResolvedValue({ accessToken: 'tok', refreshToken: 'ref', user: { id: 'u-1', email: 'mfa@test.com', name: 'Mfa', role: 'freelancer' } });
+    svcVerifyAuthToken.mockResolvedValue({ accessToken: 'tok', refreshToken: 'ref', user: { id: 'u-1' } });
+    svcDisconnectUserWallet.mockResolvedValue({ success: true, message: 'Wallet disconnected' });
+    svcRequestAccountDeletion.mockResolvedValue({ success: true, message: 'Code sent' });
+    svcDeleteUserAccount.mockResolvedValue({ success: true, message: 'Account deleted' });
+    svcVerifyAccountDeletionCode.mockReturnValue(true);
+    mockSendAlert.mockResolvedValue(undefined);
+  });
+
+  // L65-L70: extractClientInfo IP/User-Agent resolution
+  describe('extractClientInfo branches (failed login audit)', () => {
+    it('uses the first X-Forwarded-For hop and a string User-Agent', async () => {
+      svcLogin.mockResolvedValue({ code: 'AUTH_INVALID_CREDENTIALS', message: 'nope' });
+      const res = await supertest(app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', '203.0.113.7, 10.0.0.1')
+        .set('User-Agent', 'JestAgent/1.0')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(401);
+      expect(mockAuditCreate).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'auth.login_failed',
+        ip_address: '203.0.113.7',
+        user_agent: 'JestAgent/1.0',
+      }));
+    });
+
+    it('falls back from an empty first hop through req.ip to null', async () => {
+      svcLogin.mockResolvedValue({ code: 'AUTH_INVALID_CREDENTIALS', message: 'nope' });
+      const res = await supertest(makeApp((req, _res, next) => {
+        req.headers['x-forwarded-for'] = ',';
+        Object.defineProperty(req, 'ip', { get: () => undefined, configurable: true });
+        next();
+      }))
+        .post('/api/auth/login')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(401);
+      expect(mockAuditCreate).toHaveBeenCalledWith(expect.objectContaining({ ip_address: null }));
+    });
+
+    it('reads the IP from an array-valued X-Forwarded-For header', async () => {
+      svcLogin.mockResolvedValue({ code: 'AUTH_INVALID_CREDENTIALS', message: 'nope' });
+      const res = await supertest(makeApp((req, _res, next) => {
+        req.headers['x-forwarded-for'] = ['198.51.100.1'];
+        next();
+      }))
+        .post('/api/auth/login')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(401);
+      expect(mockAuditCreate).toHaveBeenCalledWith(expect.objectContaining({ ip_address: '198.51.100.1' }));
+    });
+
+    it('falls back from an empty array hop through req.ip to null', async () => {
+      svcLogin.mockResolvedValue({ code: 'AUTH_INVALID_CREDENTIALS', message: 'nope' });
+      const res = await supertest(makeApp((req, _res, next) => {
+        req.headers['x-forwarded-for'] = [''];
+        Object.defineProperty(req, 'ip', { get: () => undefined, configurable: true });
+        next();
+      }))
+        .post('/api/auth/login')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(401);
+      expect(mockAuditCreate).toHaveBeenCalledWith(expect.objectContaining({ ip_address: null }));
+    });
+
+    it('resolves to null when there is no forwarded header and no req.ip', async () => {
+      svcLogin.mockResolvedValue({ code: 'AUTH_INVALID_CREDENTIALS', message: 'nope' });
+      const res = await supertest(makeApp(noIp))
+        .post('/api/auth/login')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(401);
+      expect(mockAuditCreate).toHaveBeenCalledWith(expect.objectContaining({ ip_address: null }));
+    });
+  });
+
+  // L219, L221, L319: error-code/message fallbacks
+  describe('register/login error fallbacks', () => {
+    it('maps DISPOSABLE_EMAIL to its own error code', async () => {
+      svcRegister.mockResolvedValue({ code: 'DISPOSABLE_EMAIL', message: 'Disposable email domains are not allowed' });
+      const res = await supertest(app)
+        .post('/api/auth/register')
+        .send({ email: 'test@test.com', password: 'StrongPass1!', role: 'freelancer' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('DISPOSABLE_EMAIL');
+    });
+
+    it('maps PASSWORD_PWNED to its own error code', async () => {
+      svcRegister.mockResolvedValue({ code: 'PASSWORD_PWNED', message: 'This password appeared in a data breach' });
+      const res = await supertest(app)
+        .post('/api/auth/register')
+        .send({ email: 'test@test.com', password: 'StrongPass1!', role: 'freelancer' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('PASSWORD_PWNED');
+    });
+
+    it('audits a generic message when the login error message is empty', async () => {
+      svcLogin.mockResolvedValue({ code: 'AUTH_INVALID_CREDENTIALS', message: '' });
+      const res = await supertest(app)
+        .post('/api/auth/login')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(401);
+      expect(mockAuditCreate).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'failure',
+        error_message: 'Invalid email or password',
+      }));
+    });
+  });
+
+  // L368-L377 (login) and L473-L482 (mfa-verify): security alert email
+  describe('security alert email', () => {
+    it('sends a best-effort login alert with unknown IP/OS and swallows send failures', async () => {
+      svcLogin.mockResolvedValue({ accessToken: 'tok', refreshToken: 'ref', user: { id: 'u-1', email: '@x.com', name: '', role: 'freelancer' } });
+      mockSendAlert.mockRejectedValue(new Error('smtp down'));
+      const res = await supertest(makeApp(noIp))
+        .post('/api/auth/login')
+        .send({ email: 'test@test.com', password: 'StrongPass1!' });
+      expect(res.status).toBe(200);
+      await new Promise((resolve) => { setTimeout(resolve, 25); });
+      expect(mockSendAlert).toHaveBeenCalledWith('@x.com', expect.objectContaining({
+        recipientName: 'User',
+        ip: 'Unknown IP',
+        device: 'JestDevice',
+        browser: 'JestBrowser',
+      }));
+      expect(covLogger.warn).toHaveBeenCalledWith(
+        'Failed to send login alert email',
+        expect.objectContaining({ email: '@x.com' })
+      );
+    });
+
+    it('sends a best-effort MFA login alert and swallows send failures', async () => {
+      svcValidateTokenAndGetUser.mockResolvedValue({
+        accessToken: 'tok',
+        refreshToken: 'ref',
+        user: { id: 'u-1', email: '@mfa.com', name: '', role: 'freelancer' },
+      });
+      mockSendAlert.mockRejectedValue(new Error('smtp down'));
+      const res = await supertest(makeApp(noIp))
+        .post('/api/auth/login/mfa-verify')
+        .send({ mfaSessionToken: 'sess-1', factorId: 'factor-1', code: '123456' });
+      expect(res.status).toBe(200);
+      expect(svcChallengeMFA).toHaveBeenCalledWith('sess-1', 'factor-1');
+      expect(svcVerifyMFAChallenge).toHaveBeenCalledWith('sess-1', 'factor-1', 'challenge-1', '123456');
+      await new Promise((resolve) => { setTimeout(resolve, 25); });
+      expect(mockSendAlert).toHaveBeenCalledWith('@mfa.com', expect.objectContaining({
+        recipientName: 'User',
+        ip: 'Unknown IP',
+        device: 'JestDevice',
+        browser: 'JestBrowser',
+      }));
+      expect(covLogger.warn).toHaveBeenCalledWith(
+        'Failed to send MFA login alert email',
+        expect.objectContaining({ email: '@mfa.com' })
+      );
+    });
+  });
+
+  // L525-L526: refresh token cookie fallbacks
+  describe('POST /refresh cookie fallbacks', () => {
+    it('uses the psifi refresh cookie when no body token is provided', async () => {
+      const res = await supertest(makeApp((req, _res, next) => {
+        req.cookies = { 'psifi.refresh-token': 'cookie-abc' };
+        next();
+      }))
+        .post('/api/auth/refresh');
+      expect(res.status).toBe(200);
+      expect(svcRefreshTokens).toHaveBeenCalledWith('cookie-abc');
+    });
+  });
+
+  // L594, L876, L891, L942-L947: OAuth callback/redirect fallbacks
+  describe('OAuth flows', () => {
+    it('GET /callback falls back to the provided secret when registration is required', async () => {
+      svcVerifyAuthToken.mockResolvedValue({ code: 'AUTH_REQUIRE_REGISTRATION', message: 'Registration required' });
+      const res = await supertest(app).get('/api/auth/callback').query({ userId: 'u1', secret: 's1' });
+      expect(res.status).toBe(202);
+      expect(res.body.access_token).toBe('s1');
+      expect(svcVerifyAuthToken).toHaveBeenCalledWith('u1', 's1');
+    });
+
+    it('GET /oauth/:provider honors a custom redirect target and answers JSON', async () => {
+      const res = await supertest(app)
+        .get('/api/auth/oauth/github')
+        .query({ redirect_to: 'https://app.example.com/dash', format: 'json' });
+      expect(res.status).toBe(200);
+      expect(res.body.url).toBe('https://provider.example/authorize');
+      expect(svcGetOAuthUrl).toHaveBeenCalledWith('github', 'https://app.example.com/dash');
+    });
+
+    it('GET /oauth/:provider redirects HTML failures to the production login page when frontendUrl is unset', async () => {
+      const { config } = await import('../../config/env.js');
+      const originalFrontendUrl = config.server.frontendUrl;
+      svcGetOAuthUrl.mockRejectedValue(new Error('oauth down'));
+      try {
+        config.server.frontendUrl = '';
+        const res = await supertest(app)
+          .get('/api/auth/oauth/google')
+          .set('Accept', 'text/html');
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toContain('https://www.freelancexchain.works/login?error=');
+        expect(covLogger.error).toHaveBeenCalledWith('Failed to initiate OAuth flow', expect.anything());
+      } finally {
+        config.server.frontendUrl = originalFrontendUrl;
+      }
+    });
+
+    it('POST /oauth/callback verifies userId with an access_token and returns the session', async () => {
+      svcVerifyAuthToken.mockResolvedValue({ accessToken: 'at-2', refreshToken: 'rt-2', user: { id: 'u-1', email: 'a@b.com', role: 'freelancer' } });
+      const res = await supertest(app)
+        .post('/api/auth/oauth/callback')
+        .send({ userId: 'u1', access_token: 'tok-abc' });
+      expect(res.status).toBe(200);
+      expect(svcVerifyAuthToken).toHaveBeenCalledWith('u1', 'tok-abc');
+      expect(res.body.accessToken).toBe('at-2');
+    });
+
+    it('POST /oauth/callback keeps the provided secret when registration is required', async () => {
+      svcVerifyAuthToken.mockResolvedValue({ code: 'AUTH_REQUIRE_REGISTRATION', message: 'Registration required' });
+      const res = await supertest(app)
+        .post('/api/auth/oauth/callback')
+        .send({ userId: 'u1', secret: 's1' });
+      expect(res.status).toBe(202);
+      expect(res.body.access_token).toBe('s1');
+    });
+  });
+
+  // L1134: Referer-based customFrontendUrl
+  describe('POST /forgot-password Referer fallback', () => {
+    it('derives customFrontendUrl from the Referer when Origin is absent', async () => {
+      const res = await supertest(app)
+        .post('/api/auth/forgot-password')
+        .set('Referer', 'http://localhost:3000/reset')
+        .send({ email: 'test@test.com' });
+      expect(res.status).toBe(200);
+      expect(svcRequestPasswordReset).toHaveBeenCalledWith('test@test.com', 'http://localhost:3000');
+    });
+  });
+
+  // L1242-L1244, L1249: reset-password dispatch and status codes
+  describe('POST /reset-password dispatch branches', () => {
+    it('prefers the recovery path when userId and secret are present', async () => {
+      mockValidateReset.mockReturnValue({ valid: true, userId: 'u1', secret: 'sec1', password: 'NewStrong1!' });
+      const res = await supertest(app).post('/api/auth/reset-password').send({});
+      expect(res.status).toBe(200);
+      expect(svcResetPasswordWithRecovery).toHaveBeenCalledWith('u1', 'sec1', 'NewStrong1!');
+      expect(svcUpdatePassword).not.toHaveBeenCalled();
+    });
+
+    it('falls back to accessToken inside the recovery path', async () => {
+      mockValidateReset.mockReturnValue({ valid: true, userId: 'u1', accessToken: 'at1', password: 'NewStrong1!' });
+      const res = await supertest(app).post('/api/auth/reset-password').send({});
+      expect(res.status).toBe(200);
+      expect(svcResetPasswordWithRecovery).toHaveBeenCalledWith('u1', 'at1', 'NewStrong1!');
+      expect(svcUpdatePassword).not.toHaveBeenCalled();
+    });
+
+    it('uses updatePassword with the secret when no userId is present', async () => {
+      mockValidateReset.mockReturnValue({ valid: true, secret: 'sec1', password: 'NewStrong1!' });
+      const res = await supertest(app).post('/api/auth/reset-password').send({});
+      expect(res.status).toBe(200);
+      expect(svcUpdatePassword).toHaveBeenCalledWith('sec1', 'NewStrong1!');
+      expect(svcResetPasswordWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the recovery path reports PASSWORD_PWNED', async () => {
+      mockValidateReset.mockReturnValue({ valid: true, userId: 'u1', secret: 'sec1', password: 'NewStrong1!' });
+      svcResetPasswordWithRecovery.mockResolvedValue({ code: 'PASSWORD_PWNED', message: 'pwned' });
+      const res = await supertest(app).post('/api/auth/reset-password').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('PASSWORD_PWNED');
+    });
+  });
+
+  // L1303: token extraction without Authorization header or cookies
+  describe('POST /change-password without a token', () => {
+    it('passes an empty access token when nothing can be extracted', async () => {
+      const res = await supertest(app)
+        .post('/api/auth/change-password')
+        .send({ currentPassword: 'OldPass1!', newPassword: 'NewStrong1!' });
+      expect(res.status).toBe(200);
+      expect(svcChangePassword).toHaveBeenCalledWith('', 'OldPass1!', 'NewStrong1!');
+    });
+  });
+
+  // L1848, L1890, L1942, L1963: 500 mappings, missing body, 404/500 codes
+  describe('account/wallet error status codes', () => {
+    it('DELETE /wallet maps unknown service errors to 500', async () => {
+      svcDisconnectUserWallet.mockResolvedValue({ code: 'SERVER_ERROR', message: 'boom' });
+      const res = await supertest(app).delete('/api/auth/wallet');
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('SERVER_ERROR');
+    });
+
+    it('POST /account/delete-request maps unknown service errors to 500', async () => {
+      svcRequestAccountDeletion.mockResolvedValue({ code: 'SERVER_ERROR', message: 'boom' });
+      const res = await supertest(app).post('/api/auth/account/delete-request');
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('SERVER_ERROR');
+    });
+
+    it('DELETE /account treats a missing body as empty when no JSON parser ran', async () => {
+      const res = await supertest(makeApp(undefined, false)).delete('/api/auth/account');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('CONFIRMATION_REQUIRED');
+    });
+
+    it('DELETE /account maps USER_NOT_FOUND to 404', async () => {
+      svcDeleteUserAccount.mockResolvedValue({ code: 'USER_NOT_FOUND', message: 'User not found' });
+      const res = await supertest(app)
+        .delete('/api/auth/account')
+        .send({ confirmation: 'DELETE', code: '123456' });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('USER_NOT_FOUND');
+    });
+
+    it('DELETE /account maps unknown service errors to 500', async () => {
+      svcDeleteUserAccount.mockResolvedValue({ code: 'SERVER_ERROR', message: 'boom' });
+      const res = await supertest(app)
+        .delete('/api/auth/account')
+        .send({ confirmation: 'DELETE', code: '123456' });
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('SERVER_ERROR');
     });
   });
 });

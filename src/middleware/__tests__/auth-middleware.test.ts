@@ -36,7 +36,7 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 
 const { validateToken } = await import(resolveModule('src/services/auth-service.ts'));
 const { isUserVerified } = await import(resolveModule('src/services/didit-kyc-service.ts'));
-const { authMiddleware, requireAuthentication, requireRole, requireVerifiedKyc } = await import('../auth-middleware.js');
+const { authMiddleware, requireAuthentication, requireRole, requireVerifiedKyc, requireTieredKyc, hasAdminPermission } = await import('../auth-middleware.js');
 
 const mockedValidateToken = validateToken as jest.MockedFunction<typeof validateToken>;
 const mockedIsUserVerified = isUserVerified as jest.MockedFunction<typeof isUserVerified>;
@@ -492,5 +492,65 @@ describe('requireVerifiedKyc', () => {
     await requireVerifiedKyc(req, res, next);
 
     expect(res.body.requestId).toBe('unknown');
+  });
+});
+
+describe('hasAdminPermission', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns false when there is no authenticated user', () => {
+    expect(hasAdminPermission(undefined, 'users:view')).toBe(false);
+    expect(hasAdminPermission(undefined, 'kyc:manage')).toBe(false);
+  });
+
+  it('returns false for authenticated non-admin users', () => {
+    const freelancer = { userId: 'u-1', email: 'a@b.com', role: 'freelancer' } as any;
+    expect(hasAdminPermission(freelancer, 'users:view')).toBe(false);
+  });
+});
+
+describe('requireTieredKyc', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('exempts micro-transactions below the default 0.1 ETH threshold', async () => {
+    // Called with only the amount extractor so the thresholdEth default applies.
+    const middleware = requireTieredKyc(() => 0.05);
+    const req = createMockReq({ user: { userId: 'u-1', email: 'a@b.com', role: 'freelancer' } });
+    const res = createMockRes();
+    const next = jest.fn();
+
+    await middleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('falls back to full KYC verification above the default threshold', async () => {
+    const middleware = requireTieredKyc(() => 1.5);
+    const req = createMockReq({ user: { userId: 'u-1', email: 'a@b.com', role: 'freelancer' } });
+    const res = createMockRes();
+    const next = jest.fn();
+    mockedIsUserVerified.mockResolvedValue(true);
+
+    await middleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(mockedIsUserVerified).toHaveBeenCalledWith('u-1');
+  });
+
+  it('returns 401 when there is no authenticated user', async () => {
+    const middleware = requireTieredKyc();
+    const req = createMockReq();
+    const res = createMockRes();
+    const next = jest.fn();
+
+    await middleware(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
   });
 });

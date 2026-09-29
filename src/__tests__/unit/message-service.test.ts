@@ -49,6 +49,7 @@ const mockGetUserConversations = jest.fn<any>();
 const mockGetConversationMessages = jest.fn<any>();
 const mockMarkMessagesAsRead = jest.fn<any>();
 const mockGetUnreadCount = jest.fn<any>();
+const mockGetConversationById = jest.fn<any>().mockResolvedValue(null);
 
 jest.unstable_mockModule(resolveModule('src/repositories/message-repository.ts'), () => ({
   messageRepository: {
@@ -60,6 +61,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/message-repository.ts')
     getConversationMessages: mockGetConversationMessages,
     markMessagesAsRead: mockMarkMessagesAsRead,
     getUnreadCount: mockGetUnreadCount,
+    getConversationById: mockGetConversationById,
+  },
+}));
+
+const mockCreateNotification = jest.fn<any>().mockResolvedValue({});
+jest.unstable_mockModule(resolveModule('src/repositories/notification-repository.ts'), () => ({
+  notificationRepository: {
+    createNotification: mockCreateNotification,
   },
 }));
 
@@ -71,7 +80,12 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
 
 // email-delivery-service (BLF-13 email wiring): mocked so the real
 // email-preference-service does not consume global mockDatabases responses.
-const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+const mockSendGatedEmail = jest.fn<any>().mockImplementation(async (_userId: string, _pref: string, fn: any) => {
+  if (typeof fn === 'function') {
+    return await fn({ email: 'user@example.com', name: 'User' });
+  }
+  return true;
+});
 jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
   sendGatedEmail: mockSendGatedEmail,
   sendMessageReceivedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
@@ -83,6 +97,8 @@ describe('Message Service', () => {
     mockUserRepo.getUserById.mockReset();
     mockFreelancerProfileRepo.getById.mockReset();
     mockEmployerProfileRepo.getById.mockReset();
+    mockGetConversationById.mockReset().mockResolvedValue(null);
+    mockCreateNotification.mockReset().mockResolvedValue({});
   });
 
   const importModule = async () => {
@@ -596,5 +612,150 @@ describe('Message Service - Attachments Branch Coverage', () => {
     expect(result.success).toBe(true);
     const callArgs = mockCreateMessage.mock.calls[0][0];
     expect(callArgs).toHaveProperty('attachments');
+  });
+
+  describe('Message Service - Additional Edge Cases', () => {
+    it('should resolve receiver from employer profile when user and freelancer profile not found', async () => {
+      const { sendMessage } = await importModule();
+
+      mockUserRepo.getUserById.mockResolvedValueOnce(null);
+      mockFreelancerProfileRepo.getById.mockResolvedValueOnce(null);
+      mockEmployerProfileRepo.getById.mockResolvedValueOnce({ user_id: 'employer-user-id' });
+      mockFindConversation.mockResolvedValueOnce(null);
+      mockCreateConversation.mockResolvedValueOnce({
+        id: 'conv-emp',
+        participant1_id: 'sender-1',
+        participant2_id: 'employer-user-id',
+        unread_count_2: 0,
+      });
+      mockCreateMessage.mockResolvedValueOnce({ id: 'msg-emp' });
+      mockUpdateConversation.mockResolvedValueOnce(undefined);
+
+      const result = await sendMessage({
+        senderId: 'sender-1',
+        receiverId: 'emp-profile-id',
+        content: 'Hello Employer',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should continue successfully when persisting message notification in DB fails', async () => {
+      const { sendMessage } = await importModule();
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
+      mockFindConversation.mockResolvedValueOnce({
+        id: 'conv-notif',
+        participant1_id: 'sender-1',
+        participant2_id: 'receiver-1',
+        unread_count_2: 0,
+      });
+      mockCreateMessage.mockResolvedValueOnce({ id: 'msg-notif' });
+      mockUpdateConversation.mockResolvedValueOnce(undefined);
+      mockCreateNotification.mockRejectedValueOnce(new Error('Notification DB failure'));
+
+      const result = await sendMessage({
+        senderId: 'sender-1',
+        receiverId: 'receiver-1',
+        content: 'Hello with failing notif',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should return INTERNAL_ERROR when database throws during sendMessage', async () => {
+      const { sendMessage } = await importModule();
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
+      mockFindConversation.mockRejectedValueOnce(new Error('Unexpected DB crash'));
+
+      const result = await sendMessage({
+        senderId: 'sender-1',
+        receiverId: 'receiver-1',
+        content: 'Crash message',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('should catch error and log warning when email delivery fails in maybeSendMessageEmailNotification', async () => {
+      const { sendMessage } = await importModule();
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
+      mockFindConversation.mockResolvedValueOnce({
+        id: 'conv-email-err',
+        participant1_id: 'sender-1',
+        participant2_id: 'receiver-1',
+        unread_count_2: 0,
+        last_message_at: null,
+      });
+      mockCreateMessage.mockResolvedValueOnce({ id: 'msg-email-err' });
+      mockUpdateConversation.mockResolvedValueOnce(undefined);
+      mockSendGatedEmail.mockRejectedValueOnce(new Error('Email service failure'));
+
+      const result = await sendMessage({
+        senderId: 'sender-1',
+        receiverId: 'receiver-1',
+        content: 'Email error test',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should skip conversation when error occurs fetching user details in getConversations', async () => {
+      const { getConversations } = await importModule();
+
+      const conversations = [
+        { id: 'conv-good', participant1_id: 'user-1', participant2_id: 'user-good-fresh', last_message_at: '2025-01-01' },
+        { id: 'conv-bad', participant1_id: 'user-1', participant2_id: 'user-bad-fresh', last_message_at: '2025-01-01' },
+      ];
+      mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 2 });
+      mockUserRepo.getUserById
+        .mockResolvedValueOnce({ id: 'user-good-fresh', name: 'Bob Fresh', email: 'bob@test.com' })
+        .mockRejectedValueOnce(new Error('User fetch failed'));
+
+      const result = await getConversations('user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+      expect(result.data.items[0].id).toBe('conv-good');
+    });
+
+    it('should fetch conversation directly using getConversationById in getConversationMessages', async () => {
+      const { getConversationMessages } = await importModule();
+
+      mockGetConversationById.mockResolvedValueOnce({
+        id: 'conv-direct',
+        participant1_id: 'user-1',
+        participant2_id: 'user-2',
+      });
+      mockGetConversationMessages.mockResolvedValueOnce({
+        items: [{ id: 'msg-direct', content: 'Direct conv message' }],
+        total: 1,
+      });
+
+      const result = await getConversationMessages('conv-direct', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data.items).toHaveLength(1);
+    });
+
+    it('should fetch conversation directly using getConversationById in markConversationAsRead', async () => {
+      const { markConversationAsRead } = await importModule();
+
+      mockGetConversationById.mockResolvedValueOnce({
+        id: 'conv-read-direct',
+        participant1_id: 'user-1',
+        participant2_id: 'user-2',
+      });
+      mockMarkMessagesAsRead.mockResolvedValueOnce(undefined);
+      mockUpdateConversation.mockResolvedValueOnce(undefined);
+
+      const result = await markConversationAsRead('conv-read-direct', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateConversation).toHaveBeenCalledWith('conv-read-direct', { unread_count_1: 0 });
+    });
   });
 });

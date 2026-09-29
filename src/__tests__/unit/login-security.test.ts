@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import {
   parseUserAgent,
   recordFailedLogin,
@@ -7,6 +7,7 @@ import {
   clearAllLoginSecurityRecords,
   MAX_FAILED_ATTEMPTS,
   LOCKOUT_DURATION_MS,
+  ATTEMPT_WINDOW_MS,
 } from '../../utils/login-security.js';
 
 describe('Login Security & Account Lockout Utilities', () => {
@@ -62,6 +63,23 @@ describe('Login Security & Account Lockout Utilities', () => {
       const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.2365.92';
       const result = parseUserAgent(ua);
       expect(result.browser).toBe('Microsoft Edge');
+    });
+
+    it.each([
+      ['Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) Version/17.0 Mobile Safari/604.1', 'iPadOS', 'iPad', 'Safari'],
+      ['Mozilla/5.0 (Windows NT 6.1; Win64; x64) Firefox/120.0', 'Windows', 'Windows PC', 'Mozilla Firefox'],
+      ['Mozilla/5.0 (X11; CrOS x86_64 15699.66.0) Chrome/120.0 Safari/537.36', 'ChromeOS', 'Chromebook', 'Google Chrome'],
+      ['Mozilla/5.0 (X11; Linux x86_64) OPR/106.0 Chrome/121.0', 'Linux', 'Linux PC', 'Opera'],
+    ])('detects platform and browser variants for %s', (ua, os, device, browser) => {
+      expect(parseUserAgent(ua)).toMatchObject({ os, device, browser });
+    });
+
+    it('keeps generic labels for an unknown or Chromium-only agent', () => {
+      expect(parseUserAgent('CustomAgent/1.0')).toMatchObject({
+        os: 'Unknown OS', device: 'Desktop', browser: 'Web Browser',
+      });
+      expect(parseUserAgent('Mozilla/5.0 (X11; Linux x86_64) Chromium/120.0 Chrome/120.0'))
+        .toMatchObject({ os: 'Linux', browser: 'Web Browser' });
     });
   });
 
@@ -127,6 +145,44 @@ describe('Login Security & Account Lockout Utilities', () => {
 
       const check = checkAccountLockout('USER@EXAMPLE.COM');
       expect(check.isLocked).toBe(true);
+    });
+
+    it('expires a lockout after its duration and starts a fresh attempt record', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+      for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) recordFailedLogin(testEmail);
+
+      jest.advanceTimersByTime(LOCKOUT_DURATION_MS + 1);
+
+      expect(checkAccountLockout(testEmail)).toEqual({ isLocked: false });
+      expect(recordFailedLogin(testEmail)).toEqual({
+        isLocked: false,
+        remainingAttempts: MAX_FAILED_ATTEMPTS - 1,
+      });
+      jest.useRealTimers();
+    });
+
+    it('starts a fresh count when the failed-attempt window expires', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+      recordFailedLogin(testEmail);
+      recordFailedLogin(testEmail);
+      jest.advanceTimersByTime(ATTEMPT_WINDOW_MS + 1);
+
+      expect(recordFailedLogin(testEmail)).toEqual({
+        isLocked: false,
+        remainingAttempts: MAX_FAILED_ATTEMPTS - 1,
+      });
+      jest.useRealTimers();
+    });
+
+    it('treats empty account identifiers as a no-op', () => {
+      expect(checkAccountLockout('')).toEqual({ isLocked: false });
+      expect(recordFailedLogin('')).toEqual({
+        isLocked: false,
+        remainingAttempts: MAX_FAILED_ATTEMPTS,
+      });
+      expect(() => resetFailedLogins('')).not.toThrow();
     });
   });
 });

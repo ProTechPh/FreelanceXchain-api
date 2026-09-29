@@ -18,6 +18,10 @@ jest.unstable_mockModule('@opencoredev/email-sdk/cloudflare', () => ({
   cloudflare: jest.fn<any>(() => ({})),
 }));
 
+jest.unstable_mockModule('@opencoredev/email-sdk/resend', () => ({
+  resend: jest.fn<any>(() => ({})),
+}));
+
 jest.unstable_mockModule('fs/promises', () => ({
   default: {
     readFile: mockReadFile,
@@ -91,6 +95,23 @@ describe('Email Delivery Service', () => {
       });
 
       expect(mockSend).toHaveBeenCalled();
+    });
+
+    it('should initialize Resend adapter when RESEND_API_KEY is present (lines 49-51)', async () => {
+      process.env['RESEND_API_KEY'] = 'test-resend-key';
+      mockReadFile.mockResolvedValue('<html>Body</html>');
+      mockSend.mockResolvedValue({ id: 'msg-resend' });
+
+      await importService();
+      const result = await emailService.sendEmail({
+        to: 'user@test.com',
+        subject: 'Test',
+        template: 'proposal_accepted',
+        data: { name: 'test' },
+      });
+
+      expect(result.success).toBe(true);
+      delete process.env['RESEND_API_KEY'];
     });
 
     it('should reuse existing email client on subsequent calls', async () => {
@@ -648,6 +669,71 @@ describe('Email Delivery Service', () => {
     });
   });
 
+  describe('sendAccountDeletionCodeEmail', () => {
+    it('should send account deletion code email with correct parameters (line 448)', async () => {
+      mockReadFile.mockResolvedValue('<html>{{ confirmationCode }}</html>');
+      mockSend.mockResolvedValue({ id: 'msg-code' });
+
+      await importService();
+      const result = await emailService.sendAccountDeletionCodeEmail('user@test.com', {
+        userName: 'Alice',
+        confirmationCode: '123456',
+        expiresMinutes: 15,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@test.com',
+          subject: 'Action Required: Confirm Account Deletion',
+        })
+      );
+    });
+  });
+
+  describe('sendAccountDeletedEmail', () => {
+    it('should send account deleted email with correct parameters (line 470)', async () => {
+      mockReadFile.mockResolvedValue('<html>{{ recipientName }}</html>');
+      mockSend.mockResolvedValue({ id: 'msg-deleted' });
+
+      await importService();
+      const result = await emailService.sendAccountDeletedEmail('user@test.com', {
+        userName: 'Bob',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@test.com',
+          subject: 'Your FreelanceXchain Account Has Been Permanently Deleted',
+        })
+      );
+    });
+  });
+
+  describe('sendNewDeviceLoginAlertEmail', () => {
+    it('should send new device login alert email with correct parameters (line 495)', async () => {
+      mockReadFile.mockResolvedValue('<html>{{ device }} {{ ip }}</html>');
+      mockSend.mockResolvedValue({ id: 'msg-login-alert' });
+
+      await importService();
+      const result = await emailService.sendNewDeviceLoginAlertEmail('user@test.com', {
+        userName: 'Charlie',
+        ip: '127.0.0.1',
+        device: 'MacBook Pro',
+        browser: 'Chrome',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@test.com',
+          subject: 'Security Alert: New Sign-In to Your Account',
+        })
+      );
+    });
+  });
+
   describe('sendGatedEmail', () => {
     beforeEach(() => {
       mockShouldSendEmail.mockReset();
@@ -933,6 +1019,263 @@ describe('email-delivery-service - result.id fallback (L111)', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.message).toBe('Email configuration is invalid');
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage-gap branches (coverage-gaps.json, email-delivery-service)
+// ═══════════════════════════════════════════════════════════════
+
+describe('email-delivery-service - coverage gaps', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    mockSend.mockReset();
+    mockReadFile.mockReset();
+    mockReadFile.mockResolvedValue('<html>Body</html>');
+    mockSend.mockResolvedValue({ id: 'msg-gap' });
+    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
+    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['EMAIL_FROM'] = 'test@freelancexchain.com';
+  });
+
+  afterEach(() => {
+    delete process.env['CLOUDFLARE_API_TOKEN'];
+    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+    delete process.env['EMAIL_FROM'];
+    delete process.env['RESEND_API_KEY'];
+  });
+
+  const importService = async () => import(resolveModule('src/services/email-delivery-service.ts'));
+
+  it('L112: the fallback renderer includes numeric values in the detail rows', async () => {
+    // Template read fails → renderFallbackBrandedHtml; a number takes the
+    // second operand of the filter's type check.
+    mockReadFile.mockRejectedValue(new Error('template missing'));
+
+    const service = await importService();
+    const result = await service.sendEmail({
+      to: 'user@test.com',
+      subject: 'Test',
+      template: 'review_received',
+      data: { recipientName: 'Alice', rating: 5 },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('Alice') }));
+  });
+
+  it('L187: a topProjects item without a title gets the numbered fallback title', async () => {
+    mockReadFile.mockResolvedValue(
+      '<ul>{{#each topProjects}}<li>{{ title }}</li>{{/each}}</ul>'
+    );
+
+    const service = await importService();
+    await service.sendEmail({
+      to: 'user@test.com',
+      subject: 'Test',
+      template: 'weekly_digest',
+      data: { topProjects: [{ budget: '9000' }] },
+    });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<ul><li>Featured Project #1</li></ul>' })
+    );
+  });
+
+  it('L218: a missing field inside an #each block renders as empty', async () => {
+    // A non-topProjects array passes through normalization untouched, so a
+    // field the template asks for but the item does not have renders empty.
+    mockReadFile.mockResolvedValue(
+      '<ul>{{#each attachments}}<li>{{ name }} - {{ size }}</li>{{/each}}</ul>'
+    );
+
+    const service = await importService();
+    await service.sendEmail({
+      to: 'user@test.com',
+      subject: 'Test',
+      template: 'message_received',
+      data: { attachments: [{ name: 'a.png' }] },
+    });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<ul><li>a.png - </li></ul>' })
+    );
+  });
+
+  it('L226: a nullish template variable renders as empty', async () => {
+    mockReadFile.mockResolvedValue('<html>Hello {{ nickname }}!</html>');
+
+    const service = await importService();
+    await service.sendEmail({
+      to: 'user@test.com',
+      subject: 'Test',
+      template: 'proposal_accepted',
+      data: { nickname: null },
+    });
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>Hello !</html>' })
+    );
+  });
+
+  it('L263/L271: proposal email falls back to "Freelancer" when no names are given', async () => {
+    mockReadFile.mockResolvedValue(
+      '<html>{{ recipientName }} | {{ freelancerName }}</html>'
+    );
+
+    const service = await importService();
+    const result = await service.sendProposalAcceptedEmail('freelancer@test.com', {
+      projectTitle: 'Build App',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>Freelancer | Freelancer</html>' })
+    );
+  });
+
+  it('L280/L288: milestone email falls back to "Freelancer" when no names are given', async () => {
+    mockReadFile.mockResolvedValue(
+      '<html>{{ recipientName }} | {{ freelancerName }}</html>'
+    );
+
+    const service = await importService();
+    const result = await service.sendMilestoneApprovedEmail('freelancer@test.com', {
+      milestoneTitle: 'Phase 1',
+      amount: '500',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>Freelancer | Freelancer</html>' })
+    );
+  });
+
+  it('L298/L306: payment released email tolerates missing titles', async () => {
+    mockReadFile.mockResolvedValue(
+      '<html>[{{ projectTitle }}] [{{ contractTitle }}]</html>'
+    );
+
+    const service = await importService();
+    const result = await service.sendPaymentReleasedEmail('recipient@test.com', {
+      recipientName: 'Bob',
+      amount: '1000',
+      transactionHash: '0xabc',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>[] []</html>' })
+    );
+  });
+
+  it('L315/L316/L317/L325/L327/L329: dispute email falls back for every optional field', async () => {
+    mockReadFile.mockResolvedValue(
+      '<html>{{ recipientName }}|{{ arbiterName }}|{{ projectTitle }}|{{ contractTitle }}|{{ reason }}|{{ disputeReason }}</html>'
+    );
+
+    const service = await importService();
+    const result = await service.sendDisputeCreatedEmail('arbiter@test.com', {});
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>User|User||||</html>' })
+    );
+  });
+
+  it('L377/L385: KYC approved email falls back to "User" when no names are given', async () => {
+    mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ userName }}</html>');
+
+    const service = await importService();
+    const result = await service.sendKycApprovedEmail('user@test.com', {});
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>User User</html>' })
+    );
+  });
+
+  it('L394/L402: KYC rejected email falls back to "User" when no names are given', async () => {
+    mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ userName }}</html>');
+
+    const service = await importService();
+    const result = await service.sendKycRejectedEmail('user@test.com', { reason: 'Blurry ID' });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>User User</html>' })
+    );
+  });
+
+  it('L422/L430/L431/L434: weekly digest defaults every optional field', async () => {
+    mockReadFile.mockResolvedValue(
+      '<html>{{ recipientName }} {{ userName }} {{ newProjectsCount }} {{ topProjects }}</html>'
+    );
+
+    const service = await importService();
+    const result = await service.sendWeeklyDigestEmail('user@test.com', {});
+
+    expect(result.success).toBe(true);
+    // newProjectsCount defaults to 0; topProjects is an array so {{ topProjects }}
+    // is skipped by the scalar pass and stays literal.
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>User User 0 {{ topProjects }}</html>' })
+    );
+  });
+
+  it('L448/L457: account deletion code email defaults name and expiry', async () => {
+    mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ confirmationCode }} {{ expiresMinutes }}</html>');
+
+    const service = await importService();
+    const result = await service.sendAccountDeletionCodeEmail('user@test.com', {
+      confirmationCode: '123456',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>User 123456 15</html>' })
+    );
+  });
+
+  it('L470: account deleted email falls back to "User" when no name is given', async () => {
+    mockReadFile.mockResolvedValue('<html>{{ recipientName }}</html>');
+
+    const service = await importService();
+    const result = await service.sendAccountDeletedEmail('user@test.com', {});
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>User</html>' })
+    );
+  });
+
+  it('L495: login alert email falls back to the default member name', async () => {
+    mockReadFile.mockResolvedValue('<html>{{ recipientName }}</html>');
+
+    const service = await importService();
+    const result = await service.sendNewDeviceLoginAlertEmail('user@test.com', {
+      ip: '203.0.113.9',
+      device: 'MacBook',
+      browser: 'Firefox',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html>FreelanceXchain Member</html>' })
+    );
+  });
+
+  it('L557: reports resend as the provider when RESEND_API_KEY is set', async () => {
+    process.env['RESEND_API_KEY'] = 'test-resend-key';
+
+    const service = await importService();
+    const result = await service.testEmailConfiguration();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.verified).toBe(true);
+      expect(result.data.provider).toBe('resend');
     }
   });
 });

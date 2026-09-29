@@ -134,6 +134,13 @@ describe('Contract Routes', () => {
       const res = await request(app).get('/api/contracts/c-1');
       expect(res.status).toBe(200);
     });
+
+    it('should return 401 when not authenticated', async () => {
+      mockAuthMiddleware.mockImplementationOnce((req: any, _res: any, next: any) => { req.user = undefined; next(); });
+      const res = await request(app).get('/api/contracts/c-1');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
+    });
   });
 
   describe('POST /:id/fund - Fund contract escrow', () => {
@@ -1514,5 +1521,208 @@ describe('contract-routes - escrow withdraw endpoints', () => {
     const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
     expect(res.status).toBe(500);
     expect(res.body.error.code).toBe('WITHDRAW_FAILED');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Remaining coverage gaps: fund-info nullish/env fallbacks and
+// the withdraw employer-wallet branches
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-routes.ts - Remaining coverage gaps', () => {
+  let app: any;
+  let web3Mode: 'ok' | 'throw' = 'ok';
+  let blockchainMode = 'simulated';
+  let defaultAuthUser: any = { userId: 'user-1', role: 'employer' };
+  const mockWithdrawFromEscrow = jest.fn<any>();
+  const mockGetUserById = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    web3Mode = 'ok';
+    blockchainMode = 'simulated';
+    defaultAuthUser = { userId: 'user-1', role: 'employer' };
+
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { ...defaultAuthUser };
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+      clampLimit: (v: any) => v || 20,
+      clampOffset: (v: any) => v || 0,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: mockGetUserContracts,
+      updateContractStatus: mockUpdateContractStatus,
+      cancelPendingContract: mockCancelPendingContract,
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      getProjectById: mockGetProjectById,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      initializeContractEscrow: mockInitializeContractEscrow,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      getDisputesByContract: mockGetDisputesByContract,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { updateContract: jest.fn().mockResolvedValue({}) },
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+      mapProjectFromEntity: (e: any) => e,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      // The throw happens inside the accessor (not the factory) so the
+      // dynamic import at the route still succeeds and only the try block fails.
+      getWallet: () => {
+        if (web3Mode === 'throw') {
+          throw new Error('web3 down');
+        }
+        return null;
+      },
+      getArbiterWallet: () => null,
+      isWeb3Available: () => true,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: () => blockchainMode,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: jest.fn(),
+      withdrawFromEscrow: mockWithdrawFromEscrow,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+      userRepository: { getUserById: mockGetUserById },
+    }));
+    jest.unstable_mockModule('ethers', () => ({
+      ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/contract-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/contracts', router);
+    jest.clearAllMocks();
+    // mockClear does not drop queued "Once" implementations from earlier tests
+    mockGetContractById.mockReset();
+    mockGetProjectById.mockReset();
+    mockGetContractWalletAddresses.mockReset();
+    mockWithdrawFromEscrow.mockReset();
+    mockGetUserById.mockReset();
+    mockWithdrawFromEscrow.mockResolvedValue({ transactionHash: '0xTX', receipt: {} });
+    mockGetUserById.mockResolvedValue({ wallet_address: '0xEmpWallet' });
+  });
+
+  const fundInfoContract = () => ({
+    success: true,
+    data: { id: 'c1', employerId: 'user-1', projectId: 'p1' },
+  });
+
+  it('GET /:id/fund-info uses nullish fallbacks for milestones, total and platform wallets in simulated mode', async () => {
+    mockGetContractById.mockResolvedValue(fundInfoContract());
+    mockGetProjectById.mockResolvedValue({ success: true, data: { id: 'p1' } });
+    mockGetContractWalletAddresses.mockResolvedValue({
+      success: true,
+      data: { employerWallet: '0xEMP', freelancerWallet: '0xFREE' },
+    });
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(200);
+    expect(res.body.chainId).toBe('0x539');
+    expect(res.body.platformWallet).toBe('');
+    expect(res.body.arbiterWallet).toBe('');
+    expect(res.body.totalAmount).toBe('0');
+    expect(res.body.milestoneAmounts).toEqual([]);
+  });
+
+  it('GET /:id/fund-info parses milestone amounts with a 0 fallback', async () => {
+    mockGetContractById.mockResolvedValue(fundInfoContract());
+    mockGetProjectById.mockResolvedValue({
+      success: true,
+      data: { id: 'p1', milestones: [{ id: 'm1', title: 'M1' }] },
+    });
+    mockGetContractWalletAddresses.mockResolvedValue({ success: true, data: { freelancerWallet: '0xF' } });
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(200);
+    expect(res.body.milestoneAmounts).toEqual(['0']);
+    expect(res.body.milestoneDescriptions).toEqual(['M1']);
+  });
+
+  it('GET /:id/fund-info falls back to env/config when the web3 client throws', async () => {
+    web3Mode = 'throw';
+    mockGetContractById.mockResolvedValue(fundInfoContract());
+    mockGetProjectById.mockResolvedValue({ success: true, data: { id: 'p1' } });
+    mockGetContractWalletAddresses.mockResolvedValue({ success: true, data: { freelancerWallet: '0xF' } });
+    const { config } = await import('../../config/env.js');
+    const originalArbiter = config.blockchain.arbiterAddress;
+    const originalWalletEnv = process.env['PLATFORM_WALLET_ADDRESS'];
+    const originalArbiterEnv = process.env['PLATFORM_ARBITER_ADDRESS'];
+    try {
+      delete process.env['PLATFORM_WALLET_ADDRESS'];
+      delete process.env['PLATFORM_ARBITER_ADDRESS'];
+      config.blockchain.arbiterAddress = '';
+      const res = await request(app).get('/api/contracts/c1/fund-info');
+      expect(res.status).toBe(200);
+      expect(res.body.platformWallet).toBe('');
+      expect(res.body.arbiterWallet).toBe('');
+    } finally {
+      web3Mode = 'ok';
+      config.blockchain.arbiterAddress = originalArbiter;
+      if (originalWalletEnv === undefined) {
+        delete process.env['PLATFORM_WALLET_ADDRESS'];
+      } else {
+        process.env['PLATFORM_WALLET_ADDRESS'] = originalWalletEnv;
+      }
+      if (originalArbiterEnv === undefined) {
+        delete process.env['PLATFORM_ARBITER_ADDRESS'];
+      } else {
+        process.env['PLATFORM_ARBITER_ADDRESS'] = originalArbiterEnv;
+      }
+    }
+  });
+
+  it('POST /:id/escrow/withdraw forwards to the employer wallet in real mode', async () => {
+    blockchainMode = 'real';
+    mockGetContractById.mockResolvedValue({
+      success: true,
+      data: { id: 'c1', employerId: 'user-1', escrowAddress: '0xESC' },
+    });
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(200);
+    expect(mockGetUserById).toHaveBeenCalledWith('user-1');
+    expect(mockWithdrawFromEscrow).toHaveBeenCalledWith('0xESC', '0xEmpWallet');
+    expect(res.body.transactionHash).toBe('0xTX');
+  });
+
+  it('POST /:id/escrow/withdraw uses the single-arg path when there is no employer wallet lookup', async () => {
+    blockchainMode = 'real';
+    defaultAuthUser = { userId: 'admin-1', role: 'admin' };
+    mockGetContractById.mockResolvedValue({
+      success: true,
+      data: { id: 'c1', employerId: '', escrowAddress: '0xESC' },
+    });
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(200);
+    expect(mockGetUserById).not.toHaveBeenCalled();
+    expect(mockWithdrawFromEscrow).toHaveBeenCalledWith('0xESC');
   });
 });

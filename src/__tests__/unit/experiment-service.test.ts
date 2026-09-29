@@ -6,6 +6,7 @@ import {
   getRegisteredExperiments,
   setVariantOverride,
   clearVariantOverrides,
+  REGISTERED_EXPERIMENTS,
 } from '../../services/experiment-service.js';
 
 describe('Experiment Service (A/B Testing Framework)', () => {
@@ -71,6 +72,62 @@ describe('Experiment Service (A/B Testing Framework)', () => {
       expect(result.data.length).toBeGreaterThanOrEqual(4);
       const ab001 = result.data.find(e => e.experimentId === 'AB-001');
       expect(ab001).toBeDefined();
+    }
+  });
+
+  it('should return fallback variant when experiment status is not running', () => {
+    const origStatus = REGISTERED_EXPERIMENTS['AB-001'].status;
+    REGISTERED_EXPERIMENTS['AB-001'].status = 'paused';
+    try {
+      const result = getExperimentVariant('AB-001', 'user-alpha-123', 'freelancer');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.variantId).toBe('control_immediate_paywall');
+      }
+    } finally {
+      REGISTERED_EXPERIMENTS['AB-001'].status = origStatus;
+    }
+  });
+
+  it('should fall back to default variant if bucketing weight does not catch user bucket', () => {
+    REGISTERED_EXPERIMENTS['TEST-WEIGHT'] = {
+      id: 'TEST-WEIGHT',
+      name: 'Weight Test',
+      description: 'Test',
+      hypothesis: 'Test',
+      status: 'running',
+      targetAudience: 'all',
+      variants: [{ id: 'var_zero', name: 'Zero Weight', weight: 0 }],
+      defaultVariantId: 'var_zero',
+      createdAt: '2026-09-01T00:00:00.000Z',
+    };
+    try {
+      const result = getExperimentVariant('TEST-WEIGHT', 'user-alpha-123');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.variantId).toBe('var_zero');
+      }
+    } finally {
+      delete REGISTERED_EXPERIMENTS['TEST-WEIGHT'];
+    }
+  });
+
+  it('should handle errors in getAllUserExperiments and return INTERNAL_ERROR', () => {
+    Object.defineProperty(REGISTERED_EXPERIMENTS, 'BROKEN_EXP', {
+      get() {
+        throw new Error('Explosion');
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    try {
+      const result = getAllUserExperiments('user-1');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    } finally {
+      delete REGISTERED_EXPERIMENTS['BROKEN_EXP'];
     }
   });
 });

@@ -112,6 +112,21 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   ID: mockID,
 }));
 
+const mockGetContractById = jest.fn() as jest.Mock<any>;
+const mockGetProjectById = jest.fn() as jest.Mock<any>;
+
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: {
+    getContractById: mockGetContractById,
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
+  projectRepository: {
+    getProjectById: mockGetProjectById,
+  },
+}));
+
 
 const {
   deployEscrow,
@@ -416,6 +431,41 @@ describe('Escrow Contract - Appwrite', () => {
       const state = await getEscrowState(ESCROW_ADDR);
       expect(state).not.toBeNull();
       expect(state?.contractId).toBe('c-1');
+    });
+
+    it('should backfill milestones from project when none exist in milestones collection (lines 79-103)', async () => {
+      const escrowAddress = '0xBackfillEscrow';
+      escrowStore.set(escrowAddress, {
+        $id: 'doc-escrow-backfill',
+        address: escrowAddress,
+        contract_id: 'contract-backfill',
+        employer_address: EMPLOYER,
+        freelancer_address: FREELANCER,
+        total_amount: '1000000000000000000',
+        balance: '1000000000000000000',
+        status: 'active',
+        created_at: new Date().toISOString(),
+      });
+
+      mockGetContractById.mockResolvedValueOnce({
+        id: 'contract-backfill',
+        project_id: 'proj-backfill',
+      });
+      mockGetProjectById.mockResolvedValueOnce({
+        id: 'proj-backfill',
+        milestones: [
+          { id: 'm-1', amount: 10, status: 'approved' },
+          { id: 'm-2', amount: 20, status: 'refunded' },
+          { id: 'm-3', amount: 30, status: 'pending' },
+        ],
+      });
+
+      const state = await getEscrowState(escrowAddress);
+      expect(state).not.toBeNull();
+      expect(state?.milestones).toHaveLength(3);
+      expect(state?.milestones[0]?.status).toBe('released');
+      expect(state?.milestones[1]?.status).toBe('refunded');
+      expect(state?.milestones[2]?.status).toBe('pending');
     });
   });
 

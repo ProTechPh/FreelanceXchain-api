@@ -493,3 +493,28 @@ describe('favorite-routes - ?? "" param fallback coverage', () => {
     expect(mockIsFavorited).toHaveBeenCalledWith('user-1', 'project', '');
   });
 });
+
+describe('favorite-routes - duplicate favorite conflict', () => {
+  let app: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/favorites', favoriteRouter);
+  });
+
+  it('returns 409 when the favorite already exists', async () => {
+    mockAddFavorite.mockResolvedValue({
+      success: false,
+      error: { code: 'DUPLICATE_FAVORITE', message: 'Already favorited' },
+    });
+
+    const res = await request(app)
+      .post('/api/favorites')
+      .send({ targetType: 'project', targetId: 'proj-1' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DUPLICATE_FAVORITE');
+  });
+});

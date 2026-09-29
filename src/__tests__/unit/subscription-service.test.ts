@@ -199,7 +199,7 @@ describe('subscription entitlement', () => {
       expect(() => svc.assertBillingConfigSafe()).toThrow(/BILLING_DEV_GRANT_PRO/);
     });
 
-    it('boots normally when the grant is off', () => {
+it('boots normally when the grant is off', () => {
       mockConfig.stripe.devGrantPro = false;
       nodeEnv = 'production';
 

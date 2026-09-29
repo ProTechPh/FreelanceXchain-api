@@ -840,4 +840,19 @@ describe('skill-routes - userName fallback (line 583)', () => {
       expect.objectContaining({ name: 'My Skill' }),
     );
   });
+
+  it('L927: POST /suggestions rejects categoryName longer than 100 characters', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/skills/suggestions').send({
+      name: 'Valid Name',
+      description: 'Valid Description',
+      categoryName: 'a'.repeat(101),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'categoryName', message: 'Category name cannot exceed 100 characters' }),
+      ]),
+    );
+  });
 });

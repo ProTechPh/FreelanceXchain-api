@@ -293,3 +293,47 @@ describe('listAppRatings', () => {
     expect(result.data.ratings[0]).toMatchObject({ userName: 'Deleted user', userEmail: '—' });
   });
 });
+
+describe('app-rating-service - conditional payload fields', () => {
+  it('stores a trimmed comment when one is provided', async () => {
+    const { submitAppRating } = await importService();
+
+    const result = await submitAppRating({ ...baseInput, comment: '  Great escrow flow.  ' });
+
+    expect(result.success).toBe(true);
+    expect(mockAppRatingRepo.createRating).toHaveBeenCalledWith(
+      expect.objectContaining({ comment: 'Great escrow flow.' })
+    );
+    expect(result.data.comment).toBe('Great escrow flow.');
+  });
+
+  it('stores the app version when the client reports one', async () => {
+    const { submitAppRating } = await importService();
+
+    const result = await submitAppRating({ ...baseInput, appVersion: '3.4.1' });
+
+    expect(result.success).toBe(true);
+    expect(mockAppRatingRepo.createRating).toHaveBeenCalledWith(
+      expect.objectContaining({ app_version: '3.4.1' })
+    );
+  });
+});
+
+describe('summarize - bucket visibility fallback', () => {
+  it('counts a rating bucket that exists on the prototype chain without an own value', async () => {
+    const { summarize } = await importService();
+
+    // '6' is not one of the pre-initialised buckets, so making it visible only
+    // through the prototype chain (with no own value) exercises the `?? 0` arm.
+    let bucketSix: number | undefined;
+    (Object.prototype as any)['6'] = undefined;
+    try {
+      const summary = summarize([{ rating: 6, source: 'manual', createdAt: new Date().toISOString() }]);
+      bucketSix = summary.histogram['6'];
+    } finally {
+      delete (Object.prototype as any)['6'];
+    }
+
+    expect(bucketSix).toBe(1);
+  });
+});
