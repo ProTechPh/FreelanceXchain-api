@@ -66,6 +66,34 @@ describe('Root Routes', () => {
     });
   });
 
+  describe('GET security.txt aliases', () => {
+    it.each(['/security.txt', '/.well-known/security.txt'])(
+      'serves the disclosure policy from %s',
+      async (route) => {
+        mockReadFile.mockResolvedValue('Contact: mailto:security@example.com\n');
+
+        const res = await request(app).get(route);
+
+        expect(res.status).toBe(200);
+        expect(res.type).toMatch(/^text\/plain/);
+        expect(res.text).toBe('Contact: mailto:security@example.com\n');
+        expect(mockReadFile).toHaveBeenCalledWith(
+          path.resolve(process.cwd(), 'security.txt'),
+          'utf8',
+        );
+      },
+    );
+
+    it('returns 404 when the disclosure policy cannot be read', async () => {
+      mockReadFile.mockRejectedValue(new Error('ENOENT'));
+
+      const res = await request(app).get('/.well-known/security.txt');
+
+      expect(res.status).toBe(404);
+      expect(res.text).toBe('Not found');
+    });
+  });
+
   describe('POST /reset-password', () => {
     it('should redirect to /api/auth/reset-password', async () => {
       const res = await request(app).post('/reset-password');

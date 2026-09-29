@@ -8,6 +8,7 @@ const mockCreateFile = jest.fn() as any;
 const mockDeleteFile = jest.fn() as any;
 const mockListFiles = jest.fn() as any;
 const mockGetFile = jest.fn() as any;
+const mockGetFileDownload = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     DATABASE_ID: 'freelancexchain',
@@ -16,6 +17,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     deleteFile: mockDeleteFile,
     listFiles: mockListFiles,
     getFile: mockGetFile,
+    getFileDownload: mockGetFileDownload,
   },
   // Query helpers used by listUserFiles pagination
   Query: {
@@ -77,6 +79,9 @@ const {
   getSignedUrl,
   listUserFiles,
   getFileQuota,
+  convertLegacyUrlToSecure,
+  streamFileFromStorage,
+  extractBucketFromUrl,
 } = await import('../../utils/storage-uploader.js');
 
 const { logger } = await import('../../config/logger.js');
@@ -93,12 +98,18 @@ beforeEach(() => {
   mockDeleteFile.mockReset();
   mockListFiles.mockReset();
   mockGetFile.mockReset();
+  mockGetFileDownload.mockReset();
   process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
   process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
 });
 
 describe('storage-uploader', () => {
   describe('extractFileIdFromUrl', () => {
+    it('extracts file ID from the authorized proxy URL', () => {
+      expect(extractFileIdFromUrl('/api/files/access/dispute-evidence/file-secure-1'))
+        .toBe('file-secure-1');
+    });
+
     it('extracts file ID from a valid Appwrite storage URL', () => {
       const url = `${APPWRITE_ENDPOINT}/storage/buckets/proposal-attachments/files/file-abc-123/view?project=${APPWRITE_PROJECT_ID}`;
       const result = extractFileIdFromUrl(url);
@@ -126,6 +137,109 @@ describe('storage-uploader', () => {
       expect(logger.warn).toHaveBeenCalledWith(
         'Failed to extract file ID from URL',
         { url: 'not-a-url' }
+      );
+    });
+  });
+
+  describe('legacy URL conversion', () => {
+    it('converts a direct Appwrite URL to the authorized proxy URL', () => {
+      expect(convertLegacyUrlToSecure(
+        'https://cloud.appwrite.io/v1/storage/buckets/dispute-evidence/files/file-123/view?project=p1',
+      )).toBe('/api/files/access/dispute-evidence/file-123');
+    });
+
+    it.each(['', '/api/files/access/dispute-evidence/file-123', 'https://example.com/file.pdf'])(
+      'leaves a non-legacy URL unchanged: %s',
+      (url) => {
+        expect(convertLegacyUrlToSecure(url)).toBe(url);
+      },
+    );
+
+    it('returns null when a legacy-looking URL lacks a bucket identifier', () => {
+      expect(convertLegacyUrlToSecure('/storage/buckets//files/file-123')).toBeNull();
+    });
+
+    it('logs and returns null if parsing an untrusted string-like value throws', () => {
+      const malformed = {
+        includes: () => true,
+        match: () => { throw new Error('malformed'); },
+      } as any;
+
+      expect(convertLegacyUrlToSecure(malformed)).toBeNull();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to convert legacy URL to secure URL',
+        { legacyUrl: malformed },
+      );
+    });
+  });
+
+  describe('streamFileFromStorage', () => {
+    it('returns metadata and a readable stream for a stored file', async () => {
+      const bytes = Buffer.from('file contents');
+      mockGetFile.mockResolvedValue({ name: 'evidence.txt', mimeType: 'text/plain', sizeOriginal: bytes.length });
+      mockGetFileDownload.mockResolvedValue(bytes);
+
+      const result = await streamFileFromStorage('dispute-evidence', 'file-123');
+      const firstChunk = await result!.stream.getReader().read();
+
+      expect(mockGetFile).toHaveBeenCalledWith('dispute-evidence', 'file-123');
+      expect(mockGetFileDownload).toHaveBeenCalledWith('dispute-evidence', 'file-123');
+      expect(firstChunk.value).toEqual(bytes);
+      expect(result).toMatchObject({
+        mimeType: 'text/plain',
+        size: bytes.length,
+        filename: 'evidence.txt',
+      });
+    });
+
+    it('uses safe metadata defaults when Appwrite omits optional fields', async () => {
+      mockGetFile.mockResolvedValue({ name: 'unknown.bin' });
+      mockGetFileDownload.mockResolvedValue(Buffer.alloc(0));
+
+      const result = await streamFileFromStorage('proposal-attachments', 'file-1');
+
+      expect(result).toMatchObject({
+        mimeType: 'application/octet-stream',
+        size: 0,
+        filename: 'unknown.bin',
+      });
+    });
+
+    it.each([new Error('download failed'), 'raw download failure'])(
+      'returns null and logs storage failures represented by %p',
+      async (failure) => {
+        mockGetFile.mockRejectedValue(failure);
+
+        await expect(streamFileFromStorage('proposal-attachments', 'missing')).resolves.toBeNull();
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Failed to stream file from storage',
+          {
+            error: failure instanceof Error ? failure.message : String(failure),
+            bucket: 'proposal-attachments',
+            fileId: 'missing',
+          },
+        );
+      },
+    );
+  });
+
+  describe('extractBucketFromUrl', () => {
+    it.each([
+      ['/api/files/access/dispute-evidence/file-1', 'dispute-evidence'],
+      ['https://cloud.appwrite.io/v1/storage/buckets/portfolio-images/files/file-2/view', 'portfolio-images'],
+    ])('extracts the bucket from %s', (url, expected) => {
+      expect(extractBucketFromUrl(url)).toBe(expected);
+    });
+
+    it('returns null for a valid URL without a storage bucket', () => {
+      expect(extractBucketFromUrl('https://example.com/files/file-1')).toBeNull();
+    });
+
+    it('returns null and logs malformed URLs', () => {
+      expect(extractBucketFromUrl('not a URL')).toBeNull();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to extract bucket from URL',
+        { url: 'not a URL' },
       );
     });
   });

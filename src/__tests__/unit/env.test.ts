@@ -198,5 +198,37 @@ describe('Env Config', () => {
       await expect(importModule()).rejects.toThrow('Environment variable ENABLE_API_DOCS must be "true" or "false"');
     });
 
+    it('should ignore DISABLE_RATE_LIMITER in production with a security warning', async () => {
+      setupRequiredEnv();
+      process.env.NODE_ENV = 'production';
+      process.env.DISABLE_RATE_LIMITER = 'true';
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { config } = await importModule();
+        expect(config.server.disableRateLimiter).toBe(false);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('DISABLE_RATE_LIMITER=true is prohibited in production')
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('should return email webhook secret', async () => {
+      setupRequiredEnv();
+      process.env.EMAIL_WEBHOOK_SECRET = 'whsec_test';
+      const { getEmailWebhookSecret } = await importModule();
+      expect(getEmailWebhookSecret()).toBe('whsec_test');
+    });
+
+    it('should return custom and default turnstile hostnames', async () => {
+      setupRequiredEnv();
+      delete process.env.TURNSTILE_HOSTNAMES;
+      const { getTurnstileHostnames } = await importModule();
+      expect(getTurnstileHostnames()).toContain('freelancexchain.works');
+
+      process.env.TURNSTILE_HOSTNAMES = 'example.com';
+      expect(getTurnstileHostnames()).toBe('example.com');
+    });
   });
 });

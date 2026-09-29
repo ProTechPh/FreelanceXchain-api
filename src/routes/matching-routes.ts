@@ -376,6 +376,7 @@ router.post('/generate-proposal/:projectId', authMiddleware, apiRateLimiter, req
   const userId = authReq.user.userId;
   const projectId = req.params['projectId'];
 
+  /* istanbul ignore next -- Express route pattern and document validator ensure projectId */
   if (!projectId) {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'projectId is required', { requestId });
     return;

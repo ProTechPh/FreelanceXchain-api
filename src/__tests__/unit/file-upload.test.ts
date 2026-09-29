@@ -39,10 +39,13 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   }));
 
 let shouldProvideFile = true;
+let customFiles: any[] | null = null;
 
 const mockCreateFileUploadMiddleware = jest.fn(() => [
   (req: any, _res: any, next: any) => {
-    if (shouldProvideFile) {
+    if (customFiles !== null) {
+      req.files = customFiles;
+    } else if (shouldProvideFile) {
       req.files = [{ buffer: Buffer.from('test'), originalname: 'test.png', mimetype: 'image/png', size: 1000 }];
     } else {
       req.files = [];
@@ -64,6 +67,7 @@ describe('File Upload Routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     shouldProvideFile = true;
+    customFiles = null;
     mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
       req.user = { id: 'user-123', userId: 'user-123', email: 'test@test.com', role: 'freelancer' };
       next();
@@ -149,6 +153,24 @@ describe('File Upload Routes', () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error.message).toBe('Failed to upload file');
+    });
+
+    it('should reject invalid file extension or mime for profile-images', async () => {
+      customFiles = [{ buffer: Buffer.from('test'), originalname: 'test.exe', mimetype: 'application/x-msdownload', size: 1000 }];
+      const res = await request(app)
+        .post('/api/files/upload')
+        .send({ bucket: 'profile-images' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_FILE_TYPE');
+    });
+
+    it('should reject file exceeding MAX_PROFILE_IMAGE_SIZE for profile-images', async () => {
+      customFiles = [{ buffer: Buffer.from('test'), originalname: 'test.png', mimetype: 'image/png', size: 6 * 1024 * 1024 }];
+      const res = await request(app)
+        .post('/api/files/upload')
+        .send({ bucket: 'profile-images' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('FILE_TOO_LARGE');
     });
 
     it('should accept all allowed buckets', async () => {

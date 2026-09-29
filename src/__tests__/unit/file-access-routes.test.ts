@@ -229,5 +229,55 @@ describe('File Access Routes', () => {
       expect(res.body.urls[1].secure).toBe('https://example.com/other-image.jpg');
       expect(res.body.urls[1].accessible).toBe(true);
     });
+
+    it('returns inaccessible record when url item cannot be matched', async () => {
+      const res = await request(app)
+        .post('/api/files/access/batch')
+        .send({ urls: [12345] });
+      expect(res.status).toBe(200);
+      expect(res.body.urls[0]).toEqual({
+        original: 12345,
+        secure: null,
+        accessible: false,
+      });
+    });
+  });
+});
+
+describe('File Access Routes - coverage gap branches', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUser = { userId: 'user-1', role: 'user' };
+  });
+
+  it('falls back to application/octet-stream when the file has no mime type', async () => {
+    mockStorage.getFile.mockResolvedValue({
+      name: 'user-1_uuid_archive.bin',
+      sizeOriginal: 32,
+    });
+    mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('binary'));
+
+    const res = await request(app).get('/api/files/access/dispute-evidence/file-1');
+
+    expect(res.status).toBe(200);
+    expect(res.header['content-type']).toContain('application/octet-stream');
+  });
+
+  it('answers 500 FILE_STREAM_ERROR when storage rejects with a non-Error value', async () => {
+    mockStorage.getFile.mockRejectedValueOnce('not-an-error');
+
+    const res = await request(app).get('/api/files/access/dispute-evidence/file-1');
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('FILE_STREAM_ERROR');
+  });
+
+  it('answers 500 INTERNAL_ERROR on the info route when storage rejects with a non-Error value', async () => {
+    mockStorage.getFile.mockRejectedValueOnce('not-an-error');
+
+    const res = await request(app).get('/api/files/access/dispute-evidence/file-1/info');
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
   });
 });

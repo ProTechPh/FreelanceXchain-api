@@ -63,6 +63,11 @@ describe('PaymentRepository', () => {
       expect(result.get('c2')?.map((payment: any) => payment.id)).toEqual(['p2']);
       expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
     });
+
+    it('should throw on error in findByContractIds', async () => {
+      jest.spyOn(PaymentRepository, 'fetchAll').mockRejectedValueOnce(new Error('db explosion'));
+      await expect(PaymentRepository.findByContractIds(['c1'])).rejects.toThrow('Failed to find payments: db explosion');
+    });
   });
 
   describe('findByUserId', () => {

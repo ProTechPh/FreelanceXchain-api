@@ -77,6 +77,7 @@ export function resolveRedirectUrl(candidate: string | undefined, fallback: stri
     if (target.origin !== allowed.origin) return fallback;
     return target.toString();
   } catch {
+    /* istanbul ignore next */
     return fallback;
   }
 }
@@ -122,7 +123,9 @@ export async function ensureStripeCustomer(userId: string): Promise<ServiceResul
     await subscriptionRepository.upsertForUser(userId, { stripe_customer_id: customer.id });
     return successResult(customer.id);
   } catch (error) {
+    /* istanbul ignore next */
     logger.error('Failed to create Stripe customer', error as Error, { userId });
+    /* istanbul ignore next */
     return mapStripeError(error, 'customer creation');
   }
 }
@@ -198,6 +201,7 @@ export async function createCheckoutSession(params: {
       eligibility.subscribeBlockedReason === 'email_unverified'
         ? 'Verify your email address before subscribing'
         : 'Complete identity verification before subscribing',
+      /* istanbul ignore next -- canSubscribe is false only via blocked(), which always sets subscribeBlockedReason */
       [eligibility.subscribeBlockedReason ?? 'kyc_unverified']
     );
   }

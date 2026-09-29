@@ -340,6 +340,22 @@ describe('Contract Service - Unit Tests', () => {
       expect(page1Ids.some(id => page2Ids.includes(id))).toBe(false);
     }
   });
+
+  it('should return entity as-is when project_id is empty or missing (line 60)', async () => {
+    const userId = 'user-no-project';
+    const contract = createTestContract({
+      freelancer_id: userId,
+      project_id: '',
+    });
+    contractStore.set(contract.id, contract);
+
+    const result = await getUserContracts(userId);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items[0]?.id).toBe(contract.id);
+      expect(result.data.items[0]?.projectId).toBe('');
+    }
+  });
 });
 
 describe('Contract Service - Coverage Tests', () => {
@@ -722,5 +738,53 @@ describe('Contract Service - Coverage Tests', () => {
     if (!result.success) {
       expect(result.error.code).toBe('MISSING_WALLET');
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Remaining coverage gaps
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-service.ts - Remaining coverage gaps', () => {
+  beforeEach(() => {
+    mockContractRepo.clear();
+    disputeStore.clear();
+    userStore.clear();
+    mockAuditLogRepo.create.mockClear();
+  });
+
+  // withProjectMilestones (line 29) short-circuits when there is nothing to enrich.
+  it('getUserContracts returns an empty page without touching the project repository', async () => {
+    const result = await getUserContracts('user-with-no-contracts');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items).toEqual([]);
+      expect(result.data.hasMore).toBe(false);
+      expect(result.data.total).toBe(0);
+    }
+  });
+
+  // Line 255: a contract without a total_amount is audited as null, not undefined.
+  it('cancelPendingContract records totalAmount: null when the contract has no total_amount', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contract.total_amount = undefined;
+    contractStore.set(contract.id, contract);
+
+    const result = await cancelPendingContract(contract.id, 'emp-1');
+
+    expect(result.success).toBe(true);
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'contract.cancelled',
+      resource_id: contract.id,
+      payload: expect.objectContaining({
+        projectId: contract.project_id,
+        totalAmount: null,
+      }),
+    }));
   });
 });

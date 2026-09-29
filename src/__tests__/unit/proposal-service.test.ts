@@ -106,7 +106,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
 
 // Email delivery (preference-gated transactional emails). Mocked so the real
 // email-preference-service / user-repository do not touch global mockDatabases.
-const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+const mockSendGatedEmail = jest.fn<any>().mockImplementation(async (userId, type, cb) => { if (cb) { await cb({ email: 'test@example.com', name: 'Test User' }); } return true; });
 jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
   sendGatedEmail: mockSendGatedEmail,
   sendProposalAcceptedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
@@ -1852,5 +1852,257 @@ describe('Proposal Service - Integration Coverage', () => {
     // project should transition to in_progress
     const updatedProject = projectStore.get(project.id) as any;
     expect(updatedProject?.status).toBe('in_progress');
+  });
+  it('acceptProposal catches error when persistAuditEntry fails (line 478)', async () => {
+    const employerId = 'employer-audit-fail';
+    const freelancerId = 'freelancer-audit-fail';
+    
+    const project = createTestProject({
+      id: 'proj-audit-fail', employer_id: employerId, status: 'open',
+      milestones: [createTestMilestone({ id: 'm1', amount: 100, status: 'pending' })],
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({ id: employerId, wallet_address: '0x1' });
+    userStore.set(employer.id, employer);
+
+    const proposal = createTestProposal({
+      project_id: project.id, freelancer_id: freelancerId, proposed_rate: 100, status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+    
+    mockAuditLogRepo.create.mockRejectedValueOnce(new Error('Audit DB down'));
+    
+    const result = await acceptProposal(proposal.id, employerId);
+    expect(result.success).toBe(true);
+  });
+
+  it('acceptProposal catches error when initializeEscrowForContract throws (line 613)', async () => {
+    const employerId = 'employer-escrow-fail';
+    const freelancerId = 'freelancer-escrow-fail';
+    
+    const project = createTestProject({
+      id: 'proj-escrow-fail', employer_id: employerId, status: 'open',
+      milestones: [createTestMilestone({ id: 'm1', amount: 100, status: 'pending' })],
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({ id: employerId, wallet_address: '0x1' });
+    userStore.set(employer.id, employer);
+
+    const proposal = createTestProposal({
+      project_id: project.id, freelancer_id: freelancerId, proposed_rate: 100, status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+    
+    const { initializeContractEscrow } = await import('../../services/payment-service.js');
+    (initializeContractEscrow as jest.Mock).mockRejectedValueOnce(new Error('Escrow init failed'));
+    
+    const result = await acceptProposal(proposal.id, employerId);
+    expect(result.success).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Remaining coverage gaps
+// ═══════════════════════════════════════════════════════════════
+
+describe('proposal-service.ts - Remaining coverage gaps', () => {
+  beforeEach(() => {
+    mockProposalRepo.clear();
+    mockProjectRepo.clear();
+    mockContractRepo.clear();
+    mockUserRepo.clear();
+    mockNotificationRepo.clear();
+    mockReviewRepo.clear();
+    mockEmployerProfileRepo.clear();
+    jest.clearAllMocks();
+    mockAuditLogRepo.create.mockClear();
+    mockProjectRepo.findProjectById.mockClear();
+  });
+
+  // Line 87: the plural arm of the FREELANCER_LIMIT_REACHED message.
+  it('submitProposal reports the plural "freelancer slots" message when limit > 1', async () => {
+    const project = createTestProject({ status: 'open', freelancer_limit: 2 });
+    projectStore.set(project.id, project);
+
+    for (const freelancerId of ['filled-a', 'filled-b']) {
+      const accepted = createTestProposal({
+        project_id: project.id,
+        freelancer_id: freelancerId,
+        status: 'accepted',
+      });
+      proposalStore.set(accepted.id, accepted);
+    }
+
+    const result = await submitProposal('new-freelancer', {
+      projectId: project.id,
+      proposedRate: 50,
+      estimatedDuration: 30,
+      attachments: [],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FREELANCER_LIMIT_REACHED');
+      expect(result.error.message).toContain('2 freelancer slots');
+    }
+  });
+
+  // Line 282: same plural arm during acceptProposal validation.
+  it('acceptProposal reports the plural "freelancer slots" message when limit > 1', async () => {
+    const employerId = 'employer-limit-2';
+    const project = createTestProject({
+      id: 'proj-limit-2',
+      employer_id: employerId,
+      status: 'open',
+      freelancer_limit: 2,
+      milestones: [createTestMilestone({ id: 'm1', amount: 1000, status: 'pending' })],
+    });
+    projectStore.set(project.id, project);
+
+    for (const freelancerId of ['filled-a', 'filled-b']) {
+      const accepted = createTestProposal({
+        project_id: project.id,
+        freelancer_id: freelancerId,
+        status: 'accepted',
+      });
+      proposalStore.set(accepted.id, accepted);
+    }
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: 'pending-freelancer',
+      proposed_rate: 1000,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FREELANCER_LIMIT_REACHED');
+      expect(result.error.message).toContain('2 freelancer slots');
+    }
+  });
+
+  // ST95 / line 374: updateProjectAfterAcceptance returns early when the
+  // project vanished between validation and the post-acceptance update.
+  it('acceptProposal succeeds but skips the project update when the project disappears', async () => {
+    const employerId = 'employer-vanished';
+    const freelancerId = 'freelancer-vanished';
+
+    const project = createTestProject({
+      id: 'proj-vanished',
+      employer_id: employerId,
+      status: 'open',
+      milestones: [createTestMilestone({ id: 'm1', amount: 100, status: 'pending' })],
+    });
+    projectStore.set(project.id, project);
+
+    userStore.set(
+      employerId,
+      createTestUser({ id: employerId, wallet_address: '0x1111111111111111111111111111111111111111' }),
+    );
+    userStore.set(
+      freelancerId,
+      createTestUser({ id: freelancerId, wallet_address: '0x2222222222222222222222222222222222222222' }),
+    );
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 100,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const originalFind = mockProjectRepo.findProjectById.getMockImplementation();
+    let calls = 0;
+    mockProjectRepo.findProjectById.mockImplementation(async (id: string) => {
+      calls += 1;
+      return calls === 1 ? project : null;
+    });
+
+    try {
+      const result = await acceptProposal(proposal.id, employerId);
+
+      expect(result.success).toBe(true);
+      // The post-acceptance update bailed out, so the status was never advanced.
+      expect((projectStore.get(project.id) as any)?.status).toBe('open');
+      expect(calls).toBeGreaterThanOrEqual(2);
+    } finally {
+      mockProjectRepo.findProjectById.mockImplementation(
+        originalFind ?? (async (id: string) => projectStore.get(id) ?? null),
+      );
+    }
+  });
+
+  // Lines 429/437: FRONTEND_URL is unset, so both email URLs use the localhost fallback.
+  it('notifyProposalAccepted falls back to http://localhost:3000 when FRONTEND_URL is unset', async () => {
+    const employerId = 'employer-frontend-url';
+    const freelancerId = 'freelancer-frontend-url';
+
+    const project = createTestProject({
+      id: 'proj-frontend-fallback',
+      employer_id: employerId,
+      status: 'open',
+      milestones: [createTestMilestone({ id: 'm1', amount: 100, status: 'pending' })],
+    });
+    projectStore.set(project.id, project);
+
+    userStore.set(
+      employerId,
+      createTestUser({ id: employerId, wallet_address: '0x3333333333333333333333333333333333333333' }),
+    );
+    userStore.set(
+      freelancerId,
+      createTestUser({ id: freelancerId, wallet_address: '0x4444444444444444444444444444444444444444' }),
+    );
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 100,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const { sendProposalAcceptedEmail, sendContractCreatedEmail } = await import(
+      '../../services/email-delivery-service.js'
+    );
+    (sendProposalAcceptedEmail as jest.Mock).mockClear();
+    (sendContractCreatedEmail as jest.Mock).mockClear();
+
+    const savedFrontendUrl = process.env['FRONTEND_URL'];
+    delete process.env['FRONTEND_URL'];
+
+    try {
+      const result = await acceptProposal(proposal.id, employerId);
+      expect(result.success).toBe(true);
+
+      // notifyProposalAccepted is fired with `void`; give it time to flush.
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      expect(sendProposalAcceptedEmail).toHaveBeenCalledWith('test@example.com', {
+        recipientName: 'Test User',
+        freelancerName: 'Test User',
+        projectTitle: project.title,
+        projectUrl: `http://localhost:3000/projects/${project.id}`,
+      });
+      expect(sendContractCreatedEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        expect.objectContaining({
+          contractUrl: expect.stringMatching(/^http:\/\/localhost:3000\/contracts\//),
+        }),
+      );
+    } finally {
+      if (savedFrontendUrl === undefined) {
+        delete process.env['FRONTEND_URL'];
+      } else {
+        process.env['FRONTEND_URL'] = savedFrontendUrl;
+      }
+    }
   });
 });

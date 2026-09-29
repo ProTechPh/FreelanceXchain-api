@@ -224,4 +224,26 @@ describe('requireTurnstile Middleware', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  it('should return 403 when siteverify responds with non-ok HTTP status', async () => {
+    globalThis.fetch = jest.fn<any>().mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    }) as unknown as typeof fetch;
+
+    const req = createMockReq({ body: { 'cf-turnstile-response': 'valid-token' } });
+    const { res, status, json } = createMockRes();
+    const next = jest.fn() as NextFunction;
+
+    const middleware = requireTurnstile('signup');
+    await middleware(req, res, next);
+
+    expect(status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: 'TURNSTILE_VERIFICATION_FAILED' }),
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
 });

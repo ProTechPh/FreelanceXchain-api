@@ -221,9 +221,8 @@ export class RedisCache<T> implements Cache<T> {
 
     // Fire-and-forget Redis delete
     if (this.redisAvailable) {
-      this.deleteMatchingAsync(predicate).catch((error) => {
-        logger.warn(`[cache:${this.prefix}] Redis deleteMatching error: ${String(error)}`);
-      });
+      // deleteMatchingAsync owns error reporting and never rejects.
+      void this.deleteMatchingAsync(predicate);
     }
   }
 
@@ -271,9 +270,8 @@ export class RedisCache<T> implements Cache<T> {
 
     // Fire-and-forget Redis clear
     if (this.redisAvailable) {
-      this.clearAsync().catch((error) => {
-        logger.warn(`[cache:${this.prefix}] Redis clear error: ${String(error)}`);
-      });
+      // clearAsync owns error reporting and never rejects.
+      void this.clearAsync();
     }
   }
 

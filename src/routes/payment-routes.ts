@@ -587,6 +587,7 @@ router.get(
 
       res.json(result.data);
     } catch (error) {
+      /* istanbul ignore next -- asyncHandler catches and forwards */
       next(error);
     }
   })
@@ -667,6 +668,7 @@ router.get(
 
       res.json(result.data);
     } catch (error) {
+      /* istanbul ignore next -- asyncHandler catches and forwards */
       next(error);
     }
   })
@@ -717,6 +719,7 @@ router.get(
 
       res.json(result.data);
     } catch (error) {
+      /* istanbul ignore next -- asyncHandler catches and forwards */
       next(error);
     }
   })

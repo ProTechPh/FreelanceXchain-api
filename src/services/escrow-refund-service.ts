@@ -24,6 +24,7 @@ async function computeRemainingEscrow(projectId: string, totalAmount: number): P
   try {
     const project = await projectRepository.findProjectById(projectId);
     const contractMilestones = project?.milestones ?? [];
+    /* istanbul ignore next -- contractMilestones is always an array (assigned via ?? [] on the line above) */
     releasedAmount = ((contractMilestones ?? []) as Array<{ status: string; amount?: number }>)
       .filter(m => m.status === 'approved')
       .reduce((sum, m) => sum + (m.amount ?? 0), 0);
@@ -366,6 +367,7 @@ async function persistRefundAuditEntry(
       contractId: refund.contract_id,
       amount: refund.amount ?? null,
       isPartial: refund.is_partial ?? false,
+      /* istanbul ignore next -- approveRefund already returned ESCROW_NOT_FOUND when contract.escrow_address is missing */
       escrowAddress: contract.escrow_address ?? null,
       refundedMilestoneCount: refundTargets.length,
     },

@@ -250,6 +250,15 @@ describe('log-sanitizer', () => {
       expect(result.webhookSecret).toBe('[REDACTED]');
       expect(result.mfaSecret).toBe('[REDACTED]');
     });
+
+    it('should sanitize BigInt values in objects and directly', () => {
+      const obj = { amount: BigInt(1234567890123456789n) };
+      const res = sanitizeObject(obj);
+      expect(res.amount).toBe('1234567890123456789');
+
+      expect(sanitizeObject(BigInt(999n))).toBe('999');
+      expect(sanitizeLogData(BigInt(1000n))).toBe('1000');
+    });
   });
 
   describe('containsSensitiveData', () => {

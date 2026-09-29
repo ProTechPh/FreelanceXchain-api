@@ -293,3 +293,38 @@ describe('Billing routes', () => {
     });
   });
 });
+
+describe('Billing routes - request without a parsed body', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    currentUser = { userId: 'user-1', role: 'freelancer' };
+    // Deliberately no express.json(): req.body stays undefined, which is the
+    // case the `req.body ?? {}` fallbacks in the routes are written for.
+    app = express();
+    app.use('/api/billing', billingRouter);
+  });
+
+  it('creates a checkout session from an empty body', async () => {
+    mockCreateCheckoutSession.mockResolvedValue(ok({ url: 'https://checkout.stripe.com/c/pay/none', sessionId: 'cs_none' }));
+
+    const res = await request(app).post('/api/billing/checkout-session');
+
+    expect(res.status).toBe(200);
+    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', interval: undefined, successUrl: undefined, cancelUrl: undefined })
+    );
+  });
+
+  it('creates a portal session from an empty body', async () => {
+    mockCreatePortalSession.mockResolvedValue(ok({ url: 'https://billing.stripe.com/p/session/none' }));
+
+    const res = await request(app).post('/api/billing/portal-session');
+
+    expect(res.status).toBe(200);
+    expect(mockCreatePortalSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', returnUrl: undefined })
+    );
+  });
+});

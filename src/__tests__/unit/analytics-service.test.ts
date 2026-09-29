@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { jest, describe, it, expect } from '@jest/globals';
 import path from 'node:path';
+import { COLLECTIONS } from '../../config/collections.js';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 const mockDatabases = (globalThis as any).__mockDatabases;
@@ -22,6 +23,7 @@ beforeEach(async () => {
   cohortRetentionCache.clear();
   churnRiskCache.clear();
   marketplaceVelocityCache.clear();
+  mockDatabases.listDocuments.mockReset();
 });
 
 describe('Analytics Service', () => {
@@ -1940,5 +1942,634 @@ describe('Analytics Service - Additional Branch Coverage', () => {
         }
       });
     });
+
+    describe('Additional edge cases for full coverage', () => {
+      it('should log warning when query duration exceeds SLOW_QUERY_THRESHOLD_MS (line 36)', async () => {
+        const originalThreshold = process.env['SLOW_QUERY_THRESHOLD_MS'];
+        process.env['SLOW_QUERY_THRESHOLD_MS'] = '0.0001';
+        try {
+          const { getFunnelMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+          const { funnelMetricsCache } = await import('../../utils/cache.js');
+          funnelMetricsCache.delete('funnel_metrics');
+          mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+          await getFunnelMetrics();
+        } finally {
+          if (originalThreshold !== undefined) {
+            process.env['SLOW_QUERY_THRESHOLD_MS'] = originalThreshold;
+          } else {
+            delete process.env['SLOW_QUERY_THRESHOLD_MS'];
+          }
+        }
+      });
+
+      it('should handle project chunk fetch error in calculateTopSkills (lines 769-770)', async () => {
+        const { getFreelancerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { freelancerAnalyticsCache } = await import('../../utils/cache.js');
+        freelancerAnalyticsCache.delete('freelancer_f1');
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.CONTRACTS) {
+            return {
+              documents: [{ $id: 'c1', total_amount: 1000, status: 'completed', project_id: 'p1', freelancer_id: 'f1' }],
+              total: 1,
+            };
+          }
+          if (coll === COLLECTIONS.PROJECTS) {
+            throw new Error('Project chunk error');
+          }
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getFreelancerAnalytics('f1');
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.topSkills).toEqual([]);
+        }
+      });
+
+      it('should handle even-length median and various milestone formats in velocity report (lines 1155, 1161-1168)', async () => {
+        const { getMarketplaceVelocityReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { marketplaceVelocityCache } = await import('../../utils/cache.js');
+        marketplaceVelocityCache.delete('marketplace_velocity');
+
+        const now = Date.now();
+        const p1Created = new Date(now - 48 * 3600 * 1000).toISOString();
+        const p2Created = new Date(now - 36 * 3600 * 1000).toISOString();
+        const p3Created = new Date(now - 24 * 3600 * 1000).toISOString();
+
+        const mockProjects = [
+          {
+            $id: 'p1',
+            $createdAt: p1Created,
+            // valid JSON string
+            milestones: JSON.stringify([
+              { id: 'm1', submitted_at: new Date(now - 20 * 3600 * 1000).toISOString(), approved_at: new Date(now - 10 * 3600 * 1000).toISOString(), status: 'approved' },
+            ]),
+          },
+          {
+            $id: 'p2',
+            $createdAt: p2Created,
+            // invalid JSON string
+            milestones: 'invalid json string',
+          },
+          {
+            $id: 'p3',
+            $createdAt: p3Created,
+            // non-string non-array
+            milestones: 12345,
+          },
+        ];
+
+        const mockProposals = [
+          { $id: 'pr1', project_id: 'p1', freelancer_id: 'f1', $createdAt: new Date(now - 40 * 3600 * 1000).toISOString() },
+          { $id: 'pr2', project_id: 'p2', freelancer_id: 'f2', $createdAt: new Date(now - 30 * 3600 * 1000).toISOString() },
+        ];
+
+        const mockContracts = [
+          { $id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', status: 'completed', $createdAt: new Date(now - 35 * 3600 * 1000).toISOString(), updated_at: new Date(now - 5 * 3600 * 1000).toISOString() },
+          { $id: 'c2', project_id: 'p2', employer_id: 'e2', freelancer_id: 'f2', status: 'completed', $createdAt: new Date(now - 25 * 3600 * 1000).toISOString(), updated_at: new Date(now - 2 * 3600 * 1000).toISOString() },
+        ];
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.PROJECTS) return { documents: mockProjects, total: mockProjects.length };
+          if (coll === COLLECTIONS.PROPOSALS) return { documents: mockProposals, total: mockProposals.length };
+          if (coll === COLLECTIONS.CONTRACTS) return { documents: mockContracts, total: mockContracts.length };
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getMarketplaceVelocityReport();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.totalCompletedContracts).toBe(2);
+        }
+      });
+
+      it('should track user activity from employer projects and freelancer proposals in cohort report (lines 1198, 1204, 1357)', async () => {
+        const { getCohortRetentionReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { cohortRetentionCache } = await import('../../utils/cache.js');
+        cohortRetentionCache.delete('cohort_retention');
+
+        // Cohort month 4 months ago
+        const cohortDate = new Date(Date.now() - 120 * 24 * 3600 * 1000).toISOString();
+        const m1Date = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
+        const m3Date = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+
+        const users = [
+          { $id: 'u_emp', id: 'u_emp', role: 'employer', $createdAt: cohortDate },
+          { $id: 'u_free', id: 'u_free', role: 'freelancer', $createdAt: cohortDate },
+        ];
+
+        // Project created by employer u_emp in month 1
+        const projects = [
+          { $id: 'p_emp', employer_id: 'u_emp', $createdAt: m1Date },
+        ];
+
+        // Proposal created by freelancer u_free in month 3
+        const proposals = [
+          { $id: 'pr_free', freelancer_id: 'u_free', project_id: 'p_emp', $createdAt: m3Date },
+        ];
+
+        // Completed contract between both in month 3
+        const contracts = [
+          { $id: 'c_both', employer_id: 'u_emp', freelancer_id: 'u_free', total_amount: 500, status: 'completed', $createdAt: m3Date },
+        ];
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.USERS) return { documents: users, total: users.length };
+          if (coll === COLLECTIONS.PROJECTS) return { documents: projects, total: projects.length };
+          if (coll === COLLECTIONS.PROPOSALS) return { documents: proposals, total: proposals.length };
+          if (coll === COLLECTIONS.CONTRACTS) return { documents: contracts, total: contracts.length };
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getCohortRetentionReport({ limit: 10, offset: 0 });
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.cohorts.length).toBeGreaterThan(0);
+          expect(result.data.averageMonth3Retention).toBeDefined();
+        }
+      });
+
+      it('should evaluate full churn playbooks, signals, and sorting (lines 1394-1453, 1507, 1523, 1527, 1585)', async () => {
+        const { getChurnRiskReport } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { churnRiskCache } = await import('../../utils/cache.js');
+        churnRiskCache.delete('churn_risk');
+
+        const now = Date.now();
+        const active45d = new Date(now - 45 * 24 * 3600 * 1000).toISOString();
+        const active20d = new Date(now - 20 * 24 * 3600 * 1000).toISOString();
+        const recent = new Date(now - 2 * 24 * 3600 * 1000).toISOString();
+
+        const users = [
+          // u1: dispute -> dispute_involvement
+          { $id: 'u1', role: 'freelancer', wallet_address: '0x1', $createdAt: recent },
+          // u2: proposal_rejections
+          { $id: 'u2', role: 'freelancer', wallet_address: '0x2', $createdAt: recent },
+          // u3: inactive_30d
+          { $id: 'u3', role: 'employer', wallet_address: '0x3', $createdAt: active45d },
+          // u4: unlinked_wallet
+          { $id: 'u4', role: 'employer', wallet_address: '', $createdAt: recent },
+          // u5: incomplete_profile
+          { $id: 'u5', role: 'freelancer', wallet_address: '0x5', $createdAt: recent },
+          // u6: inactive_14d with 2 low ratings -> high risk (score 0.15 + 0.20 + 0.10 + 0.25 = 0.70)
+          { $id: 'u6', role: 'freelancer', wallet_address: '', $createdAt: active20d },
+          // u7: inactive 45d with dispute and rejected proposals -> high risk (score 0.35 + 0.20 + 0.25 = 0.80)
+          { $id: 'u7', role: 'freelancer', wallet_address: '0x7', $createdAt: active45d },
+        ];
+
+        const profiles = [
+          // complete profile for u2
+          { $id: 'prof2', user_id: 'u2', bio: 'Complete bio', skills: ['React'] },
+          // incomplete profile for u5
+          { $id: 'prof5', user_id: 'u5', bio: '', skills: '[]' },
+        ];
+
+        const proposals = [
+          // 3 rejected proposals for u2
+          { $id: 'pr2a', freelancer_id: 'u2', status: 'rejected', $createdAt: recent },
+          { $id: 'pr2b', freelancer_id: 'u2', status: 'rejected', $createdAt: recent },
+          { $id: 'pr2c', freelancer_id: 'u2', status: 'rejected', $createdAt: recent },
+          // 3 rejected proposals for u7
+          { $id: 'pr7a', freelancer_id: 'u7', status: 'rejected', $createdAt: active45d },
+          { $id: 'pr7b', freelancer_id: 'u7', status: 'rejected', $createdAt: active45d },
+          { $id: 'pr7c', freelancer_id: 'u7', status: 'rejected', $createdAt: active45d },
+        ];
+
+        const contracts = [
+          // contract for u6
+          { $id: 'c6', employer_id: 'u_other', freelancer_id: 'u6', status: 'active', $createdAt: active20d },
+        ];
+
+        const reviews = [
+          // 2 low ratings for u6
+          { $id: 'r6a', reviewee_id: 'u6', rating: 2 },
+          { $id: 'r6b', reviewee_id: 'u6', rating: 3 },
+        ];
+
+        const disputes = [
+          { $id: 'd1', initiator_id: 'u1' },
+          { $id: 'd7', initiator_id: 'u7' },
+        ];
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.USERS) return { documents: users, total: users.length };
+          if (coll === COLLECTIONS.FREELANCER_PROFILES) return { documents: profiles, total: profiles.length };
+          if (coll === COLLECTIONS.PROPOSALS) return { documents: proposals, total: proposals.length };
+          if (coll === COLLECTIONS.CONTRACTS) return { documents: contracts, total: contracts.length };
+          if (coll === COLLECTIONS.REVIEWS) return { documents: reviews, total: reviews.length };
+          if (coll === COLLECTIONS.DISPUTES) return { documents: disputes, total: disputes.length };
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getChurnRiskReport({ limit: 10, offset: 0 });
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.totalEvaluated).toBe(7);
+          expect(result.data.highRiskUsers.length).toBeGreaterThanOrEqual(2);
+        }
+      });
+
+      it('should count active users from recent audit logs (lines 429-430)', async () => {
+        const { getPlatformMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { platformMetricsCache } = await import('../../utils/cache.js');
+        platformMetricsCache.delete('platform_metrics');
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.AUDIT_LOG_ENTRIES) {
+            return {
+              documents: [{ $id: 'a1', user_id: 'u1', created_at: new Date().toISOString() }],
+              total: 1,
+            };
+          }
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getPlatformMetrics();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.activeUsers).toBe(1);
+        }
+      });
+
+      it('should handle subscriptions read failure and sort monthly revenue (lines 567, 704)', async () => {
+        const { getAdminAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { adminAnalyticsCache } = await import('../../utils/cache.js');
+        adminAnalyticsCache.delete('admin_analytics');
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.SUBSCRIPTIONS) {
+            throw new Error('Subscriptions unavailable');
+          }
+          if (coll === COLLECTIONS.CONTRACTS) {
+            return {
+              documents: [
+                { $id: 'c1', total_amount: 100, status: 'completed', $createdAt: '2026-01-15T00:00:00Z' },
+                { $id: 'c2', total_amount: 200, status: 'completed', $createdAt: '2026-02-15T00:00:00Z' },
+              ],
+              total: 2,
+            };
+          }
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getAdminAnalytics();
+        expect(result.success).toBe(true);
+      });
+
+      it('should sort monthly earnings in calculateEarningsByMonth (line 704)', async () => {
+        const { getFreelancerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+        const { freelancerAnalyticsCache } = await import('../../utils/cache.js');
+        freelancerAnalyticsCache.delete('freelancer_f1');
+
+        mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+          if (coll === COLLECTIONS.CONTRACTS) {
+            return {
+              documents: [
+                { $id: 'c1', total_amount: 100, status: 'completed', project_id: 'p1', freelancer_id: 'f1', created_at: '2026-02-15T00:00:00Z' },
+                { $id: 'c2', total_amount: 200, status: 'completed', project_id: 'p2', freelancer_id: 'f1', created_at: '2026-01-15T00:00:00Z' },
+              ],
+              total: 2,
+            };
+          }
+          return { documents: [], total: 0 };
+        });
+
+        const result = await getFreelancerAnalytics('f1');
+        expect(result.success).toBe(true);
+      });
+    });
+  });
+});
+
+describe('Analytics Service - remaining coverage gaps', () => {
+  const importModule = async () => await import(resolveModule('src/services/analytics-service.ts'));
+
+  beforeEach(async () => {
+    // The file-level beforeEach clears the per-user / admin / cohort / churn /
+    // velocity caches; these four are keyed globally and need their own reset.
+    const cache = await import('../../utils/cache.js');
+    cache.platformMetricsCache?.clear();
+    cache.skillTrendsCache?.clear();
+    cache.marketplaceLiquidityCache?.clear();
+    cache.funnelMetricsCache?.clear();
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+  });
+
+  it('fetchAllCollection stops on a full page whose last document has no $id (L75)', async () => {
+    const { getSkillTrends } = await importModule();
+
+    const docs = Array.from({ length: 100 }, (_, i) => ({
+      ...(i === 99 ? {} : { $id: `p${i}` }),
+      required_skills: '["React"]',
+      budget: 100,
+      created_at: new Date().toISOString(),
+    }));
+    mockDatabases.listDocuments.mockImplementation(async () => ({ documents: docs, total: 100 }));
+
+    const result = await getSkillTrends();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].skillName).toBe('React');
+    }
+  });
+
+  it('getPlatformMetrics counts a falsy completed-contract amount as 0 (L419)', async () => {
+    const { getPlatformMetrics } = await importModule();
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.CONTRACTS) {
+        return { documents: [{ $id: 'c1', status: 'completed', total_amount: null }], total: 1 };
+      }
+      if (coll === COLLECTIONS.USERS) return { documents: [], total: 3 };
+      if (coll === COLLECTIONS.PROJECTS) return { documents: [], total: 2 };
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getPlatformMetrics();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalTransactionVolume).toBe(0);
+      expect(result.data.totalContracts).toBe(1);
+    }
+  });
+
+  it('getAdminAnalytics treats a pro subscription with no status as not entitled (L563)', async () => {
+    const { getAdminAnalytics } = await importModule();
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.USERS) return { documents: [], total: 10 };
+      if (coll === COLLECTIONS.PROJECTS) return { documents: [], total: 5 };
+      if (coll === COLLECTIONS.CONTRACTS) return { documents: [], total: 2 };
+      if (coll === COLLECTIONS.SUBSCRIPTIONS) {
+        return { documents: [{ $id: 's1', plan: 'pro' }], total: 1 };
+      }
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getAdminAnalytics();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.activeProSubscriptions).toBe(0);
+      expect(result.data.proConversionRate).toBe(0);
+    }
+  });
+
+  it('calculateTopSkills handles string, JSON-null and absent required_skills (L756/L758/L776/L778)', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.CONTRACTS) {
+        return {
+          documents: [
+            { $id: 'c1', freelancer_id: 'f1', status: 'completed', project_id: 'p1', total_amount: 100 },
+            { $id: 'c2', freelancer_id: 'f1', status: 'completed', project_id: 'p2', total_amount: 100 },
+            { $id: 'c3', freelancer_id: 'f1', status: 'completed', project_id: 'p3', total_amount: 100 },
+          ],
+          total: 3,
+        };
+      }
+      if (coll === COLLECTIONS.PROJECTS) {
+        return {
+          documents: [
+            { $id: 'p1', required_skills: '["React"]' },
+            { $id: 'p2', required_skills: 'null' },
+            { $id: 'p3', required_skills: null },
+          ],
+          total: 3,
+        };
+      }
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getFreelancerAnalytics('f1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.projectsCompleted).toBe(3);
+      expect(result.data.topSkills).toEqual([{ skill: 'React', projectCount: 1 }]);
+    }
+  });
+
+  it('liquidity report parses string skills, skips empty names and scores supply-only skills (L825/L826/L829/L830/L839/L840/L899)', async () => {
+    const { getMarketplaceLiquidityReport } = await importModule();
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.PROJECTS) {
+        return {
+          documents: [{ $id: 'p1', status: 'open', required_skills: '["React", {}]' }],
+          total: 1,
+        };
+      }
+      if (coll === COLLECTIONS.FREELANCER_PROFILES) {
+        return {
+          documents: [
+            { $id: 'fp1', skills: null },
+            { $id: 'fp2', skills: ['Node.js'] },
+          ],
+          total: 2,
+        };
+      }
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getMarketplaceLiquidityReport();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillsAnalyzed).toBe(2);
+      const react = result.data.shortageSkills.find(s => s.skillName === 'React');
+      expect(react).toMatchObject({ projectDemandCount: 1, talentSupplyCount: 0, talentToDemandRatio: 0 });
+      const node = result.data.surplusSkills.find(s => s.skillName === 'Node.js');
+      expect(node).toMatchObject({ projectDemandCount: 0, talentSupplyCount: 1, talentToDemandRatio: 10 });
+      expect(result.data.overallLiquidityScore).toBe(0);
+    }
+  });
+
+  it('liquidity report scores 100 when no skills are analysed (L914)', async () => {
+    const { getMarketplaceLiquidityReport } = await importModule();
+
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+
+    const result = await getMarketplaceLiquidityReport();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillsAnalyzed).toBe(0);
+      expect(result.data.overallLiquidityScore).toBe(100);
+    }
+  });
+
+  it('funnel metrics fall back to company_name and id for an employer (L959/L960)', async () => {
+    const { getFunnelMetrics } = await importModule();
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.USERS) {
+        return { documents: [{ id: 'u1', role: 'employer', company_name: 'Acme' }], total: 1 };
+      }
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getFunnelMetrics();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalRegistered).toBe(1);
+      expect(result.data.stages[1]?.count).toBe(1);
+      expect(result.data.stages[1]?.stage).toBe('profile_completed');
+    }
+  });
+
+  it('cohort report tolerates missing, invalid and BCE registration dates (L1124/L1126/L1142/L1218/L1352)', async () => {
+    const { getCohortRetentionReport } = await importModule();
+
+    const users = [
+      { $id: 'u1', role: 'employer' },
+      { $id: 'u2', role: 'freelancer', created_at: 'not-a-date' },
+      { $id: 'u3', role: 'employer', created_at: '-000001-06-01T00:00:00Z' },
+    ];
+    const contracts = [
+      {
+        $id: 'c1',
+        employer_id: 'u1',
+        status: 'completed',
+        total_amount: null,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.USERS) return { documents: users, total: users.length };
+      if (coll === COLLECTIONS.CONTRACTS) return { documents: contracts, total: contracts.length };
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getCohortRetentionReport();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // u1 and u2 both resolve to the current month; u3 keeps its BCE cohort
+      expect(result.data.cohorts.length).toBe(2);
+      expect(result.data.averageMonth1Retention).toBe(0);
+      expect(result.data.cohorts.some(c => c.cohortMonth.startsWith('-'))).toBe(true);
+      const currentCohort = result.data.cohorts.find(c => !c.cohortMonth.startsWith('-'));
+      expect(currentCohort?.totalUsers).toBe(2);
+    }
+  });
+
+  it('churn report ranks a user from proposal then contract activity and defaults role (L1414/L1420/L1476)', async () => {
+    const { getChurnRiskReport } = await importModule();
+
+    const now = Date.now();
+    const day = 24 * 3600 * 1000;
+    const users = [
+      { $id: 'u1', email: 'u1@test.com', name: 'U1', wallet_address: '', $createdAt: new Date(now - 60 * day).toISOString() },
+    ];
+    const proposals = [
+      { $id: 'pr1', freelancer_id: 'u1', status: 'accepted', $createdAt: new Date(now - 35 * day).toISOString() },
+    ];
+    const contracts = [
+      { $id: 'c1', freelancer_id: 'u1', status: 'active', $createdAt: new Date(now - 32 * day).toISOString() },
+    ];
+    const reviews = [
+      { $id: 'r1', reviewee_id: 'u1', rating: 2 },
+      { $id: 'r2', reviewee_id: 'u1', rating: 3 },
+    ];
+    const disputes = [{ $id: 'd1', initiator_id: 'u1' }];
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.USERS) return { documents: users, total: users.length };
+      if (coll === COLLECTIONS.PROPOSALS) return { documents: proposals, total: proposals.length };
+      if (coll === COLLECTIONS.CONTRACTS) return { documents: contracts, total: contracts.length };
+      if (coll === COLLECTIONS.REVIEWS) return { documents: reviews, total: reviews.length };
+      if (coll === COLLECTIONS.DISPUTES) return { documents: disputes, total: disputes.length };
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getChurnRiskReport();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.totalEvaluated).toBe(1);
+      expect(result.data.riskDistribution.high).toBe(1);
+      const risky = result.data.highRiskUsers[0];
+      expect(risky?.role).toBe('freelancer');
+      expect(risky?.daysSinceLastActive).toBe(32);
+      expect(risky?.signals).toEqual(
+        expect.arrayContaining(['inactive_30d', 'dispute_involvement', 'low_rating', 'unlinked_wallet'])
+      );
+    }
+  });
+
+  it('velocity report handles completed_at-only milestones and contracts with no end time (L1163/L1661/L1662/L1677/L1679)', async () => {
+    const { getMarketplaceVelocityReport } = await importModule();
+
+    const now = Date.now();
+    const day = 24 * 3600 * 1000;
+    const projects = [
+      {
+        $id: 'p1',
+        $createdAt: new Date(now - 10 * day).toISOString(),
+        milestones: JSON.stringify([
+          {
+            submitted_at: new Date(now - 9 * day).toISOString(),
+            completed_at: new Date(now - 8 * day).toISOString(),
+          },
+        ]),
+      },
+      {
+        $id: 'p2',
+        $createdAt: new Date(now - 5 * day).toISOString(),
+        milestones: '{"x":1}',
+      },
+    ];
+    const contracts = [
+      {
+        $id: 'c1',
+        project_id: 'p1',
+        employer_id: 'e1',
+        freelancer_id: 'f1',
+        status: 'completed',
+        $createdAt: new Date(now - 7 * day).toISOString(),
+      },
+    ];
+
+    mockDatabases.listDocuments.mockImplementation(async (_db: any, coll: any) => {
+      if (coll === COLLECTIONS.PROJECTS) return { documents: projects, total: projects.length };
+      if (coll === COLLECTIONS.CONTRACTS) return { documents: contracts, total: contracts.length };
+      return { documents: [], total: 0 };
+    });
+
+    const result = await getMarketplaceVelocityReport();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.medianMilestoneTurnaroundDays).toBe(1);
+      expect(result.data.totalCompletedContracts).toBe(1);
+      expect(result.data.averageContractDurationDays).toBe(0);
+    }
+  });
+
+  it('velocity report reports zeroes with no data at all (L1147/L1699/L1703/L1744)', async () => {
+    const { getMarketplaceVelocityReport } = await importModule();
+
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+
+    const result = await getMarketplaceVelocityReport();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.medianTimeToFirstProposalHours).toBe(0);
+      expect(result.data.medianMilestoneTurnaroundDays).toBe(0);
+      expect(result.data.repeatEmployerRate).toBe(0);
+      expect(result.data.repeatFreelancerRate).toBe(0);
+      expect(result.data.averageContractDurationDays).toBe(0);
+      expect(result.data.totalCompletedContracts).toBe(0);
+    }
   });
 });

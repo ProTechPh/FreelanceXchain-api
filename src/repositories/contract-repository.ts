@@ -195,7 +195,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      return this.paginatedWithQueries(
+      return await this.paginatedWithQueries(
         [
           Query.equal('freelancer_id', freelancerId),
           Query.orderDesc('$createdAt'),
@@ -214,7 +214,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      return this.paginatedWithQueries(
+      return await this.paginatedWithQueries(
         [
           Query.equal('employer_id', employerId),
           Query.orderDesc('$createdAt'),

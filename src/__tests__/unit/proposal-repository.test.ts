@@ -136,7 +136,7 @@ describe('ProposalRepository', () => {
     });
 
     it('should handle database error gracefully', async () => {
-      db().listDocuments.mockRejectedValue(new Error('select failed'));
+      jest.spyOn(repo, 'paginatedWithQueries').mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.getProposalsByProject('pr1');
       expect(result.items).toEqual([]);
       expect(result.hasMore).toBe(false);
@@ -259,12 +259,38 @@ describe('ProposalRepository', () => {
     });
 
     it('should return counts map', async () => {
-      db().listDocuments
-        .mockResolvedValueOnce({ documents: [{ $id: 'p1' }, { $id: 'p2' }], total: 2 })
-        .mockResolvedValueOnce({ documents: [{ $id: 'p3' }], total: 1 });
+      db().listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', project_id: 'pr1', status: 'pending' },
+          { $id: 'p2', project_id: 'pr1', status: 'pending' },
+          { $id: 'p3', project_id: 'pr2', status: 'accepted' },
+        ],
+        total: 3,
+      });
       const result = await repo.getProposalCountsByProjects(['pr1', 'pr2']);
       expect(result.get('pr1')).toBe(2);
       expect(result.get('pr2')).toBe(1);
+    });
+
+    it('should batch count active proposals for project listing pages', async () => {
+      db().listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', project_id: 'pr1', status: 'pending' },
+          { $id: 'p2', project_id: 'pr1', status: 'accepted' },
+          { $id: 'p3', project_id: 'pr2', status: 'withdrawn' },
+          { $id: 'p4', project_id: 'pr3', status: 'pending' },
+        ],
+        total: 4,
+      });
+
+      const result = await repo.getProposalCountsByProjects(['pr1', 'pr2', 'pr3']);
+
+      expect(result.get('pr1')).toBe(2);
+      expect(result.get('pr2')).toBe(0);
+      expect(result.get('pr3')).toBe(1);
+      expect(db().listDocuments).toHaveBeenCalledTimes(1);
+      expect(Query.equal).toHaveBeenCalledWith('project_id', ['pr1', 'pr2', 'pr3']);
+      expect(Query.notEqual).toHaveBeenCalledWith('status', 'withdrawn');
     });
 
     it('should handle database error gracefully', async () => {
@@ -470,10 +496,13 @@ describe('ProposalRepository - Additional Branch Coverage', () => {
     });
 
     it('should handle partial results', async () => {
-      db().listDocuments
-        .mockResolvedValueOnce({ documents: [{ $id: 'p1' }, { $id: 'p2' }], total: 2 })
-        .mockResolvedValueOnce({ documents: [], total: 0 })
-        .mockResolvedValueOnce({ documents: [], total: 0 });
+      db().listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', project_id: 'pr1', status: 'pending' },
+          { $id: 'p2', project_id: 'pr1', status: 'pending' },
+        ],
+        total: 2,
+      });
       const result = await repo.getProposalCountsByProjects(['pr1', 'pr2', 'pr3']);
       expect(result.get('pr1')).toBe(2);
       expect(result.get('pr2')).toBe(0);

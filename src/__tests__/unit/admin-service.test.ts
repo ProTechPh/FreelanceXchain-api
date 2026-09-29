@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
@@ -274,6 +274,24 @@ describe('Admin Service', () => {
         expect(result.error.code).toBe('INTERNAL_ERROR');
       }
     });
+
+    it('falls back to not_started when the KYC lookup fails for a user', async () => {
+      const { getUserManagement } = await importModule();
+
+      mockUserRepo.queryAll.mockResolvedValueOnce([
+        { id: 'user-1', email: 'user1@test.com', name: 'User One', role: 'freelancer', created_at: '2025-01-01' },
+      ]);
+      mockKycRepo.getKycVerificationByUserId.mockRejectedValueOnce(new Error('KYC service unavailable'));
+
+      const result = await getUserManagement();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(mockKycRepo.getKycVerificationByUserId).toHaveBeenCalledWith('user-1');
+        expect(result.data.users[0]?.kyc_status).toBe('not_started');
+        expect(result.data.users[0]?.kyc_verified).toBe(false);
+      }
+    });
   });
 
   describe('suspendUser', () => {
@@ -456,6 +474,17 @@ describe('Admin Service', () => {
       if (result.success) {
         expect(result.data.name).toBe('New Name');
       }
+    });
+
+    it('returns UPDATE_FAILED when the repository cannot persist a valid update', async () => {
+      const { updateUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1', role: 'freelancer' });
+      mockUserRepo.updateUser.mockResolvedValueOnce(null);
+
+      const result = await updateUser('user-1', { name: 'New Name' }, 'admin-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('UPDATE_FAILED');
     });
 
     it('should update user role', async () => {
@@ -1140,5 +1169,90 @@ describe('Admin Service - getSatisfactionRate', () => {
     mockReviewRepo.getAllReviews.mockRejectedValueOnce(new Error('DB error'));
 
     await expect(getSatisfactionRate()).resolves.toBe(0);
+  });
+});
+
+describe('Admin Service production cache and provider paths', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    process.env.NODE_ENV = 'production';
+    const { platformMetricsCache } = await import('../../utils/cache.js');
+    platformMetricsCache.clear();
+    mockUserRepo.queryAll.mockReset();
+    mockProjectRepo.queryAll.mockReset();
+    mockContractRepo.queryAll.mockReset();
+    mockDisputeRepo.queryAll.mockReset();
+    mockTransactionRepo.queryAll.mockReset();
+    mockReviewRepo.getAllReviews.mockReset();
+    mockKycRepo.getKycVerificationByUserId.mockReset();
+    global.mockAppwriteUsers.list ??= jest.fn();
+    global.mockAppwriteUsers.list.mockReset();
+    global.mockAppwriteUsers.get.mockReset();
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    delete mockUserRepo.count;
+  });
+
+  it('caches platform statistics outside the test environment', async () => {
+    const { getPlatformStats } = await import('../../services/admin-service.js');
+    mockUserRepo.queryAll.mockResolvedValue([{ id: 'u1', role: 'freelancer' }]);
+    mockProjectRepo.queryAll.mockResolvedValue([]);
+    mockContractRepo.queryAll.mockResolvedValue([]);
+    mockDisputeRepo.queryAll.mockResolvedValue([]);
+    mockTransactionRepo.queryAll.mockResolvedValue([]);
+
+    const first = await getPlatformStats();
+    const second = await getPlatformStats();
+
+    expect(first.success).toBe(true);
+    expect(second).toEqual(first);
+    expect(mockUserRepo.queryAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses Appwrite email verification data and caches KYC lookups', async () => {
+    const { getUserManagement } = await import('../../services/admin-service.js');
+    const user = {
+      id: 'u-prod', email: 'verified@example.com', name: 'Verified User', role: 'freelancer',
+      created_at: '2025-01-01', is_suspended: false,
+    };
+    mockUserRepo.queryAll.mockResolvedValue([user]);
+    global.mockAppwriteUsers.list.mockResolvedValue({
+      users: [{ $id: 'u-prod', emailVerification: true }],
+    });
+    mockKycRepo.getKycVerificationByUserId.mockResolvedValue({ status: 'approved' });
+
+    const first = await getUserManagement({ emailVerified: 'true' });
+    const second = await getUserManagement({ emailVerified: true });
+
+    expect(first.success).toBe(true);
+    expect(first.data.users).toHaveLength(1);
+    expect(first.data.users[0]).toMatchObject({ email_verified: true, kyc_status: 'approved' });
+    expect(second.success).toBe(true);
+    expect(mockKycRepo.getKycVerificationByUserId).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the repository count method for the lightweight health check when available', async () => {
+    const { getSystemHealth } = await import('../../services/admin-service.js');
+    mockUserRepo.count = jest.fn().mockResolvedValue(1);
+
+    const result = await getSystemHealth();
+
+    expect(result.success).toBe(true);
+    expect(mockUserRepo.count).toHaveBeenCalledTimes(1);
+    expect(mockUserRepo.queryAll).not.toHaveBeenCalled();
+  });
+
+  it('caches the satisfaction rate outside the test environment', async () => {
+    const { getSatisfactionRate } = await import('../../services/admin-service.js');
+    mockReviewRepo.getAllReviews.mockResolvedValue([{ rating: 5 }, { rating: 2 }]);
+
+    await expect(getSatisfactionRate()).resolves.toBe(50);
+    await expect(getSatisfactionRate()).resolves.toBe(50);
+
+    expect(mockReviewRepo.getAllReviews).toHaveBeenCalledTimes(1);
   });
 });

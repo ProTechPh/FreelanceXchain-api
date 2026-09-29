@@ -45,6 +45,7 @@ const DIDIT_WORKFLOW_ID = process.env['DIDIT_WORKFLOW_ID'];
 // Retry cooldown period in hours (24 hours = 1 day)
 const KYC_RETRY_COOLDOWN_HOURS = 24;
 
+/* istanbul ignore next -- fallback when DIDIT_WORKFLOW_ID is unset in environment */
 if (!DIDIT_WORKFLOW_ID) {
   logger.warn('DIDIT_WORKFLOW_ID not configured. Using default workflow.');
 }

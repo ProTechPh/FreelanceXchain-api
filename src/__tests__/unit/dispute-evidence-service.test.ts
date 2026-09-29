@@ -41,6 +41,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/dispute-evidence-reposi
   disputeEvidenceRepository: mockDisputeEvidenceRepository,
 }));
 
+const mockDeleteFileFromStorage = jest.fn<any>().mockResolvedValue({ success: true });
+const mockExtractFileIdFromUrl = jest.fn<any>().mockImplementation((url: string) => url ? 'file-123' : null);
+
+jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+  deleteFileFromStorage: mockDeleteFileFromStorage,
+  extractFileIdFromUrl: mockExtractFileIdFromUrl,
+}));
+
 const mockCreateNotification = jest.fn<any>().mockResolvedValue({ success: true, data: { id: 'notif-1' } });
 const mockSendNotificationToUser = jest.fn<any>().mockReturnValue({ success: true });
 
@@ -111,6 +119,9 @@ describe('Dispute Evidence Service', () => {
     mockDisputeEvidenceRepository.getEvidenceById.mockReset();
     mockDisputeEvidenceRepository.updateEvidence.mockReset();
     mockDisputeEvidenceRepository.deleteEvidence.mockReset();
+    mockDeleteFileFromStorage.mockReset();
+    mockDeleteFileFromStorage.mockResolvedValue({ success: true });
+    mockExtractFileIdFromUrl.mockImplementation((url: string) => url ? 'file-123' : null);
   });
 
   const importModule = async () => {
@@ -180,6 +191,24 @@ describe('Dispute Evidence Service', () => {
       const result = await submitEvidence({
         disputeId: 'nonexistent',
         submittedBy: 'user-1',
+        evidenceType: 'document',
+        fileUrl: 'https://file.com/doc.pdf',
+        description: 'Proof',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('DISPUTE_NOT_FOUND');
+    });
+
+    it('should fail when contract is not found for dispute in submitEvidence (line 32)', async () => {
+      const { submitEvidence } = await importModule();
+
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await submitEvidence({
+        disputeId: 'dispute-1',
+        submittedBy: 'freelancer-1',
         evidenceType: 'document',
         fileUrl: 'https://file.com/doc.pdf',
         description: 'Proof',
@@ -289,6 +318,18 @@ describe('Dispute Evidence Service', () => {
       expect(result.error.code).toBe('DISPUTE_NOT_FOUND');
     });
 
+    it('should fail when contract not found in getDisputeEvidence (line 130)', async () => {
+      const { getDisputeEvidence } = await importModule();
+
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('DISPUTE_NOT_FOUND');
+    });
+
     it('should fail when user is not authorized', async () => {
       const { getDisputeEvidence } = await importModule();
 
@@ -323,6 +364,40 @@ describe('Dispute Evidence Service', () => {
         verified_at: undefined,
       });
       mockDisputeEvidenceRepository.deleteEvidence.mockResolvedValueOnce(true);
+
+      const result = await deleteEvidence('ev-1', 'user-1');
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should delete file from storage when evidence has file_url (lines 186-191)', async () => {
+      const { deleteEvidence } = await importModule();
+
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        submitted_by: 'user-1',
+        file_url: 'https://file.com/doc.pdf',
+        verified_at: undefined,
+      });
+      mockDisputeEvidenceRepository.deleteEvidence.mockResolvedValueOnce(true);
+
+      const result = await deleteEvidence('ev-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(mockDeleteFileFromStorage).toHaveBeenCalledWith('file-123', expect.any(String));
+    });
+
+    it('should catch and log warning when storage file deletion throws (line 191)', async () => {
+      const { deleteEvidence } = await importModule();
+
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        submitted_by: 'user-1',
+        file_url: 'https://file.com/doc.pdf',
+        verified_at: undefined,
+      });
+      mockDisputeEvidenceRepository.deleteEvidence.mockResolvedValueOnce(true);
+      mockDeleteFileFromStorage.mockRejectedValueOnce(new Error('Storage unavailable'));
 
       const result = await deleteEvidence('ev-1', 'user-1');
 
@@ -431,6 +506,29 @@ describe('Dispute Evidence Service', () => {
 
       const result = await verifyEvidence({
         evidenceId: 'nonexistent',
+        verifiedBy: 'arbiter-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('EVIDENCE_NOT_FOUND');
+    });
+
+    it('should fail when dispute is not found in verifyEvidence (line 217)', async () => {
+      const { verifyEvidence } = await importModule();
+
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        evidence_type: 'document',
+        description: 'Proof',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(null);
+
+      const result = await verifyEvidence({
+        evidenceId: 'ev-1',
         verifiedBy: 'arbiter-1',
       });
 

@@ -143,6 +143,69 @@ describe('Portfolio Service', () => {
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('INTERNAL_ERROR');
     });
+
+    it('should skip skill validation when global taxonomy is empty', async () => {
+      const { createPortfolioItem } = await importModule();
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([]); // Empty taxonomy
+      
+      mockPortfolioRepository.create.mockResolvedValueOnce({
+        id: 'pi-new', freelancer_id: 'user-1', title: 'Proj', description: 'Desc', 
+        images: '[{"url":"u","filename":"f","size":1,"mimeType":"i/p"}]', 
+        skills: '["CustomSkill"]', created_at: '2025-01-01', updated_at: '2025-01-01'
+      });
+      
+      const result = await createPortfolioItem('user-1', {
+        title: 'Proj', description: 'Desc', images: [{ url: 'u', filename: 'f', size: 1, mimeType: 'i/p' }],
+        skills: ['CustomSkill']
+      });
+      
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.skills).toEqual(['CustomSkill']);
+      }
+    });
+
+    it('should skip skill validation when global taxonomy fetch fails', async () => {
+      const { createPortfolioItem } = await importModule();
+      mockSkillRepository.getAllSkills.mockRejectedValueOnce(new Error('Network error'));
+      
+      mockPortfolioRepository.create.mockResolvedValueOnce({
+        id: 'pi-new', freelancer_id: 'user-1', title: 'Proj', description: 'Desc', 
+        images: '[{"url":"u","filename":"f","size":1,"mimeType":"i/p"}]', 
+        skills: '["FallbackSkill"]', created_at: '2025-01-01', updated_at: '2025-01-01'
+      });
+      
+      const result = await createPortfolioItem('user-1', {
+        title: 'Proj', description: 'Desc', images: [{ url: 'u', filename: 'f', size: 1, mimeType: 'i/p' }],
+        skills: ['FallbackSkill']
+      });
+      
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.skills).toEqual(['FallbackSkill']);
+      }
+    });
+
+    it('should generate microlink image when images array is empty but projectUrl is provided', async () => {
+      const { createPortfolioItem } = await importModule();
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([]);
+      
+      mockPortfolioRepository.create.mockImplementationOnce(async (data: any) => ({
+        id: 'pi-new', freelancer_id: 'user-1', title: 'Proj', description: 'Desc', 
+        images: data.images, 
+        skills: '[]', created_at: '2025-01-01', updated_at: '2025-01-01'
+      }));
+      
+      const result = await createPortfolioItem('user-1', {
+        title: 'Proj', description: 'Desc', projectUrl: 'https://example.com'
+      });
+      
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.images[0].url).toContain('https://api.microlink.io');
+        expect(result.data.images[0].filename).toBe('live-website-preview.png');
+      }
+    });
   });
 
   describe('updatePortfolioItem', () => {

@@ -836,6 +836,29 @@ describe('milestone-service – error paths', () => {
     }
   });
 
+  it('rejectMilestone catches error when updated milestone is missing from the updated project', async () => {
+    mockContractRepository.getUserContracts.mockResolvedValueOnce({
+      items: [{ id: 'c1', project_id: 'p1', freelancer_id: 'f1', employer_id: 'e1', status: 'active' }],
+      total: 1,
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1',
+      milestones: [{ id: 'm1', status: 'submitted', revision_count: 0 }],
+    });
+    // Return empty milestones array so `updatedProject.milestones[milestoneIndex]` is undefined
+    mockProjectRepository.updateProject.mockResolvedValueOnce({ id: 'p1', milestones: [] });
+    mockDisputeRepository.createDispute.mockResolvedValueOnce({});
+    
+    const { rejectMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
+    const result = await rejectMilestone({ milestoneId: 'm1', reason: 'bad', employerId: 'e1', requestRevision: false });
+    
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('REJECT_FAILED');
+      expect(result.error.message).toBe('Failed to read updated milestone');
+    }
+  });
+
   it('getContractMilestones catches non-Error throws', async () => {
     mockContractRepository.getContractById.mockRejectedValueOnce(null);
 
@@ -862,6 +885,7 @@ describe('milestone-service – error paths', () => {
 
     const { rejectMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
     const result = await rejectMilestone({ milestoneId: 'm1', employerId: 'e1', reason: '', requestRevision: false });
+    console.log(result);
     expect(result.success).toBe(true);
     expect(mockDisputeRepository.createDispute).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'Milestone rejected without revision' })

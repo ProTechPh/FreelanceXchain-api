@@ -49,6 +49,89 @@ describe('Transaction Service', () => {
   };
 
   describe('getUserTransactions', () => {
+    it('merges legacy payments, removes duplicates, and sorts newest first', async () => {
+      const { getUserTransactions } = await importModule();
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [
+          { id: 'tx-existing', transaction_hash: '0xduplicate', amount: 10, type: 'payment', status: 'completed', created_at: '2025-01-01', updated_at: '2025-01-01' },
+        ],
+        total: 1,
+        hasMore: false,
+      });
+      mockPaymentRepository.findByUserId.mockResolvedValueOnce({
+        items: [
+          { id: 'tx-existing', contract_id: 'c1', milestone_id: null, payer_id: 'user-1', payee_id: 'user-2', amount: 11, payment_type: 'payment', status: 'completed', tx_hash: '0xother', created_at: '2025-02-01', updated_at: '2025-02-01' },
+          { id: 'payment-hash-duplicate', contract_id: 'c1', milestone_id: null, payer_id: 'user-1', payee_id: 'user-2', amount: 12, payment_type: 'payment', status: 'completed', tx_hash: '0xduplicate', created_at: '2025-03-01', updated_at: '2025-03-01' },
+          { id: 'payment-new', contract_id: 'c1', milestone_id: null, payer_id: 'user-1', payee_id: 'user-2', amount: 13, payment_type: 'escrow', status: 'confirmed', tx_hash: null, created_at: '2025-04-01', updated_at: '2025-04-02' },
+        ],
+        total: 3,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data.items.map((item) => item.id)).toEqual(['payment-new', 'tx-existing']);
+      expect(result.data.items[0]).toMatchObject({
+        contract_id: 'c1',
+        milestone_id: undefined,
+        from_user_id: 'user-1',
+        to_user_id: 'user-2',
+        amount: 13,
+        type: 'escrow',
+        status: 'confirmed',
+        transaction_hash: undefined,
+      });
+    });
+
+    it('continues with transaction records when loading legacy payments fails', async () => {
+      const { getUserTransactions } = await importModule();
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [{ id: 'tx-1', amount: 10, type: 'payment', status: 'completed', created_at: '2025-01-01', updated_at: '2025-01-01' }],
+        total: 1,
+        hasMore: false,
+      });
+      mockPaymentRepository.findByUserId.mockRejectedValueOnce(new Error('legacy store unavailable'));
+
+      const result = await getUserTransactions('user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data.items.map((item) => item.id)).toEqual(['tx-1']);
+    });
+
+    it('normalizes legacy milestone release payment amounts from wei', async () => {
+      const { getUserTransactions } = await importModule();
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
+      mockPaymentRepository.findByUserId.mockResolvedValueOnce({
+        items: [
+          {
+            id: 'payment-release',
+            contract_id: 'contract-1',
+            milestone_id: 'milestone-1',
+            payer_id: 'user-1',
+            payee_id: 'user-2',
+            amount: 1_500_000_000_000_000_000,
+            payment_type: 'milestone_release',
+            status: 'completed',
+            tx_hash: '0xrelease',
+            created_at: '2025-04-01',
+            updated_at: '2025-04-01',
+          },
+        ],
+        total: 1,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-2');
+
+      expect(result.success).toBe(true);
+      expect(result.data.items[0].amount).toBe(1.5);
+    });
+
     it('should return paginated transactions for user', async () => {
       const { getUserTransactions } = await importModule();
 
@@ -331,6 +414,75 @@ describe('Transaction Service', () => {
   });
 
   describe('getTransactionById', () => {
+    it('maps a legacy payment when no transaction record exists', async () => {
+      const { getTransactionById } = await importModule();
+      mockTransactionRepository.getById.mockResolvedValueOnce(null);
+      mockPaymentRepository.getById.mockResolvedValueOnce({
+        id: 'payment-1',
+        contract_id: 'contract-1',
+        milestone_id: null,
+        payer_id: 'user-1',
+        payee_id: 'user-2',
+        amount: 99,
+        payment_type: 'escrow',
+        status: 'confirmed',
+        tx_hash: null,
+        created_at: '2025-03-01',
+        updated_at: '2025-03-02',
+      });
+
+      const result = await getTransactionById('payment-1', 'user-2');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        id: 'payment-1',
+        contract_id: 'contract-1',
+        milestone_id: undefined,
+        from_user_id: 'user-1',
+        to_user_id: 'user-2',
+        amount: 99,
+        type: 'escrow',
+        status: 'confirmed',
+        transaction_hash: undefined,
+        created_at: '2025-03-01',
+        updated_at: '2025-03-02',
+      });
+    });
+
+    it('returns not found when the legacy payment lookup fails', async () => {
+      const { getTransactionById } = await importModule();
+      mockTransactionRepository.getById.mockResolvedValueOnce(null);
+      mockPaymentRepository.getById.mockRejectedValueOnce(new Error('legacy store unavailable'));
+
+      const result = await getTransactionById('missing', 'user-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('normalizes a legacy milestone release payment amount from wei', async () => {
+      const { getTransactionById } = await importModule();
+      mockTransactionRepository.getById.mockResolvedValueOnce(null);
+      mockPaymentRepository.getById.mockResolvedValueOnce({
+        id: 'payment-release',
+        contract_id: 'contract-1',
+        milestone_id: 'milestone-1',
+        payer_id: 'user-1',
+        payee_id: 'user-2',
+        amount: 2_000_000_000_000_000_000,
+        payment_type: 'milestone_release',
+        status: 'completed',
+        tx_hash: '0xrelease',
+        created_at: '2025-04-01',
+        updated_at: '2025-04-01',
+      });
+
+      const result = await getTransactionById('payment-release', 'user-2');
+
+      expect(result.success).toBe(true);
+      expect(result.data.amount).toBe(2);
+    });
+
     it('should return transaction when found and user is authorized', async () => {
       const { getTransactionById } = await importModule();
 
@@ -391,6 +543,78 @@ describe('Transaction Service', () => {
   });
 
   describe('getContractTransactions', () => {
+    it('merges legacy payments, removes duplicate ids and hashes, and sorts newest first', async () => {
+      const { getContractTransactions } = await importModule();
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'contract-1', freelancer_id: 'user-1', employer_id: 'user-2' });
+      mockTransactionRepository.findByContract.mockResolvedValueOnce([
+        { id: 'tx-existing', transaction_hash: '0xduplicate', amount: 10, type: 'payment', status: 'completed', created_at: '2025-01-01', updated_at: '2025-01-01' },
+      ]);
+      mockPaymentRepository.findByContractId.mockResolvedValueOnce([
+        { id: 'tx-existing', contract_id: 'contract-1', milestone_id: null, payer_id: 'user-1', payee_id: 'user-2', amount: 11, payment_type: 'payment', status: 'completed', tx_hash: '0xother', created_at: '2025-02-01', updated_at: '2025-02-01' },
+        { id: 'payment-hash-duplicate', contract_id: 'contract-1', milestone_id: null, payer_id: 'user-1', payee_id: 'user-2', amount: 12, payment_type: 'payment', status: 'completed', tx_hash: '0xduplicate', created_at: '2025-03-01', updated_at: '2025-03-01' },
+        { id: 'payment-new', contract_id: 'contract-1', milestone_id: 'milestone-1', payer_id: 'user-1', payee_id: 'user-2', amount: 13, payment_type: 'release', status: 'confirmed', tx_hash: '0xnew', created_at: '2025-04-01', updated_at: '2025-04-02' },
+      ]);
+
+      const result = await getContractTransactions('contract-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data.map((item) => item.id)).toEqual(['payment-new', 'tx-existing']);
+      expect(result.data[0]).toMatchObject({
+        milestone_id: 'milestone-1',
+        from_user_id: 'user-1',
+        to_user_id: 'user-2',
+        transaction_hash: '0xnew',
+      });
+    });
+
+    it('returns whichever store succeeds when the other transaction store fails', async () => {
+      const { getContractTransactions } = await importModule();
+      mockContractRepository.getContractById.mockResolvedValue({ id: 'contract-1', freelancer_id: 'user-1', employer_id: 'user-2' });
+      mockTransactionRepository.findByContract.mockRejectedValueOnce(new Error('transactions unavailable'));
+      mockPaymentRepository.findByContractId.mockResolvedValueOnce([
+        { id: 'payment-1', contract_id: 'contract-1', milestone_id: null, payer_id: 'user-1', payee_id: 'user-2', amount: 20, payment_type: 'release', status: 'confirmed', tx_hash: null, created_at: '2025-02-01', updated_at: '2025-02-01' },
+      ]);
+
+      const paymentOnly = await getContractTransactions('contract-1', 'user-1');
+      expect(paymentOnly.success).toBe(true);
+      expect(paymentOnly.data.map((item) => item.id)).toEqual(['payment-1']);
+
+      mockTransactionRepository.findByContract.mockResolvedValueOnce([
+        { id: 'tx-1', amount: 10, type: 'payment', status: 'completed', created_at: '2025-01-01', updated_at: '2025-01-01' },
+      ]);
+      mockPaymentRepository.findByContractId.mockRejectedValueOnce(new Error('payments unavailable'));
+
+      const transactionOnly = await getContractTransactions('contract-1', 'user-1');
+      expect(transactionOnly.success).toBe(true);
+      expect(transactionOnly.data.map((item) => item.id)).toEqual(['tx-1']);
+    });
+
+    it('normalizes legacy milestone release payment amounts from wei', async () => {
+      const { getContractTransactions } = await importModule();
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'contract-1', freelancer_id: 'user-1', employer_id: 'user-2' });
+      mockTransactionRepository.findByContract.mockResolvedValueOnce([]);
+      mockPaymentRepository.findByContractId.mockResolvedValueOnce([
+        {
+          id: 'payment-release',
+          contract_id: 'contract-1',
+          milestone_id: 'milestone-1',
+          payer_id: 'user-1',
+          payee_id: 'user-2',
+          amount: 3_250_000_000_000_000_000,
+          payment_type: 'milestone_release',
+          status: 'completed',
+          tx_hash: '0xrelease',
+          created_at: '2025-04-01',
+          updated_at: '2025-04-01',
+        },
+      ]);
+
+      const result = await getContractTransactions('contract-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data[0].amount).toBe(3.25);
+    });
+
     it('should return transactions for contract when user is freelancer', async () => {
       const { getContractTransactions } = await importModule();
 

@@ -23,12 +23,17 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
+const mockHasAdminPermission = jest.fn(() => true);
+
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
-  authMiddleware: (req: any, _res: any, next: any) => { req.user = { id: 'user-1', userId: 'user-1', role: 'freelancer' }; next(); },
+  authMiddleware: (req: any, _res: any, next: any) => {
+    if (!req.user) req.user = { id: 'user-1', userId: 'user-1', role: 'freelancer' };
+    next();
+  },
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
-  hasAdminPermission: () => true,
+  hasAdminPermission: mockHasAdminPermission,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
@@ -134,6 +139,21 @@ describe('Dispute Evidence Routes', () => {
       mockVerifyEvidence.mockRejectedValue(new Error('Unexpected'));
       const res = await request(app).post('/api/disputes/d-1/evidence/ev-1/verify');
       expect(res.status).toBe(500);
+    });
+
+    it('should return 403 when admin lacks disputes:manage permission', async () => {
+      mockHasAdminPermission.mockReturnValueOnce(false);
+      const appWithAdmin = express();
+      appWithAdmin.use(express.json());
+      appWithAdmin.use((req: any, _res: any, next: any) => {
+        req.user = { id: 'admin-1', userId: 'admin-1', role: 'admin' };
+        next();
+      });
+      appWithAdmin.use('/api/disputes', disputeEvidenceRouter);
+
+      const res = await request(appWithAdmin).post('/api/disputes/d-1/evidence/ev-1/verify');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
     });
   });
 });

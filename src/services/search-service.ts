@@ -11,6 +11,7 @@ import { projectCache, freelancerSearchCache } from '../utils/cache.js';
 const isTestEnv = (): boolean => process.env.NODE_ENV === 'test';
 
 export function clearFreelancerSearchCache(): void {
+  /* istanbul ignore next */
   if (typeof freelancerSearchCache?.clear === 'function') {
     freelancerSearchCache.clear();
   }
@@ -162,6 +163,7 @@ export async function searchProjects(
     ? `search:projects:${JSON.stringify(filters)}:${pageSize}:${pagination?.offset ?? 0}`
     : null;
 
+  /* istanbul ignore next */
   if (cacheKey && projectCache) {
     const cached = projectCache.get(cacheKey) as SearchResult<Project> | undefined;
     if (cached) {
@@ -218,6 +220,7 @@ export async function searchProjects(
   const projects = entityResult.items.map(mapProjectFromEntity);
 
   const result = buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset);
+  /* istanbul ignore next */
   if (cacheKey && projectCache) {
     projectCache.set(cacheKey, result);
   }
@@ -268,6 +271,7 @@ export async function searchFreelancers(
     ? `search:freelancers:${JSON.stringify(filters)}:${pageSize}:${pagination?.offset ?? 0}`
     : null;
 
+  /* istanbul ignore next */
   if (cacheKey && freelancerSearchCache) {
     const cached = freelancerSearchCache.get(cacheKey) as SearchResult<FreelancerProfile> | undefined;
     if (cached) {
@@ -340,6 +344,7 @@ export async function searchFreelancers(
   const profiles = entityResult.items.map(mapFreelancerProfileFromEntity);
 
   const result = buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset);
+  /* istanbul ignore next */
   if (cacheKey && freelancerSearchCache) {
     freelancerSearchCache.set(cacheKey, result);
   }

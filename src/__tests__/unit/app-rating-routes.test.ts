@@ -201,4 +201,21 @@ describe('App Rating Routes', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('POST / - missing role fallback', () => {
+    it("defaults userRole to 'unknown' when the session carries no role", async () => {
+      mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+        req.user = { id: 'user-1', userId: 'user-1', email: 'test@example.com' };
+        next();
+      });
+      mockSubmitAppRating.mockResolvedValue(ok({ id: 'rating-3' }));
+
+      const res = await request(app).post('/api/app-ratings').send({ rating: 4, source: 'manual' });
+
+      expect(res.status).toBe(201);
+      expect(mockSubmitAppRating).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', userRole: 'unknown' })
+      );
+    });
+  });
 });

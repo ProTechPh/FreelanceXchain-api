@@ -342,6 +342,16 @@ describe('Analytics Routes', () => {
       const res = await request(app).get('/api/analytics/experiments');
       expect(res.status).toBe(401);
     });
+
+    it('should return 400 when getAllUserExperiments fails', async () => {
+      mockGetAllUserExperiments.mockReturnValue({
+        success: false,
+        error: { code: 'INVALID_EXPERIMENT', message: 'Failed to fetch user experiments' },
+      });
+      const res = await request(app).get('/api/analytics/experiments');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_EXPERIMENT');
+    });
   });
 
   describe('GET /experiments/catalog', () => {
@@ -356,6 +366,16 @@ describe('Analytics Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.length).toBe(1);
       expect(res.body[0].id).toBe('AB-001');
+    });
+
+    it('should return 400 when getRegisteredExperiments fails', async () => {
+      mockGetRegisteredExperiments.mockReturnValue({
+        success: false,
+        error: { code: 'EXPERIMENT_ERROR', message: 'Failed to fetch catalog' },
+      });
+      const res = await request(app).get('/api/analytics/experiments/catalog');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('EXPERIMENT_ERROR');
     });
   });
 });

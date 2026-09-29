@@ -1305,4 +1305,37 @@ describe('Saved Search Service - Additional Branch Coverage', () => {
       expect(result.data.count).toBe(2);
     }
   });
+describe('saved-search-service - Pagination Coverage Gaps', () => {
+  const importModule = async () => import('../../services/saved-search-service.js');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('L22: loops if hasMore is true for projects', async () => {
+    const { executeSavedSearch } = await importModule();
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss', user_id: 'u1', search_type: 'project', filters: '{}', name: 'n',
+    });
+    mockProjectRepository.getAllOpenProjects
+      .mockResolvedValueOnce({ items: [{ id: 'p1' }], total: 2, hasMore: true })
+      .mockResolvedValueOnce({ items: [{ id: 'p2' }], total: 2, hasMore: false });
+    
+    await executeSavedSearch('ss', 'u1');
+    expect(mockProjectRepository.getAllOpenProjects).toHaveBeenCalledTimes(2);
+  });
+
+  it('L38: loops if hasMore is true for freelancers', async () => {
+    const { executeSavedSearch } = await importModule();
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss2', user_id: 'u2', search_type: 'freelancer', filters: '{}', name: 'n',
+    });
+    mockFreelancerProfileRepository.getAllProfilesPaginated
+      .mockResolvedValueOnce({ items: [{ user_id: 'f1' }], total: 2, hasMore: true })
+      .mockResolvedValueOnce({ items: [{ user_id: 'f2' }], total: 2, hasMore: false });
+    
+    await executeSavedSearch('ss2', 'u2');
+    expect(mockFreelancerProfileRepository.getAllProfilesPaginated).toHaveBeenCalledTimes(2);
+  });
+});
 });

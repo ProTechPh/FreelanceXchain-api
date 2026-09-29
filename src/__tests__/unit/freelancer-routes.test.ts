@@ -806,3 +806,58 @@ describe('freelancer-routes - ?? "" param fallback coverage', () => {
     expect(mockGetProfileByUserId).toHaveBeenCalledWith('any-id');
   });
 });
+
+describe('freelancer-routes - GET /:id ?? "" fallback when the param is stripped', () => {
+  let app: any;
+  const mockGetProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+      getFreelancerProfile: jest.fn(),
+      createProfile: jest.fn(),
+      updateProfile: jest.fn(),
+      addSkillsToProfile: jest.fn(),
+      removeSkillFromProfile: jest.fn(),
+      addExperience: jest.fn(),
+      updateExperience: jest.fn(),
+      removeExperience: jest.fn(),
+      getProfileByUserId: mockGetProfileByUserId,
+    }));
+    // GET /:id has no auth middleware, so the param is stripped in the first
+    // middleware of its chain: req.params['id'] ?? '' then falls back to ''.
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (req: any, _res: any, next: any) => {
+        delete req.params['id'];
+        next();
+      },
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/freelancer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/freelancers', router);
+    jest.clearAllMocks();
+  });
+
+  it('L702: GET /:id uses "" when the id param is nullish', async () => {
+    mockGetProfileByUserId.mockResolvedValueOnce({ success: true, data: { id: 'fp1', experience: [] } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/freelancers/any-id');
+    expect(res.status).toBe(200);
+    expect(mockGetProfileByUserId).toHaveBeenCalledWith('');
+  });
+});

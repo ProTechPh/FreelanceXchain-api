@@ -172,6 +172,52 @@ describe('Admin Permissions & RBAC Middleware', () => {
       expect(result.success).toBe(true);
       expect(result.data?.permissions).toEqual(['kyc:view', 'kyc:manage']);
     });
+
+    it('returns UPDATE_FAILED when the repository does not persist the permissions', async () => {
+      jest.spyOn(userRepository, 'getUserById').mockResolvedValue({
+        id: 'admin-2', role: 'admin', permissions: ['kyc:view'],
+      } as any);
+      jest.spyOn(userRepository, 'updateUser').mockResolvedValue(null);
+
+      const result = await updateAdminPermissions('admin-2', ['kyc:manage'], 'super-admin');
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('UPDATE_FAILED');
+    });
+
+    it('returns INTERNAL_ERROR when reading the administrator fails', async () => {
+      jest.spyOn(userRepository, 'getUserById').mockRejectedValue(new Error('database unavailable'));
+
+      const result = await updateAdminPermissions('admin-2', ['kyc:view'], 'super-admin');
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('defaults the audit actor to system-admin when no actorId is passed', async () => {
+      jest.spyOn(userRepository, 'getUserById').mockResolvedValue({
+        id: 'admin-2',
+        role: 'admin',
+        permissions: ['kyc:view'],
+      } as any);
+      jest.spyOn(userRepository, 'updateUser').mockResolvedValue({
+        id: 'admin-2',
+        role: 'admin',
+        permissions: ['kyc:view'],
+      } as any);
+      const auditSpy = jest.spyOn(auditLogRepository, 'create').mockResolvedValue({ id: 'audit-1' } as any);
+
+      const result = await updateAdminPermissions('admin-2', ['kyc:view']);
+
+      expect(result.success).toBe(true);
+      expect(result.data?.permissions).toEqual(['kyc:view']);
+      expect(auditSpy).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'system-admin',
+        action: 'admin.permissions_updated',
+        user_id: 'admin-2',
+        resource_id: 'admin-2',
+      }));
+    });
   });
 
   describe('inviteOrAddUser Service', () => {
@@ -187,6 +233,18 @@ describe('Admin Permissions & RBAC Middleware', () => {
       const res2 = await inviteOrAddUser({ name: 'Alice', email: 'not-an-email', role: 'freelancer' });
       expect(res2.success).toBe(false);
       expect(res2.error?.code).toBe('INVALID_EMAIL');
+    });
+
+    it.each([
+      [{ name: 'Alice', email: 'alice@example.com', role: 'moderator' }, 'INVALID_ROLE'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'admin', permissions: 'kyc:view' }, 'INVALID_PERMISSIONS'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'admin', permissions: ['unknown:permission'] }, 'INVALID_PERMISSION'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'freelancer', password: 'short' }, 'INVALID_PASSWORD'],
+    ])('rejects invalid invitation input with %s', async (input, code) => {
+      const result = await inviteOrAddUser(input as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe(code);
     });
 
     it('rejects duplicate email if already in database', async () => {
@@ -320,6 +378,64 @@ describe('Admin Permissions & RBAC Middleware', () => {
       expect(res.success).toBe(false);
       expect(res.error?.code).toBe('INTERNAL_ERROR');
       expect(deleteSpy).toHaveBeenCalledWith('appwrite-user-fail');
+    });
+
+    it('continues account creation when automatic email verification fails', async () => {
+      jest.spyOn(userRepository, 'emailExists').mockResolvedValue(false);
+      jest.spyOn(users, 'create').mockResolvedValue({ $id: 'appwrite-user-verify-fail' } as any);
+      jest.spyOn(users, 'updateEmailVerification').mockRejectedValue(new Error('verification unavailable'));
+      jest.spyOn(userRepository, 'createUser').mockResolvedValue({
+        id: 'appwrite-user-verify-fail', email: 'verify@example.com', role: 'freelancer', name: 'Verify User',
+      } as any);
+      jest.spyOn(auditLogRepository, 'create').mockResolvedValue({} as any);
+      jest.spyOn(subscriptionRepository, 'upsertForUser').mockResolvedValue({} as any);
+
+      const result = await inviteOrAddUser({
+        name: 'Verify User', email: 'verify@example.com', role: 'freelancer', password: 'StrongPass!123',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.temporaryPassword).toBeUndefined();
+    });
+
+    it.each([
+      [new Error('user already exists'), 'DUPLICATE_EMAIL'],
+      [{ code: 409 }, 'DUPLICATE_EMAIL'],
+      [{ type: 'user_email_disposable' }, 'VALIDATION_ERROR'],
+      [new Error('password found in a data breach'), 'VALIDATION_ERROR'],
+      ['provider offline', 'INTERNAL_ERROR'],
+    ])('maps authentication-provider failure %p to %s', async (failure, code) => {
+      jest.spyOn(userRepository, 'emailExists').mockResolvedValue(false);
+      jest.spyOn(users, 'create').mockRejectedValue(failure);
+
+      const result = await inviteOrAddUser({
+        name: 'Provider User', email: 'provider@example.com', role: 'employer', password: 'StrongPass!123',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe(code);
+    });
+
+    it('reports the database failure even when Appwrite rollback also fails', async () => {
+      jest.spyOn(userRepository, 'emailExists').mockResolvedValue(false);
+      jest.spyOn(users, 'create').mockResolvedValue({ $id: 'appwrite-user-fail-hard' } as any);
+      jest.spyOn(users, 'updateEmailVerification').mockResolvedValue({} as any);
+      jest.spyOn(userRepository, 'createUser').mockRejectedValue(new Error('database unavailable'));
+      jest.spyOn(users, 'delete').mockRejectedValue(new Error('rollback unavailable'));
+
+      const result = await inviteOrAddUser({
+        name: 'Rollback User', email: 'rollback@example.com', role: 'employer', password: 'StrongPass!123',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('returns INTERNAL_ERROR for an unexpected malformed invocation', async () => {
+      const result = await inviteOrAddUser(null as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('INTERNAL_ERROR');
     });
   });
 

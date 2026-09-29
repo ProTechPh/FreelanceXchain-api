@@ -76,7 +76,12 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
 // email-preference-service does not consume queued mockDatabases responses
 // in processWebhook / adminReviewVerification / manualKycVerification.
 const mockSendGatedEmail = jest.fn() as jest.Mock<any>;
-mockSendGatedEmail.mockResolvedValue(true);
+mockSendGatedEmail.mockImplementation(async (_userId: string, _cat: string, fn: any) => {
+  if (typeof fn === 'function') {
+    await fn({ email: 'user@example.com', name: 'User' });
+  }
+  return true;
+});
 jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
   sendGatedEmail: mockSendGatedEmail,
   sendKycApprovedEmail: jest.fn() as jest.Mock<any>,
@@ -303,6 +308,54 @@ describe('didit-kyc-service', () => {
       mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'pending' }));
       const result = await refreshVerificationStatus('kyc-1');
       expect(result.success).toBe(true);
+    });
+
+    it('should handle Approved session status and auto-create profile (lines 279-282, 304-305)', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ user_id: 'user-1' }));
+      mockGetSession.mockResolvedValue({
+        success: true,
+        data: {
+          status: 'Approved',
+          id_verifications: [{ first_name: 'Alice', last_name: 'Smith', nationality: 'US' }],
+        },
+      });
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+      const result = await refreshVerificationStatus('kyc-1');
+      expect(result.success).toBe(true);
+      expect(mockUpdateKyc).toHaveBeenCalledWith(
+        'kyc-1',
+        expect.objectContaining({ decision: 'approved', expires_at: expect.any(String) })
+      );
+    });
+
+    it('should handle Declined session status (line 284)', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ user_id: 'user-1' }));
+      mockGetSession.mockResolvedValue({
+        success: true,
+        data: { status: 'Declined' },
+      });
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'rejected' }));
+      const result = await refreshVerificationStatus('kyc-1');
+      expect(result.success).toBe(true);
+      expect(mockUpdateKyc).toHaveBeenCalledWith(
+        'kyc-1',
+        expect.objectContaining({ decision: 'declined' })
+      );
+    });
+
+    it('should handle In Review session status (line 286)', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ user_id: 'user-1' }));
+      mockGetSession.mockResolvedValue({
+        success: true,
+        data: { status: 'In Review' },
+      });
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'pending' }));
+      const result = await refreshVerificationStatus('kyc-1');
+      expect(result.success).toBe(true);
+      expect(mockUpdateKyc).toHaveBeenCalledWith(
+        'kyc-1',
+        expect.objectContaining({ decision: 'review' })
+      );
     });
   });
 
@@ -1726,5 +1779,40 @@ describe('didit-kyc-service - Additional Branch Coverage', () => {
       const result = await getAdminVerificationDecision('kyc-1');
       expect(result.success).toBe(true);
     });
+
+    it('should assign extracted updates when updateKycVerification returns null (line 347)', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ didit_session_id: 'session-xyz' }));
+      mockGetDecision.mockResolvedValue({
+        success: true,
+        data: {
+          id_verifications: [{
+            first_name: 'Jane',
+            last_name: 'Doe',
+          }],
+        },
+      });
+      mockUpdateKyc.mockResolvedValue(null);
+
+      const result = await getAdminVerificationDecision('kyc-1');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.verification.first_name).toBe('Jane');
+      }
+    });
+
+    it('should return SELF_REVIEW_FORBIDDEN when admin verifies own account in manual KYC (line 999)', async () => {
+      const result = await manualKycVerification({
+        userId: 'admin-1',
+        adminUserId: 'admin-1',
+        idFrontImage: Buffer.from('front'),
+        livenessVideo: Buffer.from('video'),
+        selfieImage: Buffer.from('selfie'),
+      } as any);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SELF_REVIEW_FORBIDDEN');
+      }
+    });
   });
 });
+

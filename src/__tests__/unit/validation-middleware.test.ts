@@ -780,6 +780,19 @@ describe('Validation Middleware', () => {
       expect(next).toHaveBeenCalled();
     });
 
+    it('should count files from object-of-arrays with non-array values mixed in', async () => {
+      const { validate } = await importModule();
+      req.body = { projectId: 'p-1' };
+      (req as any).files = {
+        documents: [{ name: 'a.pdf' }, { name: 'b.pdf' }],
+        images: 'not-an-array',
+        extras: [{ name: 'c.pdf' }]
+      };
+      const middleware = validate(filesSchema);
+      middleware(req as Request, res as Response, next);
+      expect(next).toHaveBeenCalled();
+    });
+
     it('should treat non-file values as zero files', async () => {
       const { validate } = await importModule();
       req.body = { projectId: 'p-1' };

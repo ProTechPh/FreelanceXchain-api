@@ -32,7 +32,7 @@ export interface UserExperimentAssignment {
 /**
  * Built-in priority experiments designed in the FreelanceXchain A/B Testing Framework.
  */
-const REGISTERED_EXPERIMENTS: Record<string, Experiment> = {
+export const REGISTERED_EXPERIMENTS: Record<string, Experiment> = {
   'AB-001': {
     id: 'AB-001',
     name: 'Pro Paywall Placement Optimization',

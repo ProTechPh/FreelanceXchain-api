@@ -443,4 +443,17 @@ describe('FreelancerProfileRepository - mapProfile experience parsing', () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.experience).toEqual(experienceArr);
   });
+
+  it('should map document using mapDoc when calling getById', async () => {
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'fp1',
+      $createdAt: '2025-01-01',
+      $updatedAt: '2025-01-01',
+      user_id: 'u1',
+      skills: JSON.stringify([{ name: 'Go' }]),
+    });
+    const result = await repo.getById('fp1');
+    expect(result?.id).toBe('fp1');
+    expect(result?.user_id).toBe('u1');
+  });
 });

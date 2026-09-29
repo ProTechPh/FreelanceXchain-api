@@ -47,7 +47,17 @@ jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () 
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
-  authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'admin-1', role: 'admin' }; next(); },
+  authMiddleware: (req: any, _res: any, next: any) => {
+    if (req.headers['x-test-no-user'] !== 'true') {
+      const permissions = req.headers['x-test-permissions'];
+      req.user = {
+        userId: 'admin-1',
+        role: 'admin',
+        ...(typeof permissions === 'string' ? { permissions: permissions.split(',') } : {}),
+      };
+    }
+    next();
+  },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
@@ -126,7 +136,86 @@ describe('Admin Routes', () => {
     });
   });
 
+  describe('POST /users', () => {
+    it('creates a user with defaults and maps serialized permissions', async () => {
+      mockInviteOrAddUser.mockResolvedValue({
+        success: true,
+        data: {
+          user: {
+            id: 'u-new', email: 'new@example.com', role: 'admin', name: 'New Admin',
+            created_at: '2025-01-01', permissions: '["users:manage"]',
+            kyc_verified: false, email_verified: true, is_suspended: false,
+          },
+          plan: 'pro',
+          temporaryPassword: 'temporary-secret',
+        },
+      });
+
+      const res = await request(app).post('/api/admin/users').send({
+        name: 'New Admin', email: 'new@example.com', role: 'admin',
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockInviteOrAddUser).toHaveBeenCalledWith({
+        name: 'New Admin', email: 'new@example.com', role: 'admin',
+        password: undefined, permissions: undefined, autoVerifyEmail: true, grantPro: true,
+      }, 'admin-1');
+      expect(res.body).toMatchObject({
+        user: { id: 'u-new', permissions: ['users:manage'], isActive: true },
+        plan: 'pro',
+        temporaryPassword: 'temporary-secret',
+      });
+    });
+
+    it('rejects unauthenticated requests and non-boolean grantPro values', async () => {
+      const unauthenticated = await request(app)
+        .post('/api/admin/users')
+        .set('x-test-no-user', 'true')
+        .send({ email: 'new@example.com', role: 'freelancer' });
+      expect(unauthenticated.status).toBe(401);
+
+      const invalidGrant = await request(app)
+        .post('/api/admin/users')
+        .send({ email: 'new@example.com', role: 'freelancer', grantPro: 'yes' });
+      expect(invalidGrant.status).toBe(400);
+      expect(invalidGrant.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('blocks a delegated administrator from creating another administrator', async () => {
+      const res = await request(app)
+        .post('/api/admin/users')
+        .set('x-test-permissions', 'users:manage')
+        .send({ email: 'new@example.com', role: 'admin' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect(mockInviteOrAddUser).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['DUPLICATE_EMAIL', 409],
+      ['INVALID_EMAIL', 400],
+      ['UPSTREAM_FAILURE', 500],
+    ])('maps %s service failures to HTTP %i', async (code, status) => {
+      mockInviteOrAddUser.mockResolvedValue({ success: false, error: { code, message: 'failed' } });
+
+      const res = await request(app).post('/api/admin/users').send({
+        email: 'new@example.com', role: 'freelancer', grantPro: false, autoVerifyEmail: false,
+      });
+
+      expect(res.status).toBe(status);
+      expect(res.body.error.code).toBe(code);
+    });
+  });
+
   describe('PATCH /users/:userId', () => {
+    it('rejects an update when the authenticated administrator is missing', async () => {
+      const res = await request(app)
+        .patch('/api/admin/users/u-1')
+        .set('x-test-no-user', 'true')
+        .send({ name: 'New Name' });
+      expect(res.status).toBe(401);
+    });
     it('should update user', async () => {
       mockUpdateUser.mockResolvedValue({ success: true, data: { id: 'u-1', email: 'test@test.com', role: 'freelancer', name: 'New Name', created_at: '2025-01-01', is_suspended: false } });
       const res = await request(app).patch('/api/admin/users/u-1').send({ name: 'New Name', role: 'freelancer' });
@@ -154,6 +243,13 @@ describe('Admin Routes', () => {
   });
 
   describe('POST /users/:userId/suspend', () => {
+    it('rejects an unauthenticated suspension', async () => {
+      const res = await request(app)
+        .post('/api/admin/users/u-1/suspend')
+        .set('x-test-no-user', 'true')
+        .send({ reason: 'Violation' });
+      expect(res.status).toBe(401);
+    });
     it('should suspend user', async () => {
       mockSuspendUser.mockResolvedValue({ success: true, data: { id: 'u-1', is_suspended: true } });
       const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Violation' });
@@ -168,6 +264,12 @@ describe('Admin Routes', () => {
   });
 
   describe('POST /users/:userId/unsuspend', () => {
+    it('rejects an unauthenticated unsuspension', async () => {
+      const res = await request(app)
+        .post('/api/admin/users/u-1/unsuspend')
+        .set('x-test-no-user', 'true');
+      expect(res.status).toBe(401);
+    });
     it('should unsuspend user', async () => {
       mockUnsuspendUser.mockResolvedValue({ success: true, data: { id: 'u-1', is_suspended: false } });
       const res = await request(app).post('/api/admin/users/u-1/unsuspend');
@@ -230,6 +332,59 @@ describe('Admin Routes', () => {
       });
 
       const res = await request(app).post('/api/admin/users/u-1/verify');
+
+      expect(res.status).toBe(status);
+      expect(res.body.error.code).toBe(code);
+    });
+  });
+
+  describe('PATCH /users/:userId/permissions', () => {
+    it('updates permissions and safely maps malformed stored permissions', async () => {
+      mockUpdateAdminPermissions.mockResolvedValue({
+        success: true,
+        data: {
+          id: 'u-1', email: 'admin@example.com', role: 'admin', created_at: '2025-01-01',
+          permissions: '{malformed json', is_suspended: false,
+        },
+      });
+
+      const res = await request(app)
+        .patch('/api/admin/users/u-1/permissions')
+        .send({ permissions: ['users:manage'] });
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateAdminPermissions).toHaveBeenCalledWith(
+        'u-1', ['users:manage'], 'admin-1',
+      );
+      expect(res.body.permissions).toEqual([]);
+    });
+
+    it('rejects missing authentication and non-array permissions', async () => {
+      const unauthenticated = await request(app)
+        .patch('/api/admin/users/u-1/permissions')
+        .set('x-test-no-user', 'true')
+        .send({ permissions: [] });
+      expect(unauthenticated.status).toBe(401);
+
+      const invalid = await request(app)
+        .patch('/api/admin/users/u-1/permissions')
+        .send({ permissions: 'users:manage' });
+      expect(invalid.status).toBe(400);
+      expect(invalid.body.error.code).toBe('INVALID_PERMISSIONS');
+    });
+
+    it.each([
+      ['NOT_FOUND', 404],
+      ['INVALID_PERMISSION', 400],
+    ])('maps %s failures to HTTP %i', async (code, status) => {
+      mockUpdateAdminPermissions.mockResolvedValue({
+        success: false,
+        error: { code, message: 'failed' },
+      });
+
+      const res = await request(app)
+        .patch('/api/admin/users/u-1/permissions')
+        .send({ permissions: ['users:manage'] });
 
       expect(res.status).toBe(status);
       expect(res.body.error.code).toBe(code);
@@ -876,6 +1031,94 @@ describe('admin-routes - additional branch coverage', () => {
   });
 });
 
+describe('admin-routes - mapAdminUser / user filters / error fallbacks', () => {
+  let app: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/admin', adminRouter);
+  });
+
+  it('GET /users maps null users and every permission shape', async () => {
+    mockGetUserManagement.mockResolvedValue({
+      success: true,
+      data: {
+        users: [
+          null,
+          { id: 'u-1', email: 'a@t.com', role: 'admin', permissions: ['users:manage'], created_at: '2025-01-01', is_suspended: false },
+          { id: 'u-2', email: 'b@t.com', role: 'freelancer', permissions: '{"foo":"bar"}', created_at: '2025-01-02', is_suspended: false },
+          { id: 'u-3', email: 'c@t.com', role: 'admin', created_at: '2025-01-03', is_suspended: false },
+        ],
+        total: 4,
+      },
+    });
+
+    const res = await request(app).get('/api/admin/users');
+
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(4);
+    expect(res.body.users[0]).toBeNull();
+    expect(res.body.users[1].permissions).toEqual(['users:manage']);
+    expect(res.body.users[2].permissions).toEqual([]);
+    expect(res.body.users[3].permissions).toEqual(['*']);
+    expect(res.body.total).toBe(4);
+  });
+
+  it('GET /users passes kycStatus and emailVerified filters through', async () => {
+    mockGetUserManagement.mockResolvedValue({ success: true, data: { users: [], total: 0 } });
+
+    const res = await request(app).get('/api/admin/users?kycStatus=approved&emailVerified=true');
+
+    expect(res.status).toBe(200);
+    expect(mockGetUserManagement).toHaveBeenCalledWith({ kycStatus: 'approved', emailVerified: 'true' });
+  });
+
+  it('POST /users with no error property falls back to UNKNOWN / An error occurred', async () => {
+    mockInviteOrAddUser.mockResolvedValue({ success: false });
+
+    const res = await request(app)
+      .post('/api/admin/users')
+      .send({ name: 'Alice', email: 'alice@test.com', role: 'freelancer' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('POST /users omits temporaryPassword when the service does not return one', async () => {
+    mockInviteOrAddUser.mockResolvedValue({
+      success: true,
+      data: {
+        user: { id: 'u-9', email: 'bob@test.com', role: 'employer', created_at: '2025-01-01', is_suspended: false },
+        plan: 'pro',
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/admin/users')
+      .send({ name: 'Bob', email: 'bob@test.com', role: 'employer' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.plan).toBe('pro');
+    expect(res.body.user.id).toBe('u-9');
+    expect(res.body.temporaryPassword).toBeUndefined();
+  });
+
+  it('PATCH /users/:userId/permissions with no error property falls back to UNKNOWN / An error occurred', async () => {
+    mockUpdateAdminPermissions.mockResolvedValue({ success: false });
+
+    const res = await request(app)
+      .patch('/api/admin/users/u-1/permissions')
+      .send({ permissions: ['kyc:view'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+});
+
 describe('admin-routes - ?? "" param fallback coverage', () => {
   let app: any;
   const mockUpdateUser = jest.fn<any>();
@@ -1016,5 +1259,81 @@ describe('admin verification authentication coverage', () => {
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');
     expect(mockVerifyUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin-routes - permissions route userId fallback', () => {
+  let app: any;
+  const mockUpdateAdminPermissions2 = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
+      getPlatformStats: jest.fn(),
+      getUserManagement: jest.fn(),
+      suspendUser: jest.fn(),
+      unsuspendUser: jest.fn(),
+      verifyUser: jest.fn(),
+      updateUser: jest.fn(),
+      getDisputeManagement: jest.fn(),
+      getSystemHealth: jest.fn(),
+      getSatisfactionRate: jest.fn(),
+      updateAdminPermissions: mockUpdateAdminPermissions2,
+      inviteOrAddUser: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
+      getAdminAnalytics: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+      ReviewRepository: {},
+      reviewRepository: { getAllReviews: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'admin-1', role: 'admin' };
+        delete req.params.userId;
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+
+    const expressMod = (await import('express')).default;
+    const freshAdminRouter = (await import('../../routes/admin-routes.js')).default;
+    app = expressMod();
+    app.use(expressMod.json());
+    app.use('/api/admin', freshAdminRouter);
+    jest.clearAllMocks();
+  });
+
+  it('L367: PATCH /users/:userId/permissions uses ?? "" when the userId param is missing', async () => {
+    mockUpdateAdminPermissions2.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: '',
+        email: 'admin2@test.com',
+        role: 'admin',
+        permissions: ['kyc:view'],
+        created_at: '2025-01-01',
+        is_suspended: false,
+      },
+    });
+    const request2 = (await import('supertest')).default;
+
+    const res = await request2(app)
+      .patch('/api/admin/users/any-id/permissions')
+      .send({ permissions: ['kyc:view'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.permissions).toEqual(['kyc:view']);
+    expect(mockUpdateAdminPermissions2).toHaveBeenCalledWith('', ['kyc:view'], 'admin-1');
   });
 });

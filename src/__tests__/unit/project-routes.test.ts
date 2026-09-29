@@ -1411,3 +1411,29 @@ describe('project-routes - ?? "" right-side branch coverage', () => {
     expect(mockGetProjectById).toHaveBeenCalledWith('');
   });
 });
+
+describe('project-routes - PATCH attachments and tags passthrough', () => {
+  let app: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/projects', projectRouter);
+  });
+
+  it('forwards attachments and tags to updateProject when both are provided', async () => {
+    mockUpdateProject.mockResolvedValue(ok({ id: 'p1' }));
+    const attachments = [{ url: 'https://cdn.example.com/shot.png', filename: 'shot.png' }];
+    const tags = ['node', 'typescript'];
+
+    const res = await request(app)
+      .patch('/api/projects/p1')
+      .send({ title: 'Updated title of project', attachments, tags });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateProject).toHaveBeenCalledWith(
+      'p1',
+      'user-1',
+      expect.objectContaining({ attachments, tags })
+    );
+  });
+});

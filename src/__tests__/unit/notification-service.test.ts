@@ -513,4 +513,103 @@ describe('Notification Service - Branch Coverage', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('notifySupportTicketResolved creates correct notification', async () => {
+    const { notifySupportTicketResolved } = await import('../../services/notification-service.js');
+    const result = await notifySupportTicketResolved({
+      userId: 'user-support-1',
+      ticketId: 'ticket-1',
+      subject: 'Cannot login',
+    });
+    
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.userId).toBe('user-support-1');
+      expect(result.data.type).toBe('support_ticket_resolved');
+      expect(result.data.title).toBe('Support Ticket Resolved');
+      expect(result.data.data).toEqual({ ticketId: 'ticket-1', subject: 'Cannot login' });
+    }
+  });
+
+  it('getNotificationsByUser fetches paginated notifications', async () => {
+    const { getNotificationsByUser } = await import('../../services/notification-service.js');
+    mockNotificationRepo.getNotificationsByUser = jest.fn<any>().mockResolvedValue({
+      items: [createTestNotification({ user_id: 'user-page' })],
+      hasMore: false,
+      total: 1,
+    });
+
+    const result = await getNotificationsByUser('user-page');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items).toHaveLength(1);
+    }
+  });
+
+  it('getUnreadNotificationsByUser fetches unread notifications', async () => {
+    const { getUnreadNotificationsByUser } = await import('../../services/notification-service.js');
+    mockNotificationRepo.getUnreadNotificationsByUser = jest.fn<any>().mockResolvedValue([
+      createTestNotification({ user_id: 'user-unread', is_read: false })
+    ]);
+
+    const result = await getUnreadNotificationsByUser('user-unread');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toHaveLength(1);
+    }
+  });
+
+  it('notifyMilestoneApproved creates correct notification', async () => {
+    const { notifyMilestoneApproved } = await import('../../services/notification-service.js');
+    const result = await notifyMilestoneApproved({
+      freelancerId: 'user-free-1',
+      milestoneId: 'ms-1',
+      milestoneTitle: 'MS1',
+      projectId: 'proj-1',
+      projectTitle: 'Proj1',
+      contractId: 'cont-1'
+    });
+    
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('milestone_approved');
+    }
+  });
+
+  it('notifyDisputeCreated creates correct notification', async () => {
+    const { notifyDisputeCreated } = await import('../../services/notification-service.js');
+    const result = await notifyDisputeCreated({
+      userId: 'user-1',
+      disputeId: 'disp-1',
+      milestoneId: 'ms-1',
+      milestoneTitle: 'MS1',
+      projectId: 'proj-1',
+      projectTitle: 'Proj1',
+      contractId: 'cont-1'
+    });
+    
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('dispute_created');
+    }
+  });
+
+  it('notifyDisputeResolved creates correct notification', async () => {
+    const { notifyDisputeResolved } = await import('../../services/notification-service.js');
+    const result = await notifyDisputeResolved({
+      userId: 'user-1',
+      disputeId: 'disp-1',
+      resolution: 'resolved',
+      milestoneId: 'ms-1',
+      milestoneTitle: 'MS1',
+      projectId: 'proj-1',
+      projectTitle: 'Proj1',
+      contractId: 'cont-1'
+    });
+    
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('dispute_resolved');
+    }
+  });
 });

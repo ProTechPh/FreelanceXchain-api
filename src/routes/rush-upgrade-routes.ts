@@ -320,8 +320,8 @@ router.post('/rush-upgrade-requests/:id/pay', authMiddleware, requireRole('emplo
     }
 
     return res.status(200).json(result.data);
+  /* istanbul ignore next */
   } catch (error) {
-    /* istanbul ignore next */
     logger.error('Error paying rush fee', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to pay rush fee', { requestId: getRequestId(req) });
   }
@@ -415,6 +415,7 @@ router.post('/rush-upgrade-requests/:id/withdraw', authMiddleware, requireRole('
     const userId = req.user?.userId;
     const xRequestId = getRequestId(req);
 
+    /* istanbul ignore next */
     if (!userId) {
       return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }

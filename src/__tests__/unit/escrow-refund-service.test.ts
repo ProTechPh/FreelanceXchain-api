@@ -177,6 +177,33 @@ describe('Escrow Refund Service', () => {
       expect(result.success).toBe(true);
     });
 
+    it('should acquire milestone locks from project milestones when creating refund request (lines 96-97)', async () => {
+      const { createRefundRequest } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c-1',
+        project_id: 'p-1',
+        freelancer_id: 'freelancer-1',
+        employer_id: 'employer-1',
+        status: 'active',
+        total_amount: 1000,
+      });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockProjectRepository.findProjectById.mockResolvedValue(
+        makeProject([{ id: 'm-1', amount: 500 }, { id: 'm-2', amount: 500 }])
+      );
+      const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending' };
+      mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
+
+      const result = await createRefundRequest({
+        contractId: 'c-1',
+        requestedBy: 'freelancer-1',
+        reason: 'Project cancelled',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
     it('should fail when contract not found', async () => {
       const { createRefundRequest } = await importModule();
 
@@ -870,6 +897,35 @@ describe('Escrow Refund Service', () => {
       expect(mockRefundEscrow).not.toHaveBeenCalled();
     });
 
+    it('should log and fail when validateMilestonesForRefund fails inside locks (lines 192-193)', async () => {
+      const { approveRefund } = await importModule();
+      const { logger } = await import('../../config/logger.js');
+
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+
+      // First call in loadMilestoneLockIds succeeds, second call in validateMilestonesForRefund rejects!
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([{ id: 'm-1', status: 'pending', amount: 500 }]))
+        .mockRejectedValueOnce(new Error('DB failure inside locks'));
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('APPROVE_FAILED');
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to load project milestones for refund',
+        expect.objectContaining({ refundId: 'ref-1' })
+      );
+    });
+
     it('should rollback and fail when the blockchain adapter is unavailable', async () => {
       const { approveRefund } = await importModule();
 
@@ -1475,5 +1531,255 @@ describe('Escrow Refund Service - fallback coverage', () => {
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('WITHDRAW_FAILED');
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage-gap branches (coverage-gaps.json, escrow-refund-service)
+// ═══════════════════════════════════════════════════════════════
+
+describe('Escrow Refund Service - coverage gaps', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractById.mockReset();
+    mockContractRepository.updateContract.mockReset();
+    mockRefundRequestRepository.findPendingByContract.mockReset();
+    mockRefundRequestRepository.findByContract.mockReset();
+    mockRefundRequestRepository.findWithContract.mockReset();
+    mockRefundRequestRepository.create.mockReset();
+    mockRefundRequestRepository.update.mockReset();
+    mockProjectRepository.findProjectById.mockReset();
+    mockProjectRepository.updateProject.mockReset();
+    mockAuditLogRepo.create.mockReset();
+    mockRefundEscrow.mockReset();
+    mockRefundEscrow.mockResolvedValue({ transactionHash: '0xrefund', receipt: {} });
+    mockRefundMilestone.mockReset();
+    mockRefundMilestone.mockResolvedValue({ transactionHash: '0xrefund-ms', receipt: {} });
+    mockAdapterGetMilestone.mockReset();
+    mockAdapterGetMilestone.mockResolvedValue({ status: 'Pending', amount: 1000n, description: 'M' });
+    mockAdapterIsAvailable.mockReset();
+    mockAdapterIsAvailable.mockReturnValue(true);
+    // Default: no approved milestones — remainingEscrow === total_amount for all tests
+    mockProjectRepository.findProjectById.mockResolvedValue(makeProject([]));
+  });
+
+  const importModule = async () => {
+    return await import('../../services/escrow-refund-service.js');
+  };
+
+  it('L26/L95: tolerates a project that cannot be loaded when creating a refund request', async () => {
+    const { createRefundRequest } = await importModule();
+
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c-1', project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+      status: 'active', total_amount: 1000,
+    });
+    mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+    // Both project reads (escrow computation + milestone lock ids) see no project.
+    mockProjectRepository.findProjectById.mockResolvedValue(null);
+    mockRefundRequestRepository.create.mockResolvedValueOnce({
+      id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending',
+    });
+
+    const result = await createRefundRequest({
+      contractId: 'c-1',
+      requestedBy: 'freelancer-1',
+      reason: 'Project cancelled',
+    });
+
+    // Nothing released yet, so remaining escrow is the full contract amount.
+    expect(result.success).toBe(true);
+    expect(mockRefundRequestRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 1000 })
+    );
+  });
+
+  it('L166/L186: approval with an unloadable project reports nothing to refund', async () => {
+    const { approveRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        amount: 1000, is_partial: false,
+        contract: {
+          project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+        },
+      })
+      .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+    mockProjectRepository.findProjectById.mockResolvedValue(null);
+
+    const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOTHING_TO_REFUND');
+    // Fails before any approval write or chain call.
+    expect(mockRefundRequestRepository.update).not.toHaveBeenCalled();
+    expect(mockRefundEscrow).not.toHaveBeenCalled();
+  });
+
+  it('L207/L410: is_partial with a missing amount falls back to a full-escrow refund', async () => {
+    const { approveRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        is_partial: true, // amount deliberately absent → amount ?? 0 === 0
+        contract: {
+          project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+        },
+      })
+      .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+    mockProjectRepository.findProjectById.mockResolvedValue(
+      makeProject([{ id: 'm1', status: 'pending', amount: 1000 }])
+    );
+    mockContractRepository.updateContract.mockResolvedValueOnce({});
+    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+    const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+    expect(result.success).toBe(true);
+    // Zero requested amount is not a partial refund: the whole escrow moves.
+    expect(mockRefundEscrow).toHaveBeenCalledWith('0xescrow');
+    expect(mockRefundMilestone).not.toHaveBeenCalled();
+  });
+
+  it('L213: partial refund treats a milestone without an amount as zero', async () => {
+    const { approveRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        amount: 500, is_partial: true,
+        contract: {
+          project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+        },
+      })
+      .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+    // Milestone has no amount field → milestoneAmount defaults to 0.
+    mockProjectRepository.findProjectById.mockResolvedValue(
+      makeProject([{ id: 'm1', status: 'pending' }])
+    );
+    mockContractRepository.updateContract.mockResolvedValueOnce({});
+    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+    const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+    expect(result.success).toBe(true);
+    expect(mockRefundMilestone).toHaveBeenCalledWith('0xescrow', 0);
+    // A zero-amount target records no payment.
+    expect(mockPaymentRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('L249/L312: records a payment with a null milestone id and null tx hash', async () => {
+    const { approveRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        amount: 500, is_partial: true,
+        contract: {
+          project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+        },
+      })
+      .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+    // Milestone without an id (→ milestoneId ?? null) and a positive amount
+    // (so the payment record is actually written).
+    mockProjectRepository.findProjectById.mockResolvedValue(
+      makeProject([{ status: 'pending', amount: 500 }])
+    );
+    // Chain result without a transaction hash → transactionHash ?? null.
+    mockRefundMilestone.mockResolvedValueOnce({ receipt: {} });
+    mockContractRepository.updateContract.mockResolvedValueOnce({});
+    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+    const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+    expect(result.success).toBe(true);
+    expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      contract_id: 'c-1',
+      milestone_id: null,
+      amount: 500,
+      payment_type: 'refund',
+      tx_hash: null,
+      status: 'completed',
+    }));
+  });
+
+  it('L255: full refund with a receipt lacking a transaction hash records null', async () => {
+    const { approveRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        amount: 1000, is_partial: false,
+        contract: {
+          project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+        },
+      })
+      .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+    mockProjectRepository.findProjectById.mockResolvedValue(
+      makeProject([{ id: 'm1', status: 'pending', amount: 1000 }])
+    );
+    mockRefundEscrow.mockResolvedValueOnce({ receipt: {} });
+    mockContractRepository.updateContract.mockResolvedValueOnce({});
+    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+    const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+    expect(result.success).toBe(true);
+    expect(mockRefundEscrow).toHaveBeenCalledWith('0xescrow');
+    expect(mockPaymentRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      milestone_id: 'm1',
+      amount: 1000,
+      tx_hash: null,
+    }));
+  });
+
+  it('L465: an employer-requested refund can be rejected by the freelancer', async () => {
+    const { rejectRefund } = await importModule();
+
+    // requested_by is the employer → the other party (alternate branch) is the freelancer.
+    mockRefundRequestRepository.findWithContract.mockResolvedValue({
+      id: 'ref-1', contract_id: 'c-1', requested_by: 'employer-1', status: 'pending', amount: 500,
+      contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1' },
+    });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({
+      id: 'ref-1', status: 'rejected', rejected_by: 'freelancer-1',
+    });
+
+    const result = await rejectRefund({
+      refundId: 'ref-1',
+      rejectedBy: 'freelancer-1',
+      reason: 'Milestone work was completed',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockRefundRequestRepository.update).toHaveBeenCalledWith(
+      'ref-1',
+      expect.objectContaining({ status: 'rejected', rejected_by: 'freelancer-1' })
+    );
+  });
+
+  it('L585: withdraw failure with a non-Error falls back to the generic message', async () => {
+    const { withdrawRefundRequest } = await importModule();
+
+    mockRefundRequestRepository.findWithContract.mockRejectedValueOnce('db exploded');
+
+    const result = await withdrawRefundRequest('ref-1', 'user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('WITHDRAW_FAILED');
+      expect(result.error.message).toBe('Failed to withdraw refund request');
+    }
   });
 });

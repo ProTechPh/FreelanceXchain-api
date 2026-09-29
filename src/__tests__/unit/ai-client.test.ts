@@ -11,6 +11,7 @@ import {
   deserializeAIResponse,
   keywordMatchSkills,
   keywordExtractSkills,
+  fallbackGenerateProposal,
 } from '../../services/ai-client.js';
 import {
   SkillInfo,
@@ -20,6 +21,70 @@ import {
   ExtractedSkill,
   SkillGapAnalysis,
 } from '../../services/ai-types.js';
+
+describe('fallbackGenerateProposal', () => {
+  it('personalizes a rated freelancer proposal from matching skills, portfolio, notes, and milestones', () => {
+    const result = fallbackGenerateProposal({
+      freelancerName: 'Ada',
+      freelancerTitle: 'Smart Contract Engineer',
+      freelancerBio: 'Security-focused builder',
+      freelancerSkills: ['Solidity', 'React', 'Auditing'],
+      reputationScore: 96.4,
+      completedProjectsCount: 12,
+      disputeCount: 0,
+      portfolioItems: [{ title: 'Escrow Protocol', description: 'A milestone escrow app', skills: ['Solidity'] }],
+      projectTitle: 'Marketplace Escrow',
+      projectDescription: 'Build an escrow workflow',
+      projectSkills: ['Solidity Development', 'React'],
+      projectBudget: 5_000,
+      projectMilestones: [
+        { title: 'Contract', description: '', amount: 0 },
+        { title: 'Frontend', description: 'Integrate the dApp', amount: 2_000 },
+      ],
+      customNotes: 'I can begin Monday.',
+    });
+
+    expect(result.coverLetter).toContain('Solidity, React');
+    expect(result.coverLetter).toContain('Escrow Protocol');
+    expect(result.coverLetter).toContain('96%');
+    expect(result.coverLetter).toContain('I can begin Monday.');
+    expect(result.proposedMilestones).toEqual([
+      { title: 'Contract', description: 'Milestone delivery and review.', amount: 2_500, durationDays: 7 },
+      { title: 'Frontend', description: 'Integrate the dApp', amount: 2_000, durationDays: 7 },
+    ]);
+    expect(result.estimatedDuration).toBe(14);
+    expect(result.highlights).toContain('12 Completed Projects on Platform');
+  });
+
+  it('builds safe defaults for new talent without portfolio, skills, budget, or milestones', () => {
+    const result = fallbackGenerateProposal({
+      freelancerName: 'New Freelancer',
+      freelancerTitle: '',
+      freelancerBio: '',
+      freelancerSkills: [],
+      reputationScore: 0,
+      completedProjectsCount: 0,
+      portfolioItems: [],
+      projectTitle: 'New dApp',
+      projectDescription: 'Build it',
+      projectSkills: ['Rust'],
+      projectBudget: 0,
+    });
+
+    expect(result.coverLetter).toContain('Web3 Developer');
+    expect(result.coverLetter).toContain('Web3 Engineering');
+    expect(result.coverLetter).toContain('verified technical credentials');
+    expect(result.proposedRate).toBe(1_000);
+    expect(result.proposedMilestones).toHaveLength(3);
+    expect(result.proposedMilestones.map((milestone) => milestone.amount)).toEqual([400, 400, 200]);
+    expect(result.estimatedDuration).toBe(16);
+    expect(result.highlights).toEqual([
+      'Identity-Verified Talent (KYC Verified)',
+      'Escrow-Protected Milestone Delivery',
+      'Expertise in Web3 Engineering',
+    ]);
+  });
+});
 
 // Custom arbitraries for property-based testing
 const skillInfoArbitrary = () =>

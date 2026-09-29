@@ -917,3 +917,21 @@ describe('Search Service - Additional Branch Coverage', () => {
     }
   });
 });
+describe('search-service - Performance Logging Coverage', () => {
+  it('L33: logs a warning for slow queries', async () => {
+    const { searchProjects } = await import('../../services/search-service.js');
+    const originalPerformanceNow = performance.now;
+    // mock first call to start, second call to finish (difference > 100)
+    performance.now = jest.fn()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(150);
+      
+    await searchProjects({});
+    
+    // restore immediately
+    performance.now = originalPerformanceNow;
+    
+    const { logger } = await import('../../config/logger.js');
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Slow search query'));
+  });
+});

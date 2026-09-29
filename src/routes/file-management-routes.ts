@@ -107,6 +107,7 @@ router.delete('/:bucket/:path', authMiddleware, asyncHandler(async (req: Request
   }
 
   const { bucket, path: fileId } = req.params;
+  /* istanbul ignore next -- Express routing guarantees bucket and path are present */
   if (!bucket || !fileId) {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Bucket and file path are required', { requestId });
     return;

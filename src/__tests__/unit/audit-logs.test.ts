@@ -249,6 +249,34 @@ describe('Audit Logs Routes', () => {
 
       expect(res.status).toBe(500);
     });
+
+    it('should apply limit from query', async () => {
+      mockGetAuditLogsByDateRange.mockResolvedValue(sampleLogs);
+
+      const res = await request(app).get(
+        '/api/audit-logs/range?startDate=2025-01-01&endDate=2025-01-31&limit=50'
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.logs).toEqual(sampleLogs);
+      expect(mockGetAuditLogsByDateRange).toHaveBeenCalledWith(
+        new Date('2025-01-01'),
+        new Date('2025-01-31'),
+        50
+      );
+    });
+
+    it('should omit limit when not provided', async () => {
+      mockGetAuditLogsByDateRange.mockResolvedValue([]);
+
+      await request(app).get('/api/audit-logs/range?startDate=2025-01-01&endDate=2025-01-31');
+
+      expect(mockGetAuditLogsByDateRange).toHaveBeenCalledWith(
+        new Date('2025-01-01'),
+        new Date('2025-01-31'),
+        undefined
+      );
+    });
   });
 
   describe('GET /search', () => {
@@ -298,6 +326,13 @@ describe('Audit Logs Routes', () => {
       expect(mockSearchAuditLogs).not.toHaveBeenCalled();
     });
 
+    it('should accept valid status filter', async () => {
+      mockSearchAuditLogs.mockResolvedValue({ items: [], total: 0, hasMore: false });
+      const res = await request(app).get('/api/audit-logs/search?status=success');
+      expect(res.status).toBe(200);
+      expect(mockSearchAuditLogs).toHaveBeenCalledWith({ status: 'success' });
+    });
+
     it('should return 400 for invalid endDate', async () => {
       const res = await request(app).get('/api/audit-logs/search?endDate=not-a-date');
 
@@ -312,6 +347,20 @@ describe('Audit Logs Routes', () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('should apply resourceType and resourceId filters', async () => {
+      mockSearchAuditLogs.mockResolvedValue({ items: [], total: 0, hasMore: false });
+
+      const res = await request(app).get(
+        '/api/audit-logs/search?resourceType=project&resourceId=proj-1'
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockSearchAuditLogs).toHaveBeenCalledWith({
+        resourceType: 'project',
+        resourceId: 'proj-1',
+      });
     });
   });
 

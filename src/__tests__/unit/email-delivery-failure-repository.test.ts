@@ -90,9 +90,24 @@ describe('EmailDeliveryFailureRepository', () => {
     });
 
     it('should return empty list on database error', async () => {
-      mockListDocuments.mockRejectedValueOnce(new Error('select failed'));
+      jest.spyOn(repo, 'listWithQueries').mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.findRecent(50);
       expect(result).toEqual([]);
+    });
+
+    it('should default to a limit of 50 when called without arguments', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'f2', failure_code: 'MAILBOX_FULL' })],
+        total: 1,
+      });
+      const result = await repo.findRecent();
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('f2');
+      expect(mockListDocuments).toHaveBeenCalledWith(
+        'freelancexchain',
+        'email_delivery_failures',
+        expect.arrayContaining([expect.objectContaining({ type: 'limit', args: [50] })])
+      );
     });
   });
 });
