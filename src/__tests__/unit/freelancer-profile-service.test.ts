@@ -6,6 +6,7 @@ import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-r
 import { SkillEntity } from '../../repositories/skill-repository.js';
 import { createInMemoryStore, createMockFreelancerProfileRepository, createMockSkillRepository } from '../helpers/mock-repository-factory.js';
 import { createTestUser } from '../helpers/test-data-factory.js';
+import { normalizeSkillSearchKey } from '../../utils/skill-utils.js';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
@@ -221,17 +222,17 @@ describe('Freelancer Profile Service - Skill Properties', () => {
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
 
-          // Deduplicate by name (case-insensitive) to match service behavior
+          // Deduplicate by normalized skill search key to match service behavior
           const uniqueSkills = Array.from(
             new Map(
-              skillInputs.map(s => [s.name.trim().toLowerCase(), s])
+              skillInputs.map(s => [normalizeSkillSearchKey(s.name), s])
             ).values()
           );
 
           expect(addResult.data.skills.length).toBe(uniqueSkills.length);
           for (const input of uniqueSkills) {
             const found = addResult.data.skills.find(
-              s => s.name.toLowerCase() === input.name.trim().toLowerCase()
+              s => normalizeSkillSearchKey(s.name) === normalizeSkillSearchKey(input.name)
             );
             expect(found).toBeDefined();
             expect(found?.yearsOfExperience).toBe(input.yearsOfExperience);

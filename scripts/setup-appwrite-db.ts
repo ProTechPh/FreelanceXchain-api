@@ -1395,7 +1395,7 @@ const projects = [
     status: "open",
     milestones: JSON.stringify([
       { id: "m1", title: "UI Design & Components", description: "Create wireframes and reusable components", amount: 2000, due_date: futureDate(15), status: "pending" },
-      { id: "m2", title: "Core Functionality", description: "Implement token swap and wallet integration", amount: 3000, due_date: futureDate(30), status: "pending" },
+      { id: "m2", title: "Core Functionality", description: "Implement token swap and wallet integration", amount: 3000, due_date: futureDate(30), status: "submitted" },
       { id: "m3", title: "Testing & Deployment", description: "QA testing and production deployment", amount: 3000, due_date: futureDate(45), status: "pending" },
     ]),
     freelancer_limit: 1,
@@ -1707,7 +1707,7 @@ const contracts = [
     base_amount: 8000,
     rush_fee: 0,
     total_amount: 8000,
-    status: "completed",
+    status: "active",
   },
   {
     seedId: "contract-2",
@@ -2095,6 +2095,71 @@ const reviews = [
   },
 ];
 
+const disputes = [
+  {
+    seedId: "dispute-1",
+    contract_id: "contract-1",
+    milestone_id: "m2",
+    initiator_id: "employer-1",
+    reason: "Deliverable did not pass automated security test suite and smart contract integration tests.",
+    evidence: JSON.stringify([
+      {
+        id: "ev-1",
+        submitter_id: "employer-1",
+        type: "text",
+        content: "Automated vulnerability scan revealed missing access control checks in swap callback.",
+        submitted_at: "2026-03-01T10:00:00.000Z",
+      },
+    ]),
+    status: "under_review",
+    resolution: null,
+  },
+  {
+    seedId: "dispute-2",
+    contract_id: "contract-4",
+    milestone_id: "m1",
+    initiator_id: "employer-1",
+    reason: "Design tokens and Figma asset export delays affected sprint release schedule.",
+    evidence: JSON.stringify([
+      {
+        id: "ev-2",
+        submitter_id: "employer-1",
+        type: "text",
+        content: "Detailed audit of delayed Figma design token delivery schedule.",
+        submitted_at: "2026-02-15T14:30:00.000Z",
+      },
+    ]),
+    status: "resolved",
+    resolution: JSON.stringify({
+      decision: "split",
+      reasoning: "Both parties agreed to an adjusted delivery scope and equal escrow split.",
+      resolved_by: "admin-1",
+      resolved_at: "2026-02-20T16:00:00.000Z",
+    }),
+  },
+];
+
+const disputeEvidence = [
+  {
+    seedId: "ev-1",
+    dispute_id: "dispute-1",
+    submitted_by: "employer-1",
+    evidence_type: "text",
+    description: "Automated vulnerability scan revealed missing access control checks in swap callback.",
+    verified_by: null,
+    verified_at: null,
+  },
+  {
+    seedId: "ev-2",
+    dispute_id: "dispute-2",
+    submitted_by: "employer-1",
+    evidence_type: "text",
+    description: "Detailed audit of delayed Figma design token delivery schedule.",
+    verified_by: "admin-1",
+    verified_at: "2026-02-18T12:00:00.000Z",
+  },
+];
+
 async function seedCollection(collectionId: string, documents: Record<string, unknown>[], name: string): Promise<void> {
   console.log(`    📦 Seeding ${name}...`);
   let created = 0;
@@ -2256,6 +2321,8 @@ async function seedAllData(): Promise<void> {
   await seedCollection("projects", projects, "Projects");
   await seedCollection("contracts", contracts, "Contracts");
   await seedCollection("reviews", reviews, "Reviews");
+  await seedCollection("disputes", disputes, "Disputes");
+  await seedCollection("dispute_evidence", disputeEvidence, "Dispute Evidence");
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
