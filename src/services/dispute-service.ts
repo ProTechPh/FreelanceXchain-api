@@ -797,14 +797,17 @@ export async function getDisputeById(
 
 export async function getDisputesByContract(
   contractId: string,
-  userId: string
+  userId: string,
+  userRole?: string
 ): Promise<DisputeServiceResult<Dispute[]>> {
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
     return errorResult('NOT_FOUND', 'Contract not found');
   }
 
-  if (contractEntity.employer_id !== userId && contractEntity.freelancer_id !== userId) {
+  const isParty = contractEntity.employer_id === userId || contractEntity.freelancer_id === userId;
+  const isPrivileged = userRole === 'admin' || userRole === 'arbitrator' || userRole === 'employer';
+  if (!isParty && !isPrivileged) {
     return errorResult('UNAUTHORIZED', 'Only contract parties can view disputes');
   }
 

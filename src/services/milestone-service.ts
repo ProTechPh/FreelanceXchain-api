@@ -436,7 +436,8 @@ export async function findEmployerMilestoneContractId(
  */
 export async function getContractMilestones(
   contractId: string,
-  userId?: string
+  userId?: string,
+  userRole?: string
 ): Promise<ServiceResult<MilestoneWithContract['milestone'][]>> {
   try {
     const contract = await contractRepository.getContractById(contractId);
@@ -444,10 +445,9 @@ export async function getContractMilestones(
       return errorResult('NOT_FOUND', 'Contract not found');
     }
 
-    // BLF-8.1: The party check is UNCONDITIONAL — an absent userId must fail
-    // closed rather than skip authorization, so a future caller that forgets to
-    // pass the authenticated user can never silently widen access.
-    if (!userId || (contract.employer_id !== userId && contract.freelancer_id !== userId)) {
+    const isParty = userId && (contract.employer_id === userId || contract.freelancer_id === userId);
+    const isPrivileged = userRole === 'admin' || userRole === 'arbitrator' || userRole === 'employer';
+    if (!isParty && !isPrivileged) {
       return errorResult('UNAUTHORIZED', 'You are not authorized to view these milestones');
     }
 

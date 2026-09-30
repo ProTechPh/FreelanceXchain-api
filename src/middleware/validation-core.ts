@@ -21,7 +21,7 @@ export { APPWRITE_ID_PATTERN, APPWRITE_DOCUMENT_ID_PATTERN };
 const SKILL_ID_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|skill-\d+|[0-9a-f]{20})$/i;
 
 export function isValidUUID(value: string): boolean {
-  return UUID_PATTERN.test(value);
+  return UUID_PATTERN.test(value) || APPWRITE_DOCUMENT_ID_PATTERN.test(value);
 }
 
 export function isValidSkillId(value: string): boolean {
