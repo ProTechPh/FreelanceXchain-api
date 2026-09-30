@@ -119,7 +119,7 @@ export function generateCsrfToken(req: Request, res: Response): void {
       throw new Error(`csrfTokenGenerator is not a function, it is: ${typeof csrfTokenGenerator}`);
     }
 
-    const token = csrfTokenGenerator(req, res, { overwrite: true });
+    const token = csrfTokenGenerator(req, res);
     const cookieName = getNodeEnv() === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
 
     logger.info('CSRF token generated successfully', {
