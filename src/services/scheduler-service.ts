@@ -5,8 +5,8 @@ import { logger } from '../config/logger.js';
 import { sendWeeklyDigestEmail } from './email-delivery-service.js';
 import { filterProjectsBySavedSearch, filterFreelancersBySavedSearch } from './saved-search-service.js';
 import { resolveSkillFilterToNames } from './search-service.js';
-import { projectRepository, type ProjectEntity, type ProjectStatus } from '../repositories/project-repository.js';
-import { contractRepository, type ContractEntity } from '../repositories/contract-repository.js';
+import { projectRepository, type ProjectEntity, type ProjectMilestoneSnapshot, type ProjectStatus } from '../repositories/project-repository.js';
+import { contractRepository, type ContractEntity, type ContractProjectRef } from '../repositories/contract-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { messageRepository } from '../repositories/message-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
@@ -47,7 +47,7 @@ async function autoCloseExpiredProjects(): Promise<void> {
 
 type StuckMilestone = { status?: string; updated_at?: string };
 
-function parseMilestones(project: ProjectEntity): StuckMilestone[] {
+function parseMilestones(project: Pick<ProjectEntity, 'milestones'> | ProjectMilestoneSnapshot): StuckMilestone[] {
   return project.milestones as StuckMilestone[];
 }
 
@@ -393,17 +393,17 @@ const RELEASING_STUCK_GRACE_MS = 15 * 60 * 1000; // 15 minutes
 async function recoverStuckReleasingMilestones(): Promise<void> {
   try {
     const now = Date.now();
-    const activeContracts = await contractRepository.findActiveContracts();
-    if (activeContracts.length === 0) return;
+    const activeContractRefs = await contractRepository.findActiveContractProjectRefs();
+    if (activeContractRefs.length === 0) return;
 
     const projectIds = [...new Set(
-      activeContracts.map(contract => contract.project_id).filter(Boolean)
+      activeContractRefs.map(contract => contract.project_id).filter(Boolean)
     )];
-    let projects: ProjectEntity[];
+    let projects: ProjectMilestoneSnapshot[];
     try {
-      projects = await projectRepository.getProjectsByIds(projectIds);
+      projects = await projectRepository.getProjectMilestoneSnapshotsByIds(projectIds);
     } catch (error) {
-      for (const contract of activeContracts) {
+      for (const contract of activeContractRefs) {
         logger.error('Failed to recover stuck releasing milestone for a contract', {
           contractId: contract.id,
           error,
@@ -414,7 +414,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
     const projectsById = new Map(projects.map(project => [project.id, project]));
 
     await Promise.all(
-      activeContracts.map(async (contract) => {
+      activeContractRefs.map(async (contract: ContractProjectRef) => {
         try {
           const projectId = contract.project_id;
           if (!projectId) return;

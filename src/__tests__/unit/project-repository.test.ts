@@ -28,6 +28,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     between: jest.fn((...args: any[]) => ({ type: 'between', args })),
     or: jest.fn((...args: any[]) => ({ type: 'or', args })),
     cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
+    select: jest.fn((...args: any[]) => ({ type: 'select', args })),
   },
   DatabasesIndexType: { Key: 'key', Unique: 'unique', Fulltext: 'fulltext' },
   OrderBy: { Asc: 'asc', Desc: 'desc' },
@@ -694,6 +695,32 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
     it('should throw when the batch query fails', async () => {
       mockListDocuments.mockRejectedValueOnce(new Error('boom'));
       await expect(repo.getProjectsByIds(['p1'])).rejects.toThrow('Failed to get projects by ids');
+    });
+  });
+
+  describe('getProjectMilestoneSnapshotsByIds', () => {
+    const repo = new ProjectRepository();
+
+    it('should batch-fetch only project ids and milestones', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          toAppwriteDoc({
+            id: 'p1',
+            title: 'Full title should not be required',
+            milestones: JSON.stringify([{ id: 'm1', status: 'releasing' }]),
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await repo.getProjectMilestoneSnapshotsByIds(['p1', 'p1']);
+
+      expect(result).toEqual([
+        { id: 'p1', milestones: [{ id: 'm1', status: 'releasing' }] },
+      ]);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries).toContainEqual({ type: 'select', args: [['$id', 'milestones']] });
+      expect(queries.some(q => q.type === 'equal' && q.args[0] === '$id')).toBe(true);
     });
   });
 

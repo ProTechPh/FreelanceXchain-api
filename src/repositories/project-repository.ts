@@ -54,6 +54,7 @@ export type ProjectEntity = {
 };
 
 const COLLECTION_ID = 'projects';
+export type ProjectMilestoneSnapshot = Pick<ProjectEntity, 'id' | 'milestones'>;
 
 /** Extract the skill IDs from a project's required_skills for the indexed array attribute. */
 function toSkillIds(requiredSkills: ProjectEntity['required_skills'] | undefined): string[] {
@@ -140,6 +141,39 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
       // Throw (like user-repository's getUsersByIds) so favorites enrichment
       // surfaces the failure as an error instead of silently dropping targets.
       throw new Error(`Failed to get projects by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
+    }
+  }
+
+  async getProjectMilestoneSnapshotsByIds(ids: string[]): Promise<ProjectMilestoneSnapshot[]> {
+    if (ids.length === 0) return [];
+    try {
+      const uniqueIds = [...new Set(ids)];
+      const projects: ProjectMilestoneSnapshot[] = [];
+      for (let i = 0; i < uniqueIds.length; i += 100) {
+        const chunk = uniqueIds.slice(i, i + 100);
+        const response = await this.timedQuery('getProjectMilestoneSnapshotsByIds', () =>
+          databases.listDocuments(
+            DATABASE_ID,
+            COLLECTION_ID,
+            [
+              Query.equal('$id', chunk),
+              Query.select(['$id', 'milestones']),
+              Query.limit(chunk.length),
+            ]
+          )
+        );
+
+        projects.push(...response.documents.map((doc) => {
+          const entity = fromAppwriteDoc<Record<string, unknown>>(doc);
+          return {
+            id: String(entity.id),
+            milestones: parseField(entity.milestones, []),
+          } as ProjectMilestoneSnapshot;
+        }));
+      }
+      return projects;
+    } catch (error) {
+      throw new Error(`Failed to get project milestone snapshots by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 

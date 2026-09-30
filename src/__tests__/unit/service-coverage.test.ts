@@ -132,6 +132,7 @@ const mockContractRepo = {
   findAllByFreelancers: jest.fn(),
   countCompletedByFreelancer: jest.fn(),
   findActiveContracts: jest.fn(),
+  findActiveContractProjectRefs: jest.fn(),
   getUserContracts: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -397,6 +398,7 @@ function resetAllMocks() {
   mockContractRepo.findAllByFreelancers.mockReset().mockResolvedValue(new Map());
   mockContractRepo.countCompletedByFreelancer.mockReset().mockResolvedValue(0);
   mockContractRepo.findActiveContracts.mockReset().mockResolvedValue([]);
+  mockContractRepo.findActiveContractProjectRefs.mockReset().mockResolvedValue([]);
   mockContractRepo.getUserContracts.mockReset().mockResolvedValue({ items: [], total: 0, hasMore: false });
   mockMessageRepo.getUnreadMessageCountForUser.mockReset().mockResolvedValue(0);
   mockMessageRepo.getUnreadMessageCountsForUsers.mockReset().mockResolvedValue(new Map());

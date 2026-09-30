@@ -21,6 +21,7 @@ export type ContractEntity = {
 };
 
 const COLLECTION_ID = 'contracts';
+export type ContractProjectRef = Pick<ContractEntity, 'id' | 'project_id'>;
 
 function mapDoc(doc: Record<string, unknown>): ContractEntity {
   return fromAppwriteDoc<ContractEntity>(doc);
@@ -339,6 +340,44 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
    */
   async findActiveContracts(): Promise<ContractEntity[]> {
     return this.fetchAll([Query.equal('status', 'active')]);
+  }
+
+  /**
+   * Active contract references for milestone recovery.
+   * Uses a narrow Appwrite select so the 10-minute recovery job does not pull
+   * full contract payloads just to discover related project IDs.
+   */
+  async findActiveContractProjectRefs(): Promise<ContractProjectRef[]> {
+    const refs: ContractProjectRef[] = [];
+    let lastId: string | undefined;
+
+    while (true) {
+      const queries = [
+        Query.equal('status', 'active'),
+        Query.select(['$id', 'project_id']),
+        Query.limit(100),
+      ];
+      if (lastId) {
+        queries.push(Query.cursorAfter(lastId));
+      }
+
+      const response = await this.timedQuery('findActiveContractProjectRefs', () =>
+        databases.listDocuments(DATABASE_ID, COLLECTION_ID, queries)
+      );
+
+      for (const doc of response.documents) {
+        const entity = fromAppwriteDoc<Partial<ContractEntity>>(doc);
+        if (entity.id && entity.project_id) {
+          refs.push({ id: entity.id, project_id: entity.project_id });
+        }
+      }
+
+      if (response.documents.length < 100) break;
+      lastId = response.documents[response.documents.length - 1]?.$id;
+      if (!lastId) break;
+    }
+
+    return refs;
   }
 }
 
