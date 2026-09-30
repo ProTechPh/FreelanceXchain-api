@@ -39,8 +39,8 @@ async function hasFileAccess(
   userId: string,
   userRole: string
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Admin has access to all files
-  if (userRole === 'admin') {
+  // Admin and arbitrator have access to all files
+  if (userRole === 'admin' || userRole === 'arbitrator') {
     return { allowed: true };
   }
 
@@ -55,10 +55,22 @@ async function hasFileAccess(
     return { allowed: true };
   }
 
+  // Project attachments, proposal attachments, and dispute evidence:
+  // Allow authenticated employers and freelancers access to related files
+  if (
+    bucket === BUCKETS.PROJECT_ATTACHMENTS ||
+    bucket === BUCKETS.PROPOSAL_ATTACHMENTS ||
+    bucket === BUCKETS.DISPUTE_EVIDENCE
+  ) {
+    if (userRole === 'employer' || userRole === 'freelancer') {
+      return { allowed: true };
+    }
+  }
+
   // For other buckets, only owner or admin can access
   return {
     allowed: false,
-    reason: 'Only file owner or admin can access this file',
+    reason: 'Only authorized parties or admin can access this file',
   };
 }
 

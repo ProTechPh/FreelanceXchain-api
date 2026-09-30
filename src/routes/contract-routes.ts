@@ -18,6 +18,7 @@ import {
 import { initializeContractEscrow } from '../services/payment-service.js';
 import { getProjectById } from '../services/project-service.js';
 import { getDisputesByContract } from '../services/dispute-service.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
 import { withLock } from '../utils/async-lock.js';
 import type { Contract } from '../utils/entity-mapper.js';
 
@@ -177,12 +178,55 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
   }
 
   const contract = result.data;
-  if (contract.freelancerId !== userId && contract.employerId !== userId) {
-    // Check if user is admin (admins can view all contracts)
-    if (req.user?.role !== 'admin') {
-      sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', { requestId });
-      return;
+  const userRole = req.user?.role as string | undefined;
+  let isAuthorized = (
+    contract.freelancerId === userId ||
+    contract.employerId === userId ||
+    userRole === 'admin' ||
+    userRole === 'arbitrator'
+  );
+
+  if (!isAuthorized) {
+    // 1. Check if contract is accessed via an explicit dispute reference
+    const disputeId = (req.query['disputeId'] as string) || (req.headers['x-dispute-id'] as string);
+    if (disputeId) {
+      try {
+        const dispute = await disputeRepository.getDisputeById(disputeId);
+        if (dispute && dispute.contract_id === id) {
+          if (
+            dispute.initiator_id === userId ||
+            userRole === 'employer' ||
+            userRole === 'freelancer' ||
+            userRole === 'arbitrator' ||
+            userRole === 'admin'
+          ) {
+            isAuthorized = true;
+          }
+        }
+      } catch (err) {
+        logger.debug('Failed to verify dispute context for contract', { disputeId, error: err });
+      }
     }
+
+    // 2. Check if ANY dispute exists on this contract
+    if (!isAuthorized) {
+      try {
+        const disputes = await disputeRepository.getAllDisputesByContract(id);
+        if (disputes.length > 0) {
+          const isDisputeParty = disputes.some(d => d.initiator_id === userId);
+          if (isDisputeParty || userRole === 'employer' || userRole === 'arbitrator' || userRole === 'admin') {
+            isAuthorized = true;
+          }
+        }
+      } catch (err) {
+        logger.debug('Failed to check contract disputes for authorization', { contractId: id, error: err });
+      }
+    }
+  }
+
+  if (!isAuthorized) {
+    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', { requestId });
+    return;
   }
 
   res.status(200).json(result.data);
@@ -701,7 +745,7 @@ router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID
   }
 
   try {
-    const result = await getDisputesByContract(contractId, userId);
+    const result = await getDisputesByContract(contractId, userId, req.user?.role);
 
     if (!result.success) {
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
