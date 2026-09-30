@@ -26,6 +26,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
     cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
+    select: jest.fn((...args: any[]) => ({ type: 'select', args })),
   },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
@@ -457,6 +458,28 @@ describe('ContractRepository', () => {
       const result = await repo.findActiveContracts();
       expect(result).toHaveLength(2);
       const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === 'active')).toBe(true);
+    });
+  });
+
+  describe('findActiveContractProjectRefs', () => {
+    it('should fetch only contract ids and project ids for recovery scans', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          toAppwriteDoc({ id: 'c1', project_id: 'p1', status: 'active', escrow_address: '0xabc' }),
+          toAppwriteDoc({ id: 'c2', project_id: 'p2', status: 'active', total_amount: 500 }),
+        ],
+        total: 2,
+      });
+
+      const result = await repo.findActiveContractProjectRefs();
+
+      expect(result).toEqual([
+        { id: 'c1', project_id: 'p1' },
+        { id: 'c2', project_id: 'p2' },
+      ]);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries).toContainEqual({ type: 'select', args: [['$id', 'project_id']] });
       expect(queries.some(q => q.type === 'equal' && q.args[1] === 'active')).toBe(true);
     });
   });

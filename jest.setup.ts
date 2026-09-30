@@ -327,7 +327,7 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
     lessThanEqual: jest.fn((attr: string, val: unknown) => `lessThanEqual(${attr},${val})`),
     startsWith: jest.fn(),
     endsWith: jest.fn(),
-    select: jest.fn(),
+    select: jest.fn((attrs: string[]) => `select(${attrs.join(',')})`),
     isNull: jest.fn(),
     isNotNull: jest.fn(),
     regex: jest.fn(),

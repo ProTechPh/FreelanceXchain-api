@@ -1,0 +1,13 @@
+{
+  "network": "polygon",
+  "chainId": "137",
+  "rpcUrl": "https://polygon-bor-rpc.publicnode.com",
+  "deployer": "0x800E016f1794Fcf307Ef46d4f5daa03fa2283Dd1",
+  "contracts": {
+    "ContractAgreement": "0xC919DF3e75B74B89Aa26197A446601d601Cfa4d1",
+    "FreelanceReputation": "0xb0096b88F6BE598C9A4889326e7b77A38D0F239b",
+    "DisputeResolution": "0x46D669A165cBD8d5EDE6d206E3D9301bF49cF445",
+    "MilestoneRegistry": "0xB851FaC875B42B8550501Ea031bc3a702b53e484"
+  },
+  "deployedAt": "2026-09-30T00:27:13.671Z"
+}
