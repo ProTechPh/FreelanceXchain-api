@@ -642,6 +642,55 @@ describe('Search Service - Extended Coverage', () => {
       expect(ids).not.toContain(pythonDev.user_id);
     });
 
+    it('should return only canonical Node.js profiles for the Node.js skill facet', async () => {
+      const nodeDotJsDev = createTestFreelancerProfile({
+        user_id: 'freelancer-node-dot-js',
+        bio: 'Backend API developer',
+        skills: [{ skill_id: 'skill-node', name: 'Node.js', category_id: 'cat-1', years_of_experience: 5 }] as any,
+      });
+      const nodeJsDev = createTestFreelancerProfile({
+        user_id: 'freelancer-nodejs',
+        bio: 'Backend service developer',
+        skills: [{ skill_id: 'skill-node', name: 'NodeJS', category_id: 'cat-1', years_of_experience: 4 }] as any,
+      });
+      const nodeSpaceJsDev = createTestFreelancerProfile({
+        user_id: 'freelancer-node-space-js',
+        bio: 'Realtime app developer',
+        skills: [{ skill_id: 'skill-node', name: 'Node JS', category_id: 'cat-1', years_of_experience: 3 }] as any,
+      });
+      const javascriptOnlyDev = createTestFreelancerProfile({
+        user_id: 'freelancer-javascript',
+        bio: 'Frontend JavaScript developer',
+        skills: [{ skill_id: 'skill-js', name: 'JavaScript', category_id: 'cat-1', years_of_experience: 6 }] as any,
+      });
+      const broadNodeLabelDev = createTestFreelancerProfile({
+        user_id: 'freelancer-node',
+        bio: 'Graph node infrastructure operator',
+        skills: [{ skill_id: 'skill-infra', name: 'Node', category_id: 'cat-2', years_of_experience: 2 }] as any,
+      });
+
+      for (const profile of [nodeDotJsDev, nodeJsDev, nodeSpaceJsDev, javascriptOnlyDev, broadNodeLabelDev]) {
+        freelancerStore.set(profile.user_id, profile);
+      }
+
+      const results = await searchFreelancers({ skillIds: ['skill-node'] });
+
+      expect(results.success).toBe(true);
+      if (!results.success) return;
+
+      const ids = results.data.items.map(f => f.userId);
+      expect(ids).toEqual(expect.arrayContaining([
+        nodeDotJsDev.user_id,
+        nodeJsDev.user_id,
+        nodeSpaceJsDev.user_id,
+      ]));
+      expect(ids).not.toContain(javascriptOnlyDev.user_id);
+      expect(ids).not.toContain(broadNodeLabelDev.user_id);
+      expect(results.data.items.every(profile =>
+        profile.skills.some(skill => skill.name === 'Node.js')
+      )).toBe(true);
+    });
+
     it('should warn and degrade to name-only matching when the taxonomy lookup fails', async () => {
       const reactDev = createTestFreelancerProfile({
         bio: 'React specialist',

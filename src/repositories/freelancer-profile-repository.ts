@@ -1,5 +1,6 @@
 import { BaseRepository, PaginatedResult, QueryOptions, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { canonicalizeSkillDisplayName, normalizeSkillSearchKey } from '../utils/skill-utils.js';
 
 export type FreelancerProfileEntity = {
   id: string;
@@ -36,7 +37,7 @@ function normalizeSkills(value: unknown): FreelancerProfileEntity['skills'] {
     const years = typeof yearsValue === 'number' && Number.isFinite(yearsValue) && yearsValue >= 0
       ? yearsValue
       : 0;
-    return [{ name: nameValue.trim(), years_of_experience: years }];
+    return [{ name: canonicalizeSkillDisplayName(nameValue), years_of_experience: years }];
   });
 }
 
@@ -168,15 +169,14 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   async searchBySkills(skillNames: string[], options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-    const lowerSkillNames = skillNames.map(s => s.toLowerCase());
-    const lowerSkillNameSet = new Set(lowerSkillNames);
+    const skillNameSet = new Set(skillNames.map(normalizeSkillSearchKey).filter(Boolean));
 
     try {
       const matchingProfiles: FreelancerProfileEntity[] = [];
       await this.fetchInBatches([Query.orderDesc('$createdAt')], 100, (batchDocs) => {
         for (const doc of batchDocs) {
           const profile = mapProfile(doc);
-          if (profile.skills.some(skill => lowerSkillNameSet.has(skill.name.toLowerCase()))) {
+          if (profile.skills.some(skill => skillNameSet.has(normalizeSkillSearchKey(skill.name)))) {
             matchingProfiles.push(profile);
           }
         }

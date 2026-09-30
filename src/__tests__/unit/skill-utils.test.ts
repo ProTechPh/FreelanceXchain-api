@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { normalizeSkillName } from '../../utils/skill-utils.js';
+import { canonicalizeSkillDisplayName, normalizeSkillName, normalizeSkillSearchKey } from '../../utils/skill-utils.js';
 
 describe('normalizeSkillName', () => {
   it('should lowercase and trim the name', () => {
@@ -38,5 +38,30 @@ describe('normalizeSkillName', () => {
   it('should handle empty and whitespace-only input', () => {
     expect(normalizeSkillName('')).toBe('');
     expect(normalizeSkillName('   ')).toBe('');
+  });
+});
+
+describe('normalizeSkillSearchKey', () => {
+  it('should collapse Node.js spelling variants to one exact facet key', () => {
+    expect(normalizeSkillSearchKey('Node.js')).toBe('node.js');
+    expect(normalizeSkillSearchKey('NodeJS')).toBe('node.js');
+    expect(normalizeSkillSearchKey('Node JS')).toBe('node.js');
+    expect(normalizeSkillSearchKey('node-js')).toBe('node.js');
+  });
+
+  it('should not broaden Node.js to generic Node or JavaScript skills', () => {
+    expect(normalizeSkillSearchKey('Node')).toBe('node');
+    expect(normalizeSkillSearchKey('JavaScript')).toBe('javascript');
+  });
+});
+
+describe('canonicalizeSkillDisplayName', () => {
+  it('should return the canonical display label for Node.js variants', () => {
+    expect(canonicalizeSkillDisplayName('NodeJS')).toBe('Node.js');
+    expect(canonicalizeSkillDisplayName('Node JS')).toBe('Node.js');
+  });
+
+  it('should preserve unrelated custom skill display casing after cleanup', () => {
+    expect(canonicalizeSkillDisplayName('  Type   Script  ')).toBe('Type Script');
   });
 });

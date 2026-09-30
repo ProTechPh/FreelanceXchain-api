@@ -205,6 +205,29 @@ describe('FreelancerProfileRepository', () => {
       expect(result.items[0]!.skills).toEqual([{ name: 'React', years_of_experience: 2 }]);
     });
 
+    it('should match only canonical Node.js skills without broad JavaScript or Node leakage', async () => {
+      const docs = [
+        toAppwriteDoc({ id: 'fp-node-dot-js', skills: [{ name: 'Node.js', years_of_experience: 5 }] }),
+        toAppwriteDoc({ id: 'fp-nodejs', skills: [{ name: 'NodeJS', years_of_experience: 4 }] }),
+        toAppwriteDoc({ id: 'fp-node-space-js', skills: [{ skill_name: 'Node JS', years_of_experience: 3 }] }),
+        toAppwriteDoc({ id: 'fp-javascript', skills: [{ name: 'JavaScript', years_of_experience: 6 }] }),
+        toAppwriteDoc({ id: 'fp-node', skills: [{ name: 'Node', years_of_experience: 2 }] }),
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: docs.length });
+
+      const result = await repo.searchBySkills(['Node.js']);
+
+      expect(result.items.map((profile: any) => profile.id)).toEqual([
+        'fp-node-dot-js',
+        'fp-nodejs',
+        'fp-node-space-js',
+      ]);
+      expect(result.total).toBe(3);
+      expect(result.items.every((profile: any) =>
+        profile.skills.some((skill: any) => skill.name === 'Node.js')
+      )).toBe(true);
+    });
+
     it('should handle custom options and hasMore=true', async () => {
       const docs = [
         toAppwriteDoc({ id: 'fp1', skills: [{ name: 'React', years_of_experience: 2 }] }),

@@ -69,9 +69,40 @@ function getExpectedHostnames(): Set<string> {
   );
 }
 
-function shouldBypassTurnstile(nodeEnv: string, secret?: string): boolean {
+function getRequestHostname(req: Request): string | undefined {
+  const origin = req.headers.origin;
+  if (typeof origin === 'string') {
+    try {
+      return new URL(origin).hostname;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const referer = req.headers.referer;
+  if (typeof referer === 'string') {
+    try {
+      return new URL(referer).hostname;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const host = req.headers.host;
+  return typeof host === 'string' ? host.split(':')[0] : undefined;
+}
+
+function isLocalHostname(hostname?: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function shouldBypassTurnstile(nodeEnv: string, secret: string | undefined, req: Request): boolean {
   if (process.env['ALLOW_TURNSTILE_BYPASS'] === 'true' && nodeEnv !== 'production') {
     logger.debug('Turnstile bypass enabled for non-production environment');
+    return true;
+  }
+  if (nodeEnv !== 'production' && isLocalHostname(getRequestHostname(req))) {
+    logger.debug('Turnstile bypass enabled for localhost auth flow');
     return true;
   }
   if (nodeEnv === 'test' && (!secret || process.env['ENFORCE_TURNSTILE_TEST'] !== 'true')) return true;
@@ -87,7 +118,7 @@ export function requireTurnstile(expectedAction: string) {
     const requestId = getRequestId(req);
     const secret = getTurnstileSecret();
 
-    if (shouldBypassTurnstile(getNodeEnv(), secret)) {
+    if (shouldBypassTurnstile(getNodeEnv(), secret, req)) {
       next();
       return;
     }
