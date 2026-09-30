@@ -4,6 +4,7 @@
  */
 
 import { jest } from '@jest/globals';
+import { canonicalizeSkillDisplayName, normalizeSkillSearchKey } from '../../utils/skill-utils.js';
 
 /**
  * Create an in-memory store for testing
@@ -463,6 +464,16 @@ export function createMockReviewRepository(store: Map<string, any>) {
  */
 export function createMockFreelancerProfileRepository(store: Map<string, any>) {
   const base = createMockRepository(store);
+  const normalizeProfileSkills = (profile: any) => ({
+    ...profile,
+    skills: Array.isArray(profile.skills)
+      ? profile.skills.map((skill: any) => (
+        skill && typeof skill === 'object' && skill.name
+          ? { ...skill, name: canonicalizeSkillDisplayName(String(skill.name)) }
+          : skill
+      ))
+      : profile.skills,
+  });
 
   return {
     ...base,
@@ -496,7 +507,7 @@ export function createMockFreelancerProfileRepository(store: Map<string, any>) {
       const allProfiles = Array.from(store.values());
       const limit = options?.limit || allProfiles.length;
       const offset = options?.offset || 0;
-      const items = allProfiles.slice(offset, offset + limit);
+      const items = allProfiles.slice(offset, offset + limit).map(normalizeProfileSkills);
       return {
         items,
         hasMore: offset + limit < allProfiles.length,
@@ -510,7 +521,7 @@ export function createMockFreelancerProfileRepository(store: Map<string, any>) {
       );
       const limit = options?.limit || filtered.length;
       const offset = options?.offset || 0;
-      const items = filtered.slice(offset, offset + limit);
+      const items = filtered.slice(offset, offset + limit).map(normalizeProfileSkills);
       return {
         items,
         hasMore: offset + limit < filtered.length,
@@ -520,15 +531,15 @@ export function createMockFreelancerProfileRepository(store: Map<string, any>) {
     searchBySkills: jest.fn(async (skillNames: string[], options?: any) => {
       // Mirrors the real repository: profiles store skills by NAME, matched
       // case-insensitively (the service resolves skill IDs to names first).
-      const lowerSkillNameSet = new Set(skillNames.map((s: string) => s.toLowerCase()));
+      const skillNameSet = new Set(skillNames.map((s: string) => normalizeSkillSearchKey(s)));
       const filtered = Array.from(store.values()).filter(profile =>
         profile.skills?.some((skill: any) =>
-          skill && skill.name && lowerSkillNameSet.has(String(skill.name).toLowerCase())
+          skill && skill.name && skillNameSet.has(normalizeSkillSearchKey(String(skill.name)))
         )
       );
       const limit = options?.limit || filtered.length;
       const offset = options?.offset || 0;
-      const items = filtered.slice(offset, offset + limit);
+      const items = filtered.slice(offset, offset + limit).map(normalizeProfileSkills);
       return {
         items,
         hasMore: offset + limit < filtered.length,

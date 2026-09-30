@@ -105,6 +105,21 @@ describe('requireTurnstile Middleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  it('should bypass verification for localhost auth flows outside production', async () => {
+    mockGetNodeEnv.mockReturnValue('development');
+
+    const req = createMockReq({
+      headers: { origin: 'http://localhost:3000' },
+    });
+    const { res } = createMockRes();
+    const next = jest.fn() as NextFunction;
+
+    const middleware = requireTurnstile('login');
+    await middleware(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it('should not honor the explicit bypass in production', async () => {
     process.env['ALLOW_TURNSTILE_BYPASS'] = 'true';
     mockGetNodeEnv.mockReturnValue('production');

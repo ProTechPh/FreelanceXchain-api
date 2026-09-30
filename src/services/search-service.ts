@@ -7,6 +7,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { successResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 import { projectCache, freelancerSearchCache } from '../utils/cache.js';
+import { normalizeSkillSearchKey } from '../utils/skill-utils.js';
 
 const isTestEnv = (): boolean => process.env.NODE_ENV === 'test';
 
@@ -241,11 +242,11 @@ export async function searchProjects(
  * a warning and matching degrades to name-only rather than failing the search.
  */
 export async function resolveSkillFilterToNames(values: string[]): Promise<string[]> {
-  const normalized = new Set(values.map(value => value.toLowerCase()));
+  const normalized = new Set(values.map(normalizeSkillSearchKey).filter(Boolean));
   try {
     const resolved = await skillRepository.findSkillsByIdsStrict(values);
     for (const skill of resolved) {
-      normalized.add(skill.name.toLowerCase());
+      normalized.add(normalizeSkillSearchKey(skill.name));
     }
   } catch (error) {
     // Taxonomy lookup failed — skill IDs in the filter can't be resolved to
@@ -329,7 +330,7 @@ export async function searchFreelancers(
     if (hasSkills) {
       const skillNameSet = new Set(skillNameValues);
       filteredItems = filteredItems.filter(profile =>
-        profile.skills.some(skill => skillNameSet.has(skill.name.toLowerCase()))
+        profile.skills.some(skill => skillNameSet.has(normalizeSkillSearchKey(skill.name)))
       );
     }
 
