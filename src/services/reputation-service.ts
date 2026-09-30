@@ -20,7 +20,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 import type { Review } from '../models/review.js';
-import { reputationCache } from '../utils/cache.js';
+import { reputationCache, platformMetricsCache } from '../utils/cache.js';
 
 
 export type RatingInput = {
@@ -342,8 +342,9 @@ export async function submitRating(
     logger.error('Failed to send review-received email', { error, rateeId, raterId: input.raterId });
   }
 
-    // Invalidate cached reputation for ratee
+    // Invalidate cached reputation for ratee and platform leaderboard
     reputationCache.deleteMatching((k: string) => k.startsWith(`rep:${rateeId}:`));
+    platformMetricsCache.deleteMatching((k: string) => k.startsWith('leaderboard:'));
 
     return successResult({
       rating,

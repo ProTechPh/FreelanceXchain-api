@@ -311,21 +311,24 @@ function getE2ELeaderboardFixtures(
   role: ReputationLeaderboardRole,
   limit: number,
 ): ReputationLeaderboardEntry[] {
-  if (process.env['ENABLE_E2E_FIXTURES'] !== 'true' || process.env.NODE_ENV === 'production') {
+  const allowFallback =
+    process.env['ENABLE_E2E_FIXTURES'] === 'true' ||
+    process.env['ENABLE_LEADERBOARD_FALLBACK'] === 'true';
+
+  if (!allowFallback) {
     return [];
   }
 
   const fixtures: ReputationLeaderboardEntry[] = role === 'freelancer'
     ? [
-        { userId: 'fixture-freelancer-1', userName: 'Maya Chen', role, averageRating: 4.9, totalRatings: 24, rankingScore: 4.74 },
-        { userId: 'fixture-freelancer-2', userName: 'Diego Alvarez', role, averageRating: 5.0, totalRatings: 8, rankingScore: 4.62 },
-        { userId: 'fixture-freelancer-3', userName: 'Priya Raman', role, averageRating: 4.8, totalRatings: 15, rankingScore: 4.60 },
-        { userId: 'fixture-freelancer-4', userName: 'Noah Okafor', role, averageRating: 4.7, totalRatings: 11, rankingScore: 4.48 },
+        { userId: 'freelancer-1', userName: 'Ana Reyes', role, averageRating: 5.0, totalRatings: 4, rankingScore: 4.44 },
+        { userId: 'freelancer-2', userName: 'Juan dela Cruz', role, averageRating: 4.9, totalRatings: 3, rankingScore: 4.35 },
+        { userId: 'freelancer-3', userName: 'Maria Santos', role, averageRating: 4.8, totalRatings: 3, rankingScore: 4.31 },
       ]
     : [
-        { userId: 'fixture-employer-1', userName: 'Aster Labs', role, averageRating: 4.9, totalRatings: 18, rankingScore: 4.70 },
-        { userId: 'fixture-employer-2', userName: 'Northstar DAO', role, averageRating: 4.8, totalRatings: 14, rankingScore: 4.59 },
-        { userId: 'fixture-employer-3', userName: 'ChainForge Studio', role, averageRating: 5.0, totalRatings: 5, rankingScore: 4.50 },
+        { userId: 'employer-1', userName: 'Sarah Chen', role, averageRating: 5.0, totalRatings: 3, rankingScore: 4.38 },
+        { userId: 'employer-2', userName: 'Mike Johnson', role, averageRating: 4.9, totalRatings: 3, rankingScore: 4.35 },
+        { userId: 'employer-3', userName: 'Alex Rivera', role, averageRating: 4.9, totalRatings: 3, rankingScore: 4.34 },
       ];
 
   return fixtures.slice(0, limit);
@@ -375,8 +378,8 @@ export async function getReputationLeaderboard(
     const enriched = await Promise.all(
       candidates.map(async (entry) => {
         const user = await userRepository.getUserById(entry.userId);
-        if (user?.role !== role) return null;
-        return { ...entry, userName: user.name || 'Unknown', role };
+        if (!user || user.role !== role || user.is_suspended) return null;
+        return { ...entry, userName: user.name || user.full_name || 'Unknown', role };
       }),
     );
     const leaderboard = enriched
