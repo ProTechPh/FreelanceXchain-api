@@ -12,14 +12,23 @@ function isPrivateNetworkHost(host: string): boolean {
   return false;
 }
 
+const isTestEnv = config?.server?.nodeEnv === 'test' || process.env.NODE_ENV === 'test';
+
 const baseOptions: RedisOptions = {
   enableOfflineQueue: false,
   connectTimeout: 5000,
   maxRetriesPerRequest: 1,
-  retryStrategy: (times: number) => (times > 5 ? null : Math.min(times * 1000, 5000)),
+  lazyConnect: isTestEnv,
+  retryStrategy: (times: number) => {
+    if (isTestEnv) return null;
+    // Exponential backoff up to 30s instead of abandoning Redis permanently or hammering the server
+    return Math.min(times * 1000, 30000);
+  },
 };
 
-const redisUrl = config?.redis?.url || process.env.REDIS_URL;
+const redisUrl = isTestEnv
+  ? process.env.TEST_REDIS_URL
+  : (config?.redis?.url || process.env.REDIS_URL);
 
 function createRedisClient(): Redis {
   if (redisUrl) {
@@ -59,20 +68,33 @@ function createRedisClient(): Redis {
 export const redis = createRedisClient();
 redis.setMaxListeners(30);
 
+let lastMaxClientsWarnTime = 0;
+
 redis.on('error', (err: Error) => {
-  if (config?.server?.nodeEnv !== 'test') {
-    logger.error('[redis] connection error', err);
+  if (config?.server?.nodeEnv === 'test' || process.env.NODE_ENV === 'test') {
+    return;
   }
+  const errorMsg = err?.message || '';
+  if (errorMsg.includes('max number of clients reached')) {
+    const now = Date.now();
+    // Throttle warning to at most once per 60 seconds to prevent log flooding
+    if (now - lastMaxClientsWarnTime > 60000) {
+      lastMaxClientsWarnTime = now;
+      logger.warn('[redis] Connection pool saturated on Redis server (ERR max number of clients reached). System is operating with in-memory fallbacks until connections free up.');
+    }
+    return;
+  }
+  logger.error('[redis] connection error', err);
 });
 
 redis.on('connect', () => {
-  if (config?.server?.nodeEnv !== 'test') {
+  if (config?.server?.nodeEnv !== 'test' && process.env.NODE_ENV !== 'test') {
     logger.info('[redis] connected');
   }
 });
 
 redis.on('ready', () => {
-  if (config?.server?.nodeEnv !== 'test') {
+  if (config?.server?.nodeEnv !== 'test' && process.env.NODE_ENV !== 'test') {
     logger.info('[redis] ready');
   }
 });

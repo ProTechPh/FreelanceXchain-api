@@ -15,6 +15,8 @@ dotenv.config({ path: '.env.test' });
 // Ensure test environment is set
 process.env.NODE_ENV = 'test';
 delete process.env.TURNSTILE_SECRET;
+delete process.env.REDIS_URL;
+process.env.REDIS_HOST = '127.0.0.1';
 
 beforeAll(startStableSupertestServer);
 afterAll(async () => {
