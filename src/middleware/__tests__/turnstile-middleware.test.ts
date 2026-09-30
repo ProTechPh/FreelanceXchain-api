@@ -9,11 +9,13 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 const mockGetTurnstileSecret = jest.fn<() => string | undefined>();
 const mockGetTurnstileHostnames = jest.fn<() => string>();
 const mockGetNodeEnv = jest.fn<() => string>();
+const mockIsTurnstileDisabled = jest.fn<() => boolean>();
 
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   getTurnstileSecret: mockGetTurnstileSecret,
   getTurnstileHostnames: mockGetTurnstileHostnames,
   getNodeEnv: mockGetNodeEnv,
+  isTurnstileDisabled: mockIsTurnstileDisabled,
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
@@ -57,6 +59,7 @@ describe('requireTurnstile Middleware', () => {
     mockGetNodeEnv.mockReturnValue('production');
     mockGetTurnstileSecret.mockReturnValue('test-turnstile-secret');
     mockGetTurnstileHostnames.mockReturnValue('freelancexchain.works,localhost');
+    mockIsTurnstileDisabled.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -133,6 +136,20 @@ describe('requireTurnstile Middleware', () => {
 
     expect(status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('should bypass verification in production when DISABLE_TURNSTILE is true', async () => {
+    mockGetNodeEnv.mockReturnValue('production');
+    mockIsTurnstileDisabled.mockReturnValue(true);
+
+    const req = createMockReq();
+    const { res } = createMockRes();
+    const next = jest.fn() as NextFunction;
+
+    const middleware = requireTurnstile('login');
+    await middleware(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
   });
 
   it('should return 403 when token is missing', async () => {

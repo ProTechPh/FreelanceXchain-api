@@ -10,7 +10,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { getTurnstileSecret, getTurnstileHostnames, getNodeEnv } from '../config/env.js';
+import { getTurnstileSecret, getTurnstileHostnames, getNodeEnv, isTurnstileDisabled } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
@@ -97,6 +97,10 @@ function isLocalHostname(hostname?: string): boolean {
 }
 
 function shouldBypassTurnstile(nodeEnv: string, secret: string | undefined, req: Request): boolean {
+  if (isTurnstileDisabled()) {
+    logger.warn('Turnstile verification is explicitly disabled via DISABLE_TURNSTILE');
+    return true;
+  }
   if (process.env['ALLOW_TURNSTILE_BYPASS'] === 'true' && nodeEnv !== 'production') {
     logger.debug('Turnstile bypass enabled for non-production environment');
     return true;

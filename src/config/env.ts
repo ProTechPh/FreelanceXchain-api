@@ -148,6 +148,7 @@ export const config = {
   turnstile: {
     secret: getEnvVarOptional('TURNSTILE_SECRET'),
     hostnames: getEnvVarOptional('TURNSTILE_HOSTNAMES') || 'freelancexchain.works,www.freelancexchain.works,localhost,127.0.0.1',
+    disabled: getEnvVarBoolean('DISABLE_TURNSTILE', false),
   },
 } as const;
 
@@ -206,4 +207,12 @@ export function getTurnstileSecret(): string | undefined {
 
 export function getTurnstileHostnames(): string {
   return getEnvVarOptional('TURNSTILE_HOSTNAMES') || 'freelancexchain.works,www.freelancexchain.works,localhost,127.0.0.1';
+}
+
+/**
+ * Whether Cloudflare Turnstile verification is globally disabled.
+ * When true, all Turnstile checks are bypassed across all environments, including production.
+ */
+export function isTurnstileDisabled(): boolean {
+  return process.env['DISABLE_TURNSTILE'] === 'true';
 }
