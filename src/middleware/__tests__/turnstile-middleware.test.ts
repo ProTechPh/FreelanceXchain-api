@@ -53,6 +53,7 @@ describe('requireTurnstile Middleware', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env['ALLOW_TURNSTILE_BYPASS'];
     mockGetNodeEnv.mockReturnValue('production');
     mockGetTurnstileSecret.mockReturnValue('test-turnstile-secret');
     mockGetTurnstileHostnames.mockReturnValue('freelancexchain.works,localhost');
@@ -88,6 +89,35 @@ describe('requireTurnstile Middleware', () => {
     await middleware(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('should bypass verification in non-production when explicitly enabled for automated flows', async () => {
+    process.env['ALLOW_TURNSTILE_BYPASS'] = 'true';
+    mockGetNodeEnv.mockReturnValue('staging');
+
+    const req = createMockReq();
+    const { res } = createMockRes();
+    const next = jest.fn() as NextFunction;
+
+    const middleware = requireTurnstile('login');
+    await middleware(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not honor the explicit bypass in production', async () => {
+    process.env['ALLOW_TURNSTILE_BYPASS'] = 'true';
+    mockGetNodeEnv.mockReturnValue('production');
+
+    const req = createMockReq();
+    const { res, status } = createMockRes();
+    const next = jest.fn() as NextFunction;
+
+    const middleware = requireTurnstile('login');
+    await middleware(req, res, next);
+
+    expect(status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('should return 403 when token is missing', async () => {

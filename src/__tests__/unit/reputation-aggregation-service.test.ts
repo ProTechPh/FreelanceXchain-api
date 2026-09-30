@@ -18,6 +18,8 @@ describe('Reputation Aggregation Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.NODE_ENV = 'test';
+    delete process.env['ENABLE_E2E_FIXTURES'];
     mockDatabases = (globalThis as any).__mockDatabases;
     mockDatabases.listDocuments.mockReset();
     mockDatabases.getDocument.mockReset();
@@ -357,6 +359,20 @@ describe('Reputation Aggregation Service', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual([]);
+    });
+
+    it('returns deterministic non-production fixtures when enabled and no reviews exist', async () => {
+      process.env.NODE_ENV = 'staging';
+      process.env['ENABLE_E2E_FIXTURES'] = 'true';
+      const { getReputationLeaderboard } = await importModule();
+
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getReputationLeaderboard(10, 'freelancer');
+
+      expect(result.success).toBe(true);
+      expect(result.data.length).toBeGreaterThanOrEqual(3);
+      expect(result.data.every((entry) => entry.role === 'freelancer' && entry.totalRatings >= 3)).toBe(true);
     });
 
     it('should aggregate and sort leaderboard correctly', async () => {

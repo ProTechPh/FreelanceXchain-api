@@ -70,6 +70,10 @@ function getExpectedHostnames(): Set<string> {
 }
 
 function shouldBypassTurnstile(nodeEnv: string, secret?: string): boolean {
+  if (process.env['ALLOW_TURNSTILE_BYPASS'] === 'true' && nodeEnv !== 'production') {
+    logger.debug('Turnstile bypass enabled for non-production environment');
+    return true;
+  }
   if (nodeEnv === 'test' && (!secret || process.env['ENFORCE_TURNSTILE_TEST'] !== 'true')) return true;
   if (nodeEnv === 'development' && !secret) {
     logger.debug('Turnstile secret not configured; bypassing verification in development');
