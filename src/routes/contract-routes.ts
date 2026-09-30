@@ -203,7 +203,9 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
             isAuthorized = true;
           }
         }
-      } catch {}
+      } catch (err) {
+        logger.debug('Failed to verify dispute context for contract', { disputeId, error: err });
+      }
     }
 
     // 2. Check if ANY dispute exists on this contract
@@ -216,7 +218,9 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
             isAuthorized = true;
           }
         }
-      } catch {}
+      } catch (err) {
+        logger.debug('Failed to check contract disputes for authorization', { contractId: id, error: err });
+      }
     }
   }
 
