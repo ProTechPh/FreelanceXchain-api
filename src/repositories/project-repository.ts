@@ -220,12 +220,36 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     // filtering happens in the database (Query.equal on arrays) with pagination.
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    return this.paginatedWithQueries<ProjectEntity>(
+    const dbResult = await this.paginatedWithQueries<ProjectEntity>(
       [Query.equal('status', 'open'), Query.equal('required_skill_ids', skillIds)],
       limit,
       offset,
       mapDoc
     );
+
+    if (dbResult.items.length > 0) {
+      return dbResult;
+    }
+
+    // Fallback for pre-seeded records where required_skill_ids was not populated
+    const allOpen = await this.getAllOpenProjects({ limit: 100, offset: 0 });
+    const skillIdSet = new Set(skillIds.map((s) => s.toLowerCase()));
+    const matched = allOpen.items.filter((p) => {
+      const skills = Array.isArray(p.required_skills) ? p.required_skills : [];
+      return skills.some(
+        (s) =>
+          (s.skill_id && skillIdSet.has(s.skill_id.toLowerCase())) ||
+          (s.skill_name && skillIdSet.has(s.skill_name.toLowerCase())) ||
+          (s.category_id && skillIdSet.has(s.category_id.toLowerCase()))
+      );
+    });
+
+    const paginatedMatched = matched.slice(offset, offset + limit);
+    return {
+      items: paginatedMatched,
+      total: matched.length,
+      hasMore: offset + limit < matched.length,
+    };
   }
 
   async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {

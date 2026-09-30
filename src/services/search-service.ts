@@ -131,11 +131,16 @@ async function searchProjectsMultiFilter(
 
   let filteredItems = entityResult.items;
 
-  if (hasSkills) {
-    const skillIdSet = new Set(filters.skillIds);
-    filteredItems = filteredItems.filter(project =>
-      project.required_skills.some(skill => skillIdSet.has(skill.skill_id))
-    );
+  if (hasSkills && filters.skillIds) {
+    const skillIdSet = new Set(filters.skillIds.map((s) => s.toLowerCase()));
+    filteredItems = filteredItems.filter(project => {
+      const skills = Array.isArray(project.required_skills) ? project.required_skills : [];
+      return skills.some(skill =>
+        (skill.skill_id && skillIdSet.has(skill.skill_id.toLowerCase())) ||
+        (skill.skill_name && skillIdSet.has(skill.skill_name.toLowerCase())) ||
+        (skill.category_id && skillIdSet.has(skill.category_id.toLowerCase()))
+      );
+    });
   }
 
   if (hasBudgetRange) {
