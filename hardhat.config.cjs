@@ -1,7 +1,8 @@
 require("dotenv").config();
 
-// Check if private key is valid (64 hex chars)
-const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY || "";
+// Check if private key is valid (64 hex chars, with or without 0x)
+const rawPrivateKey = process.env.BLOCKCHAIN_PRIVATE_KEY || "";
+const privateKey = rawPrivateKey.replace(/^0x/, "");
 const isValidPrivateKey = /^[a-fA-F0-9]{64}$/.test(privateKey);
 const accounts = isValidPrivateKey ? [privateKey] : [];
 
