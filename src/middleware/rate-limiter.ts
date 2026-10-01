@@ -5,6 +5,9 @@ import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 function checkRateLimiterDisabled(): boolean {
+  if (config?.server?.nodeEnv === 'production' || process.env['NODE_ENV'] === 'production') {
+    return false;
+  }
   if (config?.server?.disableRateLimiter) {
     return true;
   }

@@ -49,7 +49,9 @@ function getDisableRateLimiter(): boolean {
   const disabled = raw.toLowerCase() === 'true' || raw === '1';
   const nodeEnv = process.env['NODE_ENV'];
   if (disabled && nodeEnv === 'production') {
-    console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is active in production environment.');
+    // In production, rate limiting MUST NEVER be disabled regardless of environment variables
+    console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is prohibited in production and will be ignored.');
+    return false;
   }
   return disabled;
 }
@@ -222,6 +224,10 @@ export function isTurnstileDisabled(): boolean {
  * Evaluates live process.env and config, supporting DISABLE_RATE_LIMITER and DISABLE_RATE_LIMIT.
  */
 export function isRateLimiterDisabled(): boolean {
+  const nodeEnv = process.env['NODE_ENV'] ?? config?.server?.nodeEnv;
+  if (nodeEnv === 'production') {
+    return false;
+  }
   const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
   if (raw !== undefined) {
     return raw.toLowerCase() === 'true' || raw === '1';

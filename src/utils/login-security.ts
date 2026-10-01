@@ -1,7 +1,7 @@
 import { config } from '../config/env.js';
 
 function checkLockoutDisabled(): boolean {
-  if (process.env['NODE_ENV'] === 'test') {
+  if (process.env['NODE_ENV'] === 'test' || process.env['NODE_ENV'] === 'production' || config?.server?.nodeEnv === 'production') {
     return false;
   }
   if (config?.server?.disableRateLimiter) {
