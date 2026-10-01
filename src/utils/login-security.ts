@@ -1,7 +1,15 @@
 import { config } from '../config/env.js';
 
 function checkLockoutDisabled(): boolean {
-  if (process.env['NODE_ENV'] === 'test' || process.env['NODE_ENV'] === 'production' || config?.server?.nodeEnv === 'production') {
+  if (process.env['NODE_ENV'] === 'test') {
+    return false;
+  }
+  const allowInProduction =
+    process.env['DISABLE_RATE_LIMIT_IN_PRODUCTION'] === 'true' ||
+    process.env['ALLOW_INSECURE_DISABLE_RATE_LIMITER'] === 'true' ||
+    process.env['DISABLE_RATE_LIMITER']?.toLowerCase() === 'force';
+  const isProduction = process.env['NODE_ENV'] === 'production' || config?.server?.nodeEnv === 'production';
+  if (isProduction && !allowInProduction) {
     return false;
   }
   if (config?.server?.disableRateLimiter) {
@@ -9,7 +17,7 @@ function checkLockoutDisabled(): boolean {
   }
   const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
   if (raw !== undefined) {
-    return raw.toLowerCase() === 'true' || raw === '1';
+    return raw.toLowerCase() === 'true' || raw === '1' || raw.toLowerCase() === 'force';
   }
   return false;
 }

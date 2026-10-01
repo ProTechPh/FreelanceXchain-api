@@ -202,6 +202,8 @@ describe('Env Config', () => {
       setupRequiredEnv();
       process.env.NODE_ENV = 'production';
       process.env.DISABLE_RATE_LIMITER = 'true';
+      delete process.env.DISABLE_RATE_LIMIT_IN_PRODUCTION;
+      delete process.env.ALLOW_INSECURE_DISABLE_RATE_LIMITER;
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       try {
         const { config } = await importModule();
@@ -210,6 +212,25 @@ describe('Env Config', () => {
           expect.stringContaining('DISABLE_RATE_LIMITER=true is prohibited in production')
         );
       } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('should allow DISABLE_RATE_LIMITER in production when DISABLE_RATE_LIMIT_IN_PRODUCTION is set', async () => {
+      setupRequiredEnv();
+      process.env.NODE_ENV = 'production';
+      process.env.DISABLE_RATE_LIMITER = 'true';
+      process.env.DISABLE_RATE_LIMIT_IN_PRODUCTION = 'true';
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { config, isRateLimiterDisabled } = await importModule();
+        expect(config.server.disableRateLimiter).toBe(true);
+        expect(isRateLimiterDisabled()).toBe(true);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Rate limiting is disabled in production')
+        );
+      } finally {
+        delete process.env.DISABLE_RATE_LIMIT_IN_PRODUCTION;
         warnSpy.mockRestore();
       }
     });
