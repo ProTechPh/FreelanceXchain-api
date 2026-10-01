@@ -2,6 +2,7 @@ import { IBlockchainAdapter } from './adapter.js';
 import { RealBlockchainAdapter } from './real-adapter.js';
 import { SimulatedBlockchainAdapter } from './simulated-adapter.js';
 import { config } from '../../config/env.js';
+import { isWeb3Available } from '../web3-client.js';
 
 type BlockchainMode = 'real' | 'simulated';
 
@@ -28,7 +29,7 @@ export function getBlockchainMode(): BlockchainMode {
 export function createBlockchainAdapter(): IBlockchainAdapter {
   const mode = getBlockchainMode();
 
-  if (mode === 'real') {
+  if (mode === 'real' && isWeb3Available()) {
     return new RealBlockchainAdapter();
   }
 
