@@ -7,6 +7,7 @@ import request from 'supertest';
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
 const mockGetKycStatus = jest.fn<any>();
+const mockAdminReviewVerification = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () => ({
   initiateKycVerification: jest.fn(),
@@ -15,7 +16,7 @@ jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () 
   refreshVerificationStatus: jest.fn(),
   getAdminVerificationDecision: jest.fn(),
   processWebhook: jest.fn(),
-  adminReviewVerification: jest.fn(),
+  adminReviewVerification: mockAdminReviewVerification,
   getPendingAdminReviews: jest.fn(),
   getVerificationsByStatus: jest.fn(),
   getUserVerificationHistory: jest.fn(),
@@ -40,10 +41,6 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   webhookRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
-
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
@@ -89,5 +86,56 @@ describe('GET /api/kyc/status', () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('POST /api/kyc/admin/review/:verificationId', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/kyc', router);
+  });
+
+  it('accepts an Appwrite document ID and saves the rejection audit reason', async () => {
+    const notes = 'Identity document did not match the submitted profile.';
+    mockAdminReviewVerification.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'kyc-freelancer-2',
+        user_id: 'freelancer-2',
+        status: 'rejected',
+        admin_notes: notes,
+      },
+    });
+
+    const response = await request(app)
+      .post('/api/kyc/admin/review/kyc-freelancer-2')
+      .send({ decision: 'rejected', notes });
+
+    expect(response.status).toBe(200);
+    expect(mockAdminReviewVerification).toHaveBeenCalledWith(
+      'kyc-freelancer-2',
+      'user-1',
+      'rejected',
+      notes,
+    );
+    expect(response.body).toMatchObject({
+      id: 'kyc-freelancer-2',
+      status: 'rejected',
+      admin_notes: notes,
+    });
+  });
+
+  it('rejects values outside the Appwrite document ID allowlist', async () => {
+    const response = await request(app)
+      .post('/api/kyc/admin/review/not%20a%20document%20id')
+      .send({ decision: 'rejected', notes: 'Invalid identifier proof.' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Invalid Appwrite document ID format');
+    expect(mockAdminReviewVerification).not.toHaveBeenCalled();
   });
 });

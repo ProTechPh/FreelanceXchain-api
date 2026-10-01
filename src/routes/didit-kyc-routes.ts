@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, webhookRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
@@ -138,7 +138,7 @@ function sendKycServiceError(
  *       properties:
  *         id:
  *           type: string
- *           format: uuid
+ *           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$'
  *         user_id:
  *           type: string
  *           format: uuid
@@ -397,7 +397,7 @@ router.get('/history', authMiddleware, apiRateLimiter, asyncHandler(async (req: 
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
+ *           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$'
  *     responses:
  *       200:
  *         description: Status refreshed
@@ -406,7 +406,7 @@ router.get('/history', authMiddleware, apiRateLimiter, asyncHandler(async (req: 
  *             schema:
  *               $ref: '#/components/schemas/KycVerification'
  */
-router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -609,7 +609,7 @@ router.get('/admin/status/:status', authMiddleware, requirePermission('kyc:view'
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
+ *           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$'
  *     requestBody:
  *       required: true
  *       content:
@@ -628,7 +628,7 @@ router.get('/admin/status/:status', authMiddleware, requirePermission('kyc:view'
  *       200:
  *         description: Review completed
  */
-router.post('/admin/review/:verificationId', authMiddleware, requirePermission('kyc:manage'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/admin/review/:verificationId', authMiddleware, requirePermission('kyc:manage'), apiRateLimiter, validateAppwriteDocumentId(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const adminUserId = req.user?.userId;
   const { decision, notes } = req.body;
@@ -669,12 +669,12 @@ router.post('/admin/review/:verificationId', authMiddleware, requirePermission('
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
+ *           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$'
  *     responses:
  *       200:
  *         description: Verification details
  */
-router.get('/admin/verification/:verificationId', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/admin/verification/:verificationId', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, validateAppwriteDocumentId(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {
@@ -712,12 +712,12 @@ router.get('/admin/verification/:verificationId', authMiddleware, requirePermiss
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
+ *           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$'
  *     responses:
  *       200:
  *         description: Verification decision details including presigned images
  */
-router.get('/admin/verification/:verificationId/decision', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/admin/verification/:verificationId/decision', authMiddleware, requirePermission('kyc:view'), apiRateLimiter, validateAppwriteDocumentId(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {
