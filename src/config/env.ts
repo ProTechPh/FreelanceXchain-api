@@ -45,10 +45,20 @@ function getBaseUrl(): string {
 
 function getDisableRateLimiter(): boolean {
   const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
-  if (raw === undefined) return false;
-  const disabled = raw.toLowerCase() === 'true' || raw === '1';
+  const allowInProduction =
+    process.env['DISABLE_RATE_LIMIT_IN_PRODUCTION'] === 'true' ||
+    process.env['ALLOW_INSECURE_DISABLE_RATE_LIMITER'] === 'true' ||
+    raw?.toLowerCase() === 'force';
+
+  if (raw === undefined && !allowInProduction) return false;
+  const disabled = raw ? (raw.toLowerCase() === 'true' || raw === '1' || raw.toLowerCase() === 'force') : allowInProduction;
   const nodeEnv = process.env['NODE_ENV'];
+
   if (disabled && nodeEnv === 'production') {
+    if (allowInProduction) {
+      console.warn('[SECURITY WARNING] Rate limiting is disabled in production via DISABLE_RATE_LIMIT_IN_PRODUCTION / ALLOW_INSECURE_DISABLE_RATE_LIMITER. Do not use in public production!');
+      return true;
+    }
     // In production, rate limiting MUST NEVER be disabled regardless of environment variables
     console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is prohibited in production and will be ignored.');
     return false;
@@ -224,13 +234,17 @@ export function isTurnstileDisabled(): boolean {
  * Evaluates live process.env and config, supporting DISABLE_RATE_LIMITER and DISABLE_RATE_LIMIT.
  */
 export function isRateLimiterDisabled(): boolean {
+  const allowInProduction =
+    process.env['DISABLE_RATE_LIMIT_IN_PRODUCTION'] === 'true' ||
+    process.env['ALLOW_INSECURE_DISABLE_RATE_LIMITER'] === 'true' ||
+    process.env['DISABLE_RATE_LIMITER']?.toLowerCase() === 'force';
   const nodeEnv = process.env['NODE_ENV'] ?? config?.server?.nodeEnv;
-  if (nodeEnv === 'production') {
+  if (nodeEnv === 'production' && !allowInProduction) {
     return false;
   }
   const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
   if (raw !== undefined) {
-    return raw.toLowerCase() === 'true' || raw === '1';
+    return raw.toLowerCase() === 'true' || raw === '1' || raw.toLowerCase() === 'force';
   }
   return Boolean(config?.server?.disableRateLimiter);
 }

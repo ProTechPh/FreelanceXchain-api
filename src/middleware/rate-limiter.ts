@@ -5,7 +5,12 @@ import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 function checkRateLimiterDisabled(): boolean {
-  if (config?.server?.nodeEnv === 'production' || process.env['NODE_ENV'] === 'production') {
+  const allowInProduction =
+    process.env['DISABLE_RATE_LIMIT_IN_PRODUCTION'] === 'true' ||
+    process.env['ALLOW_INSECURE_DISABLE_RATE_LIMITER'] === 'true' ||
+    process.env['DISABLE_RATE_LIMITER']?.toLowerCase() === 'force';
+  const isProduction = config?.server?.nodeEnv === 'production' || process.env['NODE_ENV'] === 'production';
+  if (isProduction && !allowInProduction) {
     return false;
   }
   if (config?.server?.disableRateLimiter) {
@@ -13,7 +18,7 @@ function checkRateLimiterDisabled(): boolean {
   }
   const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
   if (raw !== undefined) {
-    const disabled = raw.toLowerCase() === 'true' || raw === '1';
+    const disabled = raw.toLowerCase() === 'true' || raw === '1' || raw.toLowerCase() === 'force';
     if (process.env['NODE_ENV'] === 'test' && config?.server?.nodeEnv === 'development') {
       return false;
     }
