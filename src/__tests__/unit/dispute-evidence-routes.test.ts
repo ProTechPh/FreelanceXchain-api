@@ -38,6 +38,9 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: jest.fn(() => true),
+  isValidUUID: jest.fn(() => true),
 }));
 
 const disputeEvidenceRouter = (await import('../../routes/dispute-evidence-routes.js')).default;
