@@ -47,16 +47,25 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
   /** Batch-fetch payment logs for many contracts and group them by contract ID. */
   async findByContractIds(contractIds: string[]): Promise<Map<string, PaymentEntity[]>> {
     const paymentsByContract = new Map<string, PaymentEntity[]>();
+    if (contractIds.length === 0) return paymentsByContract;
     const uniqueIds = [...new Set(contractIds)];
 
     try {
+      const chunks: string[][] = [];
       for (let i = 0; i < uniqueIds.length; i += 100) {
-        const chunk = uniqueIds.slice(i, i + 100);
-        const payments = await this.fetchAll([
-          Query.equal('contract_id', chunk),
-          Query.orderDesc('$createdAt'),
-        ]);
+        chunks.push(uniqueIds.slice(i, i + 100));
+      }
 
+      const results = await Promise.all(
+        chunks.map(chunk =>
+          this.fetchAll([
+            Query.equal('contract_id', chunk),
+            Query.orderDesc('$createdAt'),
+          ])
+        )
+      );
+
+      for (const payments of results) {
         for (const payment of payments) {
           const group = paymentsByContract.get(payment.contract_id) ?? [];
           group.push(payment);
