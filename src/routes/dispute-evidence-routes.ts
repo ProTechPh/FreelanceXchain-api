@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { authMiddleware, requireVerifiedKyc, hasAdminPermission } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
 import {
@@ -64,7 +64,7 @@ const router = Router();
  *       200:
  *         description: Evidence submitted successfully
  */
-router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateAppwriteDocumentId(['disputeId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const disputeId = req.params['disputeId'] ?? '';
@@ -116,7 +116,7 @@ router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validate
  *       200:
  *         description: List of evidence
  */
-router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateAppwriteDocumentId(['disputeId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const disputeId = req.params['disputeId'] ?? '';
@@ -157,7 +157,7 @@ router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateU
  *       200:
  *         description: Evidence deleted successfully
  */
-router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifiedKyc, validateAppwriteDocumentId(['disputeId', 'evidenceId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';
@@ -198,7 +198,7 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifie
  *       200:
  *         description: Evidence verified successfully
  */
-router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVerifiedKyc, validateAppwriteDocumentId(['disputeId', 'evidenceId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';

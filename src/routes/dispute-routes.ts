@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware, requireVerifiedKyc, requirePermission, hasAdminPermission } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, isValidUUID, validateAppwriteDocumentId, isValidAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
 import { clampLimit } from '../utils/index.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -259,8 +259,8 @@ router.post(
         return;
       }
 
-      if (!isValidUUID(contractId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', { requestId: getRequestId(req) });
+      if (!isValidUUID(contractId) && !isValidAppwriteDocumentId(contractId)) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid ID', { requestId: getRequestId(req) });
         return;
       }
 
@@ -269,8 +269,8 @@ router.post(
         return;
       }
 
-      if (!isValidUUID(milestoneId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId must be a valid UUID', { requestId: getRequestId(req) });
+      if (!isValidUUID(milestoneId) && !isValidAppwriteDocumentId(milestoneId)) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId must be a valid ID', { requestId: getRequestId(req) });
         return;
       }
 
@@ -339,7 +339,7 @@ router.get(
   authMiddleware,
   requireVerifiedKyc,
   apiRateLimiter,
-  validateUUID(['disputeId']),
+  validateAppwriteDocumentId(['disputeId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -669,7 +669,7 @@ router.post(
   authMiddleware,
   requirePermission('disputes:manage'),
   apiRateLimiter,
-  validateUUID(['disputeId']),
+  validateAppwriteDocumentId(['disputeId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
