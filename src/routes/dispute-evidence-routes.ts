@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { authMiddleware, requireVerifiedKyc, hasAdminPermission } from '../middleware/auth-middleware.js';
-import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
 import {

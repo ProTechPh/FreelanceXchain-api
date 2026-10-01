@@ -64,6 +64,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
   isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: jest.fn((value: string) => /^(cat-\d+|category-\d+|[0-9a-f]{20}|[A-Za-z0-9._-]{5,36})$/.test(value) && value !== 'bad'),
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -814,6 +816,8 @@ describe('skill-routes - userName fallback (line 583)', () => {
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       isValidUUID: jest.fn(),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      isValidAppwriteDocumentId: jest.fn(() => true),
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
