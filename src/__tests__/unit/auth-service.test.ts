@@ -119,6 +119,8 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   users: {
     create: jest.fn().mockResolvedValue({ $id: 'test-appwrite-user-id' }),
     delete: jest.fn().mockResolvedValue({}),
+    updatePassword: jest.fn().mockResolvedValue({}),
+    updateEmailVerification: jest.fn().mockResolvedValue({}),
     createSession: jest.fn().mockResolvedValue({ $id: 'session-1', secret: 'test-session-secret' }),
     deleteSession: jest.fn().mockResolvedValue({}),
   },
@@ -887,6 +889,29 @@ describe('auth-service comprehensive coverage', () => {
         expect(result.user.email).toBe('test@example.com');
         expect(result.accessToken).toBe('test-session-secret');
       }
+    });
+
+    it('never provisions or changes a seeded account password during login', async () => {
+      const subAdmin = {
+        ...defaultUser,
+        id: 'sub-admin-1',
+        email: 'example@gmail.com',
+        role: 'admin' as const,
+        permissions: ['analytics:view', 'users:view'],
+      };
+      global.mockAppwriteAccount.get.mockResolvedValueOnce({
+        $id: subAdmin.id,
+        email: subAdmin.email,
+        emailVerification: true,
+      });
+      userRepository.getUserByEmail.mockResolvedValueOnce(subAdmin);
+
+      const result = await login({ email: subAdmin.email, password: 'KnownSeedPassword1!' });
+
+      expect(isAuthError(result)).toBe(false);
+      expect(users.create).not.toHaveBeenCalled();
+      expect(users.updatePassword).not.toHaveBeenCalled();
+      expect(users.updateEmailVerification).not.toHaveBeenCalled();
     });
   });
 
