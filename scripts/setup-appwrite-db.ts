@@ -202,6 +202,7 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'freelancer_id_status', type: DatabasesIndexType.Key, attributes: ['freelancer_id', 'status'] },
       { key: 'proposal_id', type: DatabasesIndexType.Key, attributes: ['proposal_id'] },
+      { key: 'status', type: DatabasesIndexType.Key, attributes: ['status'] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
     ],
   },

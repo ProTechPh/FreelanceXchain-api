@@ -399,6 +399,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
     const projectIds = [...new Set(
       activeContractRefs.map(contract => contract.project_id).filter(Boolean)
     )];
+    if (projectIds.length === 0) return;
     let projects: ProjectMilestoneSnapshot[];
     try {
       projects = await projectRepository.getProjectMilestoneSnapshotsByIds(projectIds);

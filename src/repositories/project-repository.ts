@@ -124,16 +124,25 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     if (ids.length === 0) return [];
     try {
       const uniqueIds = [...new Set(ids)];
-      const projects: ProjectEntity[] = [];
+      const chunks: string[][] = [];
       for (let i = 0; i < uniqueIds.length; i += 100) {
-        const chunk = uniqueIds.slice(i, i + 100);
-        const response = await this.timedQuery('getProjectsByIds', () =>
-          databases.listDocuments(
-            DATABASE_ID,
-            COLLECTION_ID,
-            [Query.equal('$id', chunk), Query.limit(chunk.length)]
+        chunks.push(uniqueIds.slice(i, i + 100));
+      }
+
+      const responses = await Promise.all(
+        chunks.map(chunk =>
+          this.timedQuery('getProjectsByIds', () =>
+            databases.listDocuments(
+              DATABASE_ID,
+              COLLECTION_ID,
+              [Query.equal('$id', chunk), Query.limit(chunk.length)]
+            )
           )
-        );
+        )
+      );
+
+      const projects: ProjectEntity[] = [];
+      for (const response of responses) {
         projects.push(...response.documents.map(mapDoc));
       }
       return projects;
@@ -148,21 +157,29 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     if (ids.length === 0) return [];
     try {
       const uniqueIds = [...new Set(ids)];
-      const projects: ProjectMilestoneSnapshot[] = [];
+      const chunks: string[][] = [];
       for (let i = 0; i < uniqueIds.length; i += 100) {
-        const chunk = uniqueIds.slice(i, i + 100);
-        const response = await this.timedQuery('getProjectMilestoneSnapshotsByIds', () =>
-          databases.listDocuments(
-            DATABASE_ID,
-            COLLECTION_ID,
-            [
-              Query.equal('$id', chunk),
-              Query.select(['$id', 'milestones']),
-              Query.limit(chunk.length),
-            ]
-          )
-        );
+        chunks.push(uniqueIds.slice(i, i + 100));
+      }
 
+      const responses = await Promise.all(
+        chunks.map(chunk =>
+          this.timedQuery('getProjectMilestoneSnapshotsByIds', () =>
+            databases.listDocuments(
+              DATABASE_ID,
+              COLLECTION_ID,
+              [
+                Query.equal('$id', chunk),
+                Query.select(['$id', 'milestones']),
+                Query.limit(chunk.length),
+              ]
+            )
+          )
+        )
+      );
+
+      const projects: ProjectMilestoneSnapshot[] = [];
+      for (const response of responses) {
         projects.push(...response.documents.map((doc) => {
           const entity = fromAppwriteDoc<Record<string, unknown>>(doc);
           return {

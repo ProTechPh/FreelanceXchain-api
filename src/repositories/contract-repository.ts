@@ -93,17 +93,27 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   /** Batch-fetch contracts by document ID, respecting Appwrite's 100-value cap. */
   async getContractsByIds(ids: string[]): Promise<ContractEntity[]> {
+    if (ids.length === 0) return [];
     const uniqueIds = [...new Set(ids)];
-    const contracts: ContractEntity[] = [];
+    const chunks: string[][] = [];
 
     for (let i = 0; i < uniqueIds.length; i += 100) {
-      const chunk = uniqueIds.slice(i, i + 100);
-      const response = await this.timedQuery('getContractsByIds', () =>
-        databases.listDocuments(DATABASE_ID, COLLECTION_ID, [
-          Query.equal('$id', chunk),
-          Query.limit(chunk.length),
-        ])
-      );
+      chunks.push(uniqueIds.slice(i, i + 100));
+    }
+
+    const responses = await Promise.all(
+      chunks.map(chunk =>
+        this.timedQuery('getContractsByIds', () =>
+          databases.listDocuments(DATABASE_ID, COLLECTION_ID, [
+            Query.equal('$id', chunk),
+            Query.limit(chunk.length),
+          ])
+        )
+      )
+    );
+
+    const contracts: ContractEntity[] = [];
+    for (const response of responses) {
       contracts.push(...response.documents.map(mapDoc));
     }
 
@@ -354,6 +364,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     while (true) {
       const queries = [
         Query.equal('status', 'active'),
+        Query.orderDesc('$createdAt'),
         Query.select(['$id', 'project_id']),
         Query.limit(100),
       ];
