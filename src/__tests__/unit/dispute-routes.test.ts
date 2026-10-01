@@ -42,6 +42,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
   isValidUUID: jest.fn(() => true),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: jest.fn(() => true),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
@@ -282,6 +284,8 @@ describe('Dispute Routes - Resolve validation (admin)', () => {
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       isValidUUID: jest.fn(() => true),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      isValidAppwriteDocumentId: jest.fn(() => true),
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
       uploadDisputeEvidence: [],

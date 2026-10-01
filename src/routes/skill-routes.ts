@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, isValidUUID, validateAppwriteDocumentId, isValidAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { authMiddleware, requireRole, requirePermission } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
@@ -189,7 +189,7 @@ router.get('/search', apiRateLimiter, asyncHandler(async (req: Request, res: Res
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['categoryId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/categories/:categoryId/skills', apiRateLimiter, validateAppwriteDocumentId(['categoryId']), asyncHandler(async (req: Request, res: Response) => {
   const { categoryId } = req.params;
   
   /* istanbul ignore next */
@@ -250,6 +250,8 @@ router.post('/categories', authMiddleware, requirePermission('skills:manage'), a
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     errors.push({ field: 'name', message: 'Name is required' });
+  } else if (name.trim().length < 3) {
+    errors.push({ field: 'name', message: 'Category name must be at least 3 characters' });
   }
   if (!description || typeof description !== 'string' || description.trim().length === 0) {
     errors.push({ field: 'description', message: 'Description is required' });
@@ -318,8 +320,8 @@ router.post('/', authMiddleware, requirePermission('skills:manage'), apiRateLimi
 
   if (!categoryId || typeof categoryId !== 'string') {
     errors.push({ field: 'categoryId', message: 'Category ID is required' });
-  } else if (!isValidUUID(categoryId)) {
-    errors.push({ field: 'categoryId', message: 'Category ID must be a valid UUID' });
+  } else if (!isValidUUID(categoryId) && !isValidAppwriteDocumentId(categoryId)) {
+    errors.push({ field: 'categoryId', message: 'Category ID must be a valid ID' });
   }
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     errors.push({ field: 'name', message: 'Name is required' });
