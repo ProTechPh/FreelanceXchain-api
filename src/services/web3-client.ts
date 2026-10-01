@@ -105,13 +105,14 @@ export function getWallet(): Wallet {
  * deployer wallet (the on-chain employer).
  */
 export function getArbiterWallet(): Wallet {
-  if (!config.blockchain.arbiterPrivateKey) {
+  const privateKey = config.blockchain.arbiterPrivateKey || config.blockchain.privateKey;
+  if (!privateKey) {
     throw new Error('PLATFORM_ARBITER_PRIVATE_KEY is not configured');
   }
   if (!arbiterWallet) {
-    arbiterWallet = new Wallet(config.blockchain.arbiterPrivateKey, getProvider());
+    arbiterWallet = new Wallet(privateKey, getProvider());
     // Fail fast if the key does not match the configured arbiter address
-    if (config.blockchain.arbiterAddress) {
+    if (config.blockchain.arbiterPrivateKey && config.blockchain.arbiterAddress) {
       let configuredAddress: string;
       try {
         configuredAddress = getChecksumAddress(config.blockchain.arbiterAddress);

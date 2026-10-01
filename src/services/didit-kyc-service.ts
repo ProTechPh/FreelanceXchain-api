@@ -699,7 +699,11 @@ export async function adminReviewVerification(
     return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
   }
 
-  if (verification.status !== 'completed') {
+  if (decision === 'approved' && verification.status !== 'completed') {
+    return errorResult('INVALID_STATUS', 'Can only review completed verifications');
+  }
+
+  if (decision === 'rejected' && !['completed', 'pending', 'in_progress'].includes(verification.status)) {
     return errorResult('INVALID_STATUS', 'Can only review completed verifications');
   }
 

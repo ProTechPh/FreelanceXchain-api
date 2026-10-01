@@ -108,7 +108,7 @@ const router = Router();
  *               $ref: '#/components/schemas/SkillTaxonomy'
  */
 router.get('/', apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
-  res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+  res.setHeader('Cache-Control', 'no-cache');
   const taxonomy = await getFullTaxonomy();
   res.status(200).json(taxonomy);
 }));
