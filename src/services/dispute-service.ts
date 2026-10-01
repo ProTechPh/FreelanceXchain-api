@@ -695,16 +695,20 @@ async function updateDisputeStatuses(
   }
 
   const notifyParties = async (userId: string): Promise<void> => {
-    await notifyDisputeResolved({
-      userId,
-      disputeId,
-      resolution: decision,
-      milestoneId: disputeEntity.milestone_id,
-      milestoneTitle: milestone.title,
-      projectId: project.id,
-      projectTitle: project.title,
-      contractId: disputeEntity.contract_id,
-    });
+    try {
+      await notifyDisputeResolved({
+        userId,
+        disputeId,
+        resolution: decision,
+        milestoneId: disputeEntity.milestone_id,
+        milestoneTitle: milestone.title,
+        projectId: project.id,
+        projectTitle: project.title,
+        contractId: disputeEntity.contract_id,
+      });
+    } catch (notifyErr) {
+      logger.warn('Failed to send dispute resolved notification (non-critical)', { error: notifyErr, userId, disputeId });
+    }
   };
 
   await notifyParties(contract.freelancerId);

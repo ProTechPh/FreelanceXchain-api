@@ -584,7 +584,20 @@ describe('didit-kyc-service', () => {
         action: 'kyc.rejected',
         payload: { decision: 'rejected' },
       }));
-    });    it('should not set expiry if already set on approval', async () => {
+    });
+
+    it('should reject pending verification with audit notes', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'pending' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'rejected', admin_notes: 'Incomplete documentation' }));
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'rejected', 'Incomplete documentation');
+      expect(result.success).toBe(true);
+      expect(mockUpdateKyc).toHaveBeenCalledWith('kyc-1', expect.objectContaining({
+        status: 'rejected',
+        admin_notes: 'Incomplete documentation',
+      }));
+    });
+
+    it('should not set expiry if already set on approval', async () => {
       const existingExpiry = new Date(Date.now() + 3600_000).toISOString();
       mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', expires_at: existingExpiry }));
       mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved', expires_at: existingExpiry }));
