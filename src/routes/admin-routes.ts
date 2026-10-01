@@ -242,11 +242,17 @@ router.patch('/users/:userId', authMiddleware, requirePermission('users:manage')
 router.post('/users/:userId/suspend', authMiddleware, requirePermission('users:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
-  const { reason } = req.body;
+  const rawReason = req.body?.reason;
   const requestId = getRequestId(req);
 
   if (!adminUserId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const reason = typeof rawReason === 'string' ? rawReason.trim() : '';
+  if (!reason) {
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'A suspension reason is required', { requestId });
     return;
   }
 

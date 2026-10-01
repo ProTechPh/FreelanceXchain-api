@@ -293,7 +293,8 @@ export async function suspendUser(userId: string, reason: string, actorId: strin
     logger.info('ADMIN ACTION: user suspended', { actor: actorId, userId, reason });
     await recordAdminAudit({ actorId, targetUserId: userId, action: 'user.suspended', payload: { reason } });
 
-    return successResult(updated as UserEntity);
+    const entity = (updated || { ...existing, is_suspended: true, suspension_reason: reason }) as UserEntity;
+    return successResult(entity);
   } catch (error) {
     logger.error('Unexpected error in suspendUser', { error, userId, reason });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
@@ -320,7 +321,8 @@ export async function unsuspendUser(userId: string, actorId: string = 'system-ad
     logger.info('ADMIN ACTION: user unsuspended', { actor: actorId, userId });
     await recordAdminAudit({ actorId, targetUserId: userId, action: 'user.unsuspended' });
 
-    return successResult(updated as UserEntity);
+    const entity = (updated || { ...existing, is_suspended: false, suspension_reason: null }) as UserEntity;
+    return successResult(entity);
   } catch (error) {
     logger.error('Unexpected error in unsuspendUser', { error, userId });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');

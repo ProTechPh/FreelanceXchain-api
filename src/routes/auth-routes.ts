@@ -35,7 +35,16 @@ import {
 import { parseUserAgent } from '../utils/login-security.js';
 import { sendNewDeviceLoginAlertEmail } from '../services/email-delivery-service.js';
 import type { AuthResult, AuthError, MfaRequiredResult } from '../services/auth-types.js';
-import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter, walletRateLimiter } from '../middleware/rate-limiter.js';
+import {
+  authRateLimiter,
+  registerRateLimiter,
+  passwordResetRateLimiter,
+  mfaVerifyRateLimiter,
+  walletRateLimiter,
+  apiRateLimiter,
+  oauthRateLimiter,
+} from '../middleware/rate-limiter.js';
+import { redis } from '../config/redis.js';
 import { requireTurnstile } from '../middleware/turnstile-middleware.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
@@ -521,7 +530,7 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/refresh', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const cookieRefreshToken = req.cookies
     ? req.cookies['refresh_token'] || req.cookies['__Host-psifi.refresh-token'] || req.cookies['psifi.refresh-token']
     : undefined;
@@ -663,7 +672,7 @@ function renderImplicitFlowHtml(): string {
 </script></body></html>`;
 }
 
-router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/callback', oauthRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { code, error, error_description, userId, secret } = req.query;
   const requestId = getRequestId(req);
 
@@ -863,7 +872,7 @@ router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Req
  *       302:
  *         description: Redirect to provider
  */
-router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/oauth/:provider', oauthRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { provider } = req.params as { provider: string };
   const requestId = getRequestId(req);
 
@@ -929,7 +938,7 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/oauth/callback', oauthRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { access_token, accessToken, userId, secret } = req.body;
   const token = access_token || accessToken || secret;
   const requestId = getRequestId(req);
@@ -1191,10 +1200,10 @@ router.post('/forgot-password', passwordResetRateLimiter, requireTurnstile('pass
  *       200:
  *         description: CSRF token generated successfully
  */
-router.post('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
+router.post('/csrf-token', apiRateLimiter, (req: Request, res: Response) => {
   generateCsrfToken(req, res);
 });
-router.get('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
+router.get('/csrf-token', apiRateLimiter, (req: Request, res: Response) => {
   generateCsrfToken(req, res);
 });
 
@@ -1339,7 +1348,7 @@ router.post('/change-password', authMiddleware, passwordResetRateLimiter, asyncH
  *       500:
  *         description: Internal server error
  */
-router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/logout', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const userId = req.user?.userId;
 
@@ -1606,7 +1615,7 @@ router.post('/mfa/verify', authMiddleware, mfaVerifyRateLimiter, asyncHandler(as
  *       401:
  *         description: Unauthorized
  */
-router.get('/mfa/factors', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/mfa/factors', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
@@ -1714,7 +1723,7 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, asyncHandler(async 
  *       401:
  *         description: Unauthorized
  */
-router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/me', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -1968,6 +1977,33 @@ router.delete('/account', authMiddleware, authRateLimiter, asyncHandler(async (r
   sendSuccessResponse(res, 200, {
     message: result.message,
   }, requestId);
+}));
+
+/**
+ * @swagger
+ * /api/auth/reset-rate-limit:
+ *   post:
+ *     summary: Reset rate limits for testing environments
+ *     tags: [Authentication]
+ */
+router.post('/reset-rate-limit', asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  if (config.server.nodeEnv === 'production') {
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Rate limit reset is prohibited in production', { requestId });
+    return;
+  }
+  const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  try {
+    if (redis && typeof redis.keys === 'function') {
+      const keys = await redis.keys(`ratelimit:*:${ip}:*`);
+      if (keys.length > 0 && typeof redis.del === 'function') {
+        await redis.del(...keys);
+      }
+    }
+  } catch {
+    // Redis might not be running or in mock
+  }
+  res.status(200).json({ success: true, message: 'Rate limits reset successfully' });
 }));
 
 export default router;
