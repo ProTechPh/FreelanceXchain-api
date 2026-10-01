@@ -4,6 +4,24 @@ import { redis } from '../config/redis.js';
 import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
+function checkRateLimiterDisabled(): boolean {
+  if (config?.server?.nodeEnv === 'production' || process.env['NODE_ENV'] === 'production') {
+    return false;
+  }
+  if (config?.server?.disableRateLimiter) {
+    return true;
+  }
+  const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
+  if (raw !== undefined) {
+    const disabled = raw.toLowerCase() === 'true' || raw === '1';
+    if (process.env['NODE_ENV'] === 'test' && config?.server?.nodeEnv === 'development') {
+      return false;
+    }
+    return disabled;
+  }
+  return false;
+}
+
 // Atomic fixed-window rate limit via Lua — INCR + PEXPIRE in one round-trip.
 // Returns [currentCount, remainingTtlMs]
 const rateLimitScript = `
@@ -45,8 +63,8 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (
-      config.server.nodeEnv === 'test' ||
-      (config.server.disableRateLimiter && config.server.nodeEnv === 'development')
+      config?.server?.nodeEnv === 'test' ||
+      checkRateLimiterDisabled()
     ) {
       next();
       return;

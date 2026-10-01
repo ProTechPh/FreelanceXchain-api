@@ -93,6 +93,18 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
+  // Cross-origin / cross-port requests (e.g. Next.js on port 3000 to Express on port 3001 in dev/testing)
+  // may have SameSite=Lax cookies omitted by the browser on mutating POST/PUT/PATCH/DELETE requests.
+  // When an x-csrf-token header is present, synchronize it to req.cookies so doubleCsrfProtection can
+  // cryptographically validate the HMAC against the secret and session identifier.
+  const headerToken = (req.headers['x-csrf-token'] || req.headers['X-CSRF-Token']) as string | undefined;
+  if (headerToken && typeof headerToken === 'string') {
+    if (!req.cookies) {
+      req.cookies = {};
+    }
+    req.cookies[cookieName] = headerToken;
+  }
+
   doubleCsrfProtection(req, res, (err?: unknown) => {
     if (err) {
       logger.warn('CSRF validation failed', {
@@ -119,7 +131,7 @@ export function generateCsrfToken(req: Request, res: Response): void {
       throw new Error(`csrfTokenGenerator is not a function, it is: ${typeof csrfTokenGenerator}`);
     }
 
-    const token = csrfTokenGenerator(req, res);
+    const token = csrfTokenGenerator(req, res, { overwrite: true });
     const cookieName = getNodeEnv() === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
 
     logger.info('CSRF token generated successfully', {
@@ -134,6 +146,7 @@ export function generateCsrfToken(req: Request, res: Response): void {
       message: 'CSRF token generated and set in cookie',
       cookieName,
       token,
+      csrfToken: token,
     }, requestId);
   } catch (error) {
     logger.error('Failed to generate CSRF token', {
