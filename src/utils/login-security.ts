@@ -1,3 +1,19 @@
+import { config } from '../config/env.js';
+
+function checkLockoutDisabled(): boolean {
+  if (process.env['NODE_ENV'] === 'test') {
+    return false;
+  }
+  if (config?.server?.disableRateLimiter) {
+    return true;
+  }
+  const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
+  if (raw !== undefined) {
+    return raw.toLowerCase() === 'true' || raw === '1';
+  }
+  return false;
+}
+
 /**
  * Login Security & Account Lockout Utilities
  *
@@ -95,6 +111,7 @@ export function parseUserAgent(userAgent?: string | null): ClientDeviceInfo {
  * Check if an email account is currently locked due to repeated failed logins.
  */
 export function checkAccountLockout(email: string): { isLocked: boolean; remainingMinutes?: number } {
+  if (checkLockoutDisabled()) return { isLocked: false };
   if (!email) return { isLocked: false };
   const normalized = email.toLowerCase().trim();
   const record = failedAttemptsMap.get(normalized);
@@ -123,6 +140,7 @@ export function recordFailedLogin(email: string): {
   remainingAttempts: number;
   lockedUntil?: number;
 } {
+  if (checkLockoutDisabled()) return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
   if (!email) return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
   const normalized = email.toLowerCase().trim();
   const now = Date.now();

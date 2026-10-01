@@ -526,7 +526,7 @@ describe('csrf-middleware', () => {
 
       generateCsrfToken(req, res as unknown as Response);
 
-      expect(mockGenerateCsrfToken).toHaveBeenCalledWith(req, expect.anything());
+      expect(mockGenerateCsrfToken).toHaveBeenCalledWith(req, expect.anything(), { overwrite: true });
       expect(mockLoggerInfo).toHaveBeenCalledWith('CSRF token generated successfully', expect.objectContaining({
         requestId: 'req-gen-1',
         cookieName: 'psifi.x-csrf-token',

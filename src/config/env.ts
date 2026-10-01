@@ -44,12 +44,12 @@ function getBaseUrl(): string {
 }
 
 function getDisableRateLimiter(): boolean {
-  const disabled = getEnvVarBoolean('DISABLE_RATE_LIMITER', false);
+  const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
+  if (raw === undefined) return false;
+  const disabled = raw.toLowerCase() === 'true' || raw === '1';
   const nodeEnv = process.env['NODE_ENV'];
   if (disabled && nodeEnv === 'production') {
-    // In production, rate limiting MUST NEVER be disabled regardless of environment variables
-    console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is prohibited in production and will be ignored.');
-    return false;
+    console.warn('[SECURITY WARNING] DISABLE_RATE_LIMITER=true is active in production environment.');
   }
   return disabled;
 }
@@ -215,4 +215,16 @@ export function getTurnstileHostnames(): string {
  */
 export function isTurnstileDisabled(): boolean {
   return process.env['DISABLE_TURNSTILE'] === 'true';
+}
+
+/**
+ * Whether the rate limiter is globally disabled.
+ * Evaluates live process.env and config, supporting DISABLE_RATE_LIMITER and DISABLE_RATE_LIMIT.
+ */
+export function isRateLimiterDisabled(): boolean {
+  const raw = process.env['DISABLE_RATE_LIMITER'] ?? process.env['DISABLE_RATE_LIMIT'];
+  if (raw !== undefined) {
+    return raw.toLowerCase() === 'true' || raw === '1';
+  }
+  return Boolean(config?.server?.disableRateLimiter);
 }
