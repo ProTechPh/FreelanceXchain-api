@@ -2288,7 +2288,12 @@ async function seedCollection(collectionId: string, documents: Record<string, un
       created++;
     } catch (e: any) {
       if (e?.code === 409) {
-        skipped++;
+        try {
+          await db.updateDocument(DATABASE_ID, collectionId, documentId, data);
+          created++;
+        } catch {
+          skipped++;
+        }
       } else {
         console.error(`      ✗ Failed to create ${documentId}:`, e?.message || e);
       }

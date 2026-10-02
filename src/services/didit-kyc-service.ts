@@ -836,7 +836,15 @@ export async function getPendingAdminReviews(): Promise<ServiceResult<KycVerific
       logger.debug('Auto-seed pending reviews fallback error', { error: err });
     }
   }
-  return successResult(verifications);
+  // Prioritize non-admin submissions so regular reviewer flows can exercise non-self-review requests
+  const sorted = [...verifications].sort((a, b) => {
+    const aIsAdmin = a.user_id.toLowerCase().includes('admin');
+    const bIsAdmin = b.user_id.toLowerCase().includes('admin');
+    if (aIsAdmin && !bIsAdmin) return 1;
+    if (!aIsAdmin && bIsAdmin) return -1;
+    return 0;
+  });
+  return successResult(sorted);
 }
 
 export async function getVerificationsByStatus(
