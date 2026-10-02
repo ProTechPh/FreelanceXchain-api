@@ -895,7 +895,7 @@ describe('auth-service comprehensive coverage', () => {
       const subAdmin = {
         ...defaultUser,
         id: 'sub-admin-1',
-        email: 'example@gmail.com',
+        email: 'subadmin-seed@freelancexchain.test',
         role: 'admin' as const,
         permissions: ['analytics:view', 'users:view'],
       };
