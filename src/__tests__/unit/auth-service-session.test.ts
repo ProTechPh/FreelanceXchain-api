@@ -352,13 +352,11 @@ describe('auth service production session exchange', () => {
     );
   });
 
-  it('logs and rethrows OAuth token creation failures', async () => {
-    createOAuth2Token.mockRejectedValueOnce(new Error('provider unavailable'));
-
-    await expect(auth.getOAuthUrl('google', 'https://frontend.example/')).rejects.toThrow('provider unavailable');
-    expect(logger.error).toHaveBeenCalledWith(
-      'Failed to create OAuth2 token in Appwrite', expect.objectContaining({ provider: 'google' }),
-    );
+  it('constructs and returns the OAuth URL with custom redirect URL', async () => {
+    const url = await auth.getOAuthUrl('google', 'https://frontend.example/');
+    expect(url).toContain('/account/tokens/oauth2/google');
+    expect(url).toContain('success=https%3A%2F%2Ffrontend.example%2Fauth%2Fcallback');
+    expect(url).toContain('failure=https%3A%2F%2Ffrontend.example%2Flogin%3Ferror%3Doauth_failed');
   });
 
   it('reads OAuth provider metadata for the current user and tolerates provider failure', async () => {

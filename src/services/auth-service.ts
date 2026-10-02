@@ -1069,14 +1069,19 @@ export async function updateUserWallet(
 }
 
 export async function getOAuthUrl(provider: string, customFrontendUrl?: string): Promise<string> {
-  const userClient = createUserClient('');
-  const account = new Account(userClient);
-
   const frontendBaseUrl = getFrontendBaseUrl(customFrontendUrl);
   const successUrl = frontendBaseUrl + '/auth/callback';
   const failureUrl = frontendBaseUrl + '/login?error=oauth_failed';
 
   const appwriteProvider = (provider === 'linkedin_oidc' ? 'linkedin' : provider) as OAuthProvider;
+
+  const endpoint = config.appwrite.endpoint.replace(/\/+$/, '');
+  const url = new URL(`${endpoint}/account/tokens/oauth2/${encodeURIComponent(appwriteProvider)}`);
+  url.searchParams.set('project', config.appwrite.projectId);
+  url.searchParams.set('success', successUrl);
+  url.searchParams.set('failure', failureUrl);
+
+  const generatedUrl = url.toString();
 
   logger.info('Generating OAuth URL', {
     provider: appwriteProvider,
@@ -1084,23 +1089,10 @@ export async function getOAuthUrl(provider: string, customFrontendUrl?: string):
     failureUrl,
     endpoint: config.appwrite.endpoint,
     projectId: config.appwrite.projectId,
+    generatedUrl,
   });
 
-  try {
-    return await account.createOAuth2Token(
-      appwriteProvider,
-      successUrl,
-      failureUrl
-    );
-  } catch (error: unknown) {
-    logger.error('Failed to create OAuth2 token in Appwrite', {
-      error: getErrorMessage(error),
-      provider: appwriteProvider,
-      successUrl,
-      failureUrl,
-    });
-    throw error;
-  }
+  return generatedUrl;
 }
 
 export async function exchangeCodeForSession(accessToken: string): Promise<{ accessToken: string; refreshToken: string } | AuthError> {
