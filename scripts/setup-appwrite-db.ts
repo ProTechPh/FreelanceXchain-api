@@ -1196,22 +1196,6 @@ const adminUsers = [
       'admin:manage',
     ]),
   },
-  {
-    seedId: "sub-admin-1",
-    email: "example@gmail.com",
-    password_hash: "",
-    name: "Sub Administrator",
-    role: "admin",
-    wallet_address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-    is_suspended: false,
-    suspension_reason: null,
-    mfa_enabled: false,
-    permissions: JSON.stringify([
-      'analytics:view',
-      'support:manage',
-      'users:view',
-    ]),
-  },
 ];
 
 const employerUsers = [
@@ -2303,36 +2287,6 @@ async function seedCollection(collectionId: string, documents: Record<string, un
   console.log(`      ✓ Created: ${created}, Skipped: ${skipped}`);
 }
 
-/**
- * Keep the limited-admin test fixture deterministic without mutating accounts
- * during authentication. The public user document may predate the fixture's
- * current permission set or use a non-canonical Appwrite document ID, so find
- * it by email and update only the role fields owned by this seed fixture.
- */
-async function syncLimitedAdminFixture(): Promise<void> {
-  const fixture = adminUsers.find((user) => user.email === 'example@gmail.com');
-  if (!fixture) return;
-
-  const existing = await db.listDocuments(DATABASE_ID, 'users', [
-    Query.equal('email', fixture.email),
-    Query.limit(1),
-  ]);
-  const document = existing.documents[0];
-  if (!document) {
-    throw new Error(`Limited-admin fixture ${fixture.email} was not created`);
-  }
-
-  await db.updateDocument(DATABASE_ID, 'users', document.$id, {
-    name: fixture.name,
-    role: fixture.role,
-    is_suspended: fixture.is_suspended,
-    suspension_reason: fixture.suspension_reason,
-    mfa_enabled: fixture.mfa_enabled,
-    permissions: fixture.permissions,
-  });
-  console.log(`      ✓ Limited-admin fixture synchronized: ${fixture.email}`);
-}
-
 const DEMO_PASSWORD = process.env['DEMO_USER_PASSWORD'] || 'FreelanceXchain2026!';
 
 /**
@@ -2456,7 +2410,6 @@ async function seedCleanFoundation(): Promise<void> {
   await seedCollection("skills", skills, "Skills");
   await seedAuthUsers(adminUsers);
   await seedCollection("users", adminUsers, "Default Administrator");
-  await syncLimitedAdminFixture();
 }
 
 async function seedAllData(): Promise<void> {
@@ -2465,7 +2418,6 @@ async function seedAllData(): Promise<void> {
   const allUsers = [...adminUsers, ...employerUsers, ...freelancerUsers];
   await seedAuthUsers(allUsers);
   await seedCollection("users", allUsers, "Users");
-  await syncLimitedAdminFixture();
   await seedCollection("freelancer_profiles", freelancerProfiles, "Freelancer Profiles");
   await seedCollection("employer_profiles", employerProfiles, "Employer Profiles");
   await seedCollection("kyc_verifications", kycVerifications, "KYC Verifications");
