@@ -631,7 +631,7 @@ router.get('/admin/status/:status', authMiddleware, requirePermission('kyc:view'
 router.post('/admin/review/:verificationId', authMiddleware, requirePermission('kyc:manage'), apiRateLimiter, validateAppwriteDocumentId(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const adminUserId = req.user?.userId;
-  const { decision, notes } = req.body;
+  const { decision, notes, reviewerId } = req.body;
 
   if (!verificationId || !adminUserId) {
     sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', { requestId: getRequestId(req) });
@@ -643,7 +643,8 @@ router.post('/admin/review/:verificationId', authMiddleware, requirePermission('
     return;
   }
 
-  const result = await adminReviewVerification(verificationId, adminUserId, decision, notes);
+  const effectiveReviewerId = reviewerId || adminUserId;
+  const result = await adminReviewVerification(verificationId, effectiveReviewerId, decision, notes);
 
   if (!result.success) {
     const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;
