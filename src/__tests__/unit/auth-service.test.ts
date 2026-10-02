@@ -1339,31 +1339,25 @@ describe('auth-service comprehensive coverage', () => {
   // ----------------------------------------------------------
   describe('getOAuthUrl', () => {
     it('should map linkedin_oidc provider to linkedin for Appwrite', async () => {
-      await getOAuthUrl('linkedin_oidc');
-      expect(global.mockAppwriteAccount.createOAuth2Token).toHaveBeenCalledWith(
-        'linkedin',
-        'http://localhost:3000/auth/callback',
-        'http://localhost:3000/login?error=oauth_failed'
-      );
+      const url = await getOAuthUrl('linkedin_oidc');
+      expect(url).toContain('/account/tokens/oauth2/linkedin');
+      expect(url).toContain('project=');
+      expect(url).toContain('success=http%3A%2F%2Flocalhost%3A3000%2Fauth%2Fcallback');
+      expect(url).toContain('failure=http%3A%2F%2Flocalhost%3A3000%2Flogin%3Ferror%3Doauth_failed');
     });
 
     it('should pass provider name directly for non-linkedin providers', async () => {
-      await getOAuthUrl('google');
-      expect(global.mockAppwriteAccount.createOAuth2Token).toHaveBeenCalledWith(
-        'google',
-        expect.any(String),
-        expect.any(String)
-      );
+      const url = await getOAuthUrl('google');
+      expect(url).toContain('/account/tokens/oauth2/google');
+      expect(url).toContain('project=');
     });
 
     it('should strip trailing slashes from env URLs', async () => {
       process.env.PUBLIC_URL = 'http://localhost:3000/';
-      await getOAuthUrl('github');
-      expect(global.mockAppwriteAccount.createOAuth2Token).toHaveBeenCalledWith(
-        'github',
-        'http://localhost:3000/auth/callback',
-        'http://localhost:3000/login?error=oauth_failed'
-      );
+      const url = await getOAuthUrl('github');
+      expect(url).toContain('/account/tokens/oauth2/github');
+      expect(url).toContain('success=http%3A%2F%2Flocalhost%3A3000%2Fauth%2Fcallback');
+      expect(url).toContain('failure=http%3A%2F%2Flocalhost%3A3000%2Flogin%3Ferror%3Doauth_failed');
     });
   });
 
