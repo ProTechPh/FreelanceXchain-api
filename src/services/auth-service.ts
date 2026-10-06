@@ -14,6 +14,7 @@ import { isDisposableEmail } from '../utils/disposable-email.js';
 import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
+import { withLock } from '../utils/async-lock.js';
 import {
   sendAccountDeletionCodeEmail,
   sendAccountDeletedEmail,
@@ -1027,7 +1028,8 @@ export async function updateUserWallet(
   userId: string,
   walletAddress: string
 ): Promise<{ walletAddress: string } | AuthError> {
-  try {
+  return withLock(`wallet-address:${walletAddress.toLowerCase()}`, async () => {
+    try {
     const existing = await userRepository.getUserById(userId);
     if (!existing) {
       return {
@@ -1050,6 +1052,14 @@ export async function updateUserWallet(
       return { walletAddress: existing.wallet_address ?? walletAddress };
     }
 
+    const walletOwner = await userRepository.getUserByWalletAddress(walletAddress);
+    if (walletOwner && walletOwner.id !== userId) {
+      return {
+        code: 'WALLET_IN_USE',
+        message: 'This wallet is already linked to another account',
+      };
+    }
+
     const updated = await userRepository.updateUser(userId, { wallet_address: walletAddress });
     if (!updated) {
       return {
@@ -1059,13 +1069,14 @@ export async function updateUserWallet(
     }
 
     return { walletAddress: updated.wallet_address ?? walletAddress };
-  } catch (error: unknown) {
-    logger.error('Failed to update wallet address', { error: getErrorMessage(error), userId });
-    return {
-      code: 'UPDATE_FAILED',
-      message: 'Failed to update wallet address',
-    };
-  }
+    } catch (error: unknown) {
+      logger.error('Failed to update wallet address', { error: getErrorMessage(error), userId });
+      return {
+        code: 'UPDATE_FAILED',
+        message: 'Failed to update wallet address',
+      };
+    }
+  });
 }
 
 export async function getOAuthUrl(provider: string, customFrontendUrl?: string): Promise<string> {
@@ -1460,11 +1471,11 @@ class ActiveContractsError extends Error {
 }
 
 async function ensureNoActiveContracts(userId: string): Promise<void> {
-  const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
-  const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
-  const hasActiveContract =
-    freelancerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed') ||
-    employerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed');
+  const [activeCount, disputedCount] = await Promise.all([
+    contractRepository.countContractsByUserAndStatus(userId, 'active'),
+    contractRepository.countContractsByUserAndStatus(userId, 'disputed'),
+  ]);
+  const hasActiveContract = activeCount > 0 || disputedCount > 0;
 
   if (hasActiveContract) {
     throw new ActiveContractsError('Cannot delete account while you have active or disputed contracts with pending escrow funds. Please complete or resolve active contracts first.');
@@ -1699,17 +1710,16 @@ export async function disconnectUserWallet(userId: string): Promise<{ success: b
       };
     }
 
-    const freelancerContracts = await contractRepository.getContractsByFreelancer(userId, { limit: 50 }).catch(() => null);
-    const employerContracts = await contractRepository.getContractsByEmployer(userId, { limit: 50 }).catch(() => null);
-    const hasActiveContract =
-      freelancerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed') ||
-      employerContracts?.items.some((c) => c.status === 'active' || c.status === 'disputed');
-
-    if (hasActiveContract) {
-      return {
-        code: 'ACTIVE_CONTRACTS_EXIST',
-        message: 'Cannot disconnect wallet while you have active contracts with locked escrow funds.',
-      };
+    try {
+      await ensureNoActiveContracts(userId);
+    } catch (error) {
+      if (error instanceof ActiveContractsError) {
+        return {
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: 'Cannot disconnect wallet while you have active contracts with locked escrow funds.',
+        };
+      }
+      throw error;
     }
 
     await userRepository.updateUser(userId, { wallet_address: '' });
@@ -1725,8 +1735,6 @@ export async function disconnectUserWallet(userId: string): Promise<{ success: b
     };
   }
 }
-
-
 
 
 

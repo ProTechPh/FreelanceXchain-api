@@ -17,11 +17,10 @@
 13. [Blockchain Integration Services](#blockchain-integration-services)
 14. [Service Orchestration and Workflows](#service-orchestration-and-workflows)
 15. [Error Handling and Validation](#error-handling-and-validation)
-16. [Conclusion](#conclusion)
 
 ## Introduction
 
-The FreelanceXchain business logic layer implements a comprehensive Service Layer pattern that encapsulates domain-specific logic for managing freelance marketplace operations. This documentation provides a detailed analysis of the service architecture, focusing on how each service class handles specific domain concerns including authentication, project management, proposal handling, contract execution, payment processing, dispute resolution, reputation management, AI matching, notifications, and KYC verification. The services coordinate between API routes, data repositories, and external systems such as blockchain clients and AI services, creating a robust and scalable architecture for the platform.
+The FreelanceXchain service layer encapsulates domain logic across ten operational areas: authentication, projects, proposals, contracts, payments, disputes, reputation, AI matching, notifications, and KYC. Services sit between Express route handlers and data repositories, orchestrating calls to Appwrite, the EVM blockchain client, and external LLM APIs.
 
 ## Service Layer Architecture
 
@@ -206,10 +205,6 @@ style I fill:#bbf,stroke:#333
 ## Error Handling and Validation
 
 The service layer implements comprehensive error handling and validation strategies. Each service returns standardized result types that include success status and either data or error information. Validation occurs at multiple levels, including input validation, business rule validation, and authorization checks. Services use specific error codes and messages to communicate failure reasons to clients. The architecture supports transaction management, ensuring data consistency across operations, and implements idempotency considerations for critical operations to prevent duplicate processing.
-
-## Conclusion
-
-The business logic layer of FreelanceXchain demonstrates a well-structured Service Layer pattern implementation that effectively encapsulates domain logic for a complex freelance marketplace. Each service class has clear responsibilities and interfaces, enabling maintainability and testability. The architecture successfully coordinates between API routes, data repositories, and external systems like blockchain clients and AI services. Key workflows such as project-to-contract conversion are properly orchestrated, with appropriate transaction management and error handling. The service layer provides a robust foundation for the platform's core functionality while maintaining flexibility for future enhancements.
 
 ---
 

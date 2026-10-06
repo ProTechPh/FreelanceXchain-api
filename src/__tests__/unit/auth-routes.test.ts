@@ -3,6 +3,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { Wallet } from 'ethers';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
@@ -35,6 +36,20 @@ const mockDeleteUserAccount = jest.fn<any>();
 const mockRequestAccountDeletion = jest.fn<any>();
 const mockVerifyAccountDeletionCode = jest.fn<any>();
 const mockDisconnectUserWallet = jest.fn<any>().mockResolvedValue({ success: true, message: 'Wallet disconnected' });
+const walletChallenges = new Map<string, string>();
+const mockRedis = {
+  set: jest.fn(async (key: string, value: string) => {
+    walletChallenges.set(key, value);
+    return 'OK';
+  }),
+  eval: jest.fn(async (_script: string, _keys: number, key: string) => {
+    const value = walletChallenges.get(key) ?? null;
+    walletChallenges.delete(key);
+    return value;
+  }),
+};
+
+jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({ redis: mockRedis }));
 
 jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
@@ -102,11 +117,22 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 
 const authRouter = (await import('../../routes/auth-routes.js')).default;
 
+async function createWalletProof(app: express.Express) {
+  const wallet = Wallet.createRandom();
+  const challengeResponse = await request(app)
+    .post('/api/auth/wallet/challenge')
+    .set('Authorization', 'Bearer test-token')
+    .send({ walletAddress: wallet.address });
+  const { nonce, message } = challengeResponse.body;
+  return { walletAddress: wallet.address, nonce, signature: await wallet.signMessage(message) };
+}
+
 describe('Auth Routes', () => {
   let app: express.Express;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    walletChallenges.clear();
     app = express();
     app.use(express.json());
     app.use('/api/auth', authRouter);
@@ -665,8 +691,9 @@ describe('Auth Routes', () => {
 
   describe('PATCH /wallet', () => {
     it('should update wallet address', async () => {
-      mockUpdateUserWallet.mockResolvedValue({ walletAddress: '0x1234567890123456789012345678901234567890' });
-      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
+      const proof = await createWalletProof(app);
+      mockUpdateUserWallet.mockResolvedValue({ walletAddress: proof.walletAddress });
+      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send(proof);
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('Wallet address updated successfully');
     });
@@ -682,14 +709,16 @@ describe('Auth Routes', () => {
     });
 
     it('should return 404 if user not found', async () => {
+      const proof = await createWalletProof(app);
       mockUpdateUserWallet.mockResolvedValue({ code: 'USER_NOT_FOUND', message: 'User not found' });
-      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
+      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send(proof);
       expect(res.status).toBe(404);
     });
 
     it('should return 409 if the wallet is already locked', async () => {
+      const proof = await createWalletProof(app);
       mockUpdateUserWallet.mockResolvedValue({ code: 'WALLET_LOCKED', message: 'Wallet address is already set and cannot be changed' });
-      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
+      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send(proof);
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('WALLET_LOCKED');
     });
@@ -1124,8 +1153,9 @@ describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
   // Lines 1779-1780: PATCH /wallet catch block
   describe('PATCH /wallet - catch error', () => {
     it('should return 500 when updateUserWallet returns UPDATE_FAILED', async () => {
+      const proof = await createWalletProof(app);
       mockUpdateUserWallet.mockResolvedValue({ code: 'UPDATE_FAILED', message: 'Failed to update wallet address' });
-      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
+      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send(proof);
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('UPDATE_FAILED');
       expect(res.body.error.message).toBe('Failed to update wallet address');

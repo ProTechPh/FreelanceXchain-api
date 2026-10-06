@@ -14,6 +14,10 @@ import { sendErrorResponse } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { storage, BUCKETS, type BucketId } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
+import { proposalRepository } from '../repositories/proposal-repository.js';
+import { projectRepository } from '../repositories/project-repository.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 
 const router = Router();
 
@@ -30,6 +34,51 @@ async function isFileOwnedBy(bucket: BucketId, fileId: string, userId: string): 
   }
 }
 
+function valueReferencesFile(value: unknown, fileId: string): boolean {
+  if (typeof value === 'string') {
+    if (value === fileId || value.split(/[/?#]/).includes(fileId)) return true;
+    try {
+      return valueReferencesFile(JSON.parse(value), fileId);
+    } catch {
+      return false;
+    }
+  }
+  if (Array.isArray(value)) return value.some(item => valueReferencesFile(item, fileId));
+  if (value && typeof value === 'object') return Object.values(value as Record<string, unknown>).some(item => valueReferencesFile(item, fileId));
+  return false;
+}
+
+async function hasResourceFileAccess(bucket: BucketId, fileId: string, userId: string): Promise<boolean> {
+  if (bucket === BUCKETS.PROJECT_ATTACHMENTS) return true;
+
+  if (bucket === BUCKETS.PROPOSAL_ATTACHMENTS) {
+    const proposals = await proposalRepository.queryAll();
+    const proposal = proposals.find(item => valueReferencesFile(item.attachments, fileId));
+    if (!proposal) return false;
+    if (proposal.freelancer_id === userId) return true;
+    const project = await projectRepository.findProjectById(proposal.project_id);
+    return project?.employer_id === userId;
+  }
+
+  if (bucket === BUCKETS.DISPUTE_EVIDENCE) {
+    const disputes = await disputeRepository.queryAll();
+    const dispute = disputes.find(item => valueReferencesFile(item.evidence, fileId));
+    if (!dispute) return false;
+    const contract = await contractRepository.getContractById(dispute.contract_id);
+    return contract?.employer_id === userId || contract?.freelancer_id === userId;
+  }
+
+  if (bucket === BUCKETS.MILESTONE_DELIVERABLES) {
+    const projects = await projectRepository.queryAll();
+    const project = projects.find(item => valueReferencesFile(item.milestones, fileId));
+    if (!project) return false;
+    const contracts = await contractRepository.getContractsByProject(project.id);
+    return contracts.some(contract => contract.employer_id === userId || contract.freelancer_id === userId);
+  }
+
+  return false;
+}
+
 /**
  * Check if user has access to a file based on its context
  */
@@ -39,8 +88,7 @@ async function hasFileAccess(
   userId: string,
   userRole: string
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Admin and arbitrator have access to all files
-  if (userRole === 'admin' || userRole === 'arbitrator') {
+  if (userRole === 'admin') {
     return { allowed: true };
   }
 
@@ -55,16 +103,8 @@ async function hasFileAccess(
     return { allowed: true };
   }
 
-  // Project attachments, proposal attachments, and dispute evidence:
-  // Allow authenticated employers and freelancers access to related files
-  if (
-    bucket === BUCKETS.PROJECT_ATTACHMENTS ||
-    bucket === BUCKETS.PROPOSAL_ATTACHMENTS ||
-    bucket === BUCKETS.DISPUTE_EVIDENCE
-  ) {
-    if (userRole === 'employer' || userRole === 'freelancer') {
-      return { allowed: true };
-    }
+  if (await hasResourceFileAccess(bucket, fileId, userId)) {
+    return { allowed: true };
   }
 
   // For other buckets, only owner or admin can access
@@ -253,22 +293,26 @@ router.post(
       return;
     }
 
-    const converted = urls.map((url) => {
+    const converted = await Promise.all(urls.map(async (url) => {
       try {
         const appwriteMatch = url.match(/\/storage\/buckets\/([^/]+)\/files\/([^/]+)/);
         if (appwriteMatch) {
           const [, bucket, fileId] = appwriteMatch;
+          if (!bucket || !fileId || !Object.values(BUCKETS).includes(bucket as BucketId)) {
+            return { original: url, secure: null, accessible: false };
+          }
+          const access = await hasFileAccess(bucket as BucketId, fileId, userId, req.user?.role || 'user');
           return {
             original: url,
-            secure: `/api/files/access/${bucket}/${fileId}`,
-            accessible: true,
+            secure: access.allowed ? `/api/files/access/${bucket}/${fileId}` : null,
+            accessible: access.allowed,
           };
         }
-        return { original: url, secure: url, accessible: true };
+        return { original: url, secure: null, accessible: false };
       } catch {
         return { original: url, secure: null, accessible: false };
       }
-    });
+    }));
 
     res.json({ urls: converted });
   })

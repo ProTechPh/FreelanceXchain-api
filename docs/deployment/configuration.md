@@ -56,7 +56,7 @@ The full authoritative list (including Redis, Didit KYC, Cloudflare email, CSRF/
 
 ### Configuration Validation
 
-The `src/config/env.ts` file implements robust environment variable validation with type safety. Required variables throw errors if missing, while optional variables return `undefined`. The configuration system includes:
+`src/config/env.ts` validates environment variables at startup. Required variables throw errors if missing, while optional variables return `undefined`. The validation logic handles:
 
 - String validation with required/optional variants
 - Number parsing with validation
@@ -242,8 +242,6 @@ For production monitoring, implement:
 The application includes request ID generation for tracing requests across systems and comprehensive error handling with structured error responses.
 
 ## Rollback Procedures and Zero-Downtime Deployment
-
-FreelanceXchain supports robust deployment strategies for maintaining service availability during updates.
 
 ### Zero-Downtime Deployment
 

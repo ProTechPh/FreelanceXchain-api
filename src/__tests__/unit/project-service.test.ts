@@ -70,6 +70,13 @@ const mockSkillRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// validateStoredAttachmentOwnership checks the real storage bucket before an
+// attachment may be associated with a project; patch the singleton so the
+// fixture can prove ownership without network access.
+const mockStorageGetFile = jest.fn<any>();
+const appwriteConfig = await import('../../config/appwrite.js');
+Object.assign(appwriteConfig.storage, { getFile: mockStorageGetFile });
+
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: mockProjectRepo,
@@ -472,10 +479,22 @@ describe('Project Service - Unit Tests', () => {
     const project = createTestProject({ employer_id: employerId, status: 'open' });
     projectStore.set(project.id, project);
 
+    mockStorageGetFile.mockReset();
+    mockStorageGetFile.mockImplementation(async (_bucket: string, fileId: string) => ({
+      name: `${employerId}_${fileId}_file.png`,
+      sizeOriginal: 100,
+      mimeType: 'image/png',
+    }));
+
     const result = await updateProject(project.id, employerId, {
       title: 'Updated Title',
       status: 'open',
-      attachments: [{ url: 'https://example.com/file.png', filename: 'file.png', size: 100, mimeType: 'image/png' }],
+      attachments: [{
+        url: '/api/files/access/project-attachments/project-file-id',
+        filename: 'file.png',
+        size: 100,
+        mimeType: 'image/png',
+      }],
     });
 
     expect(result.success).toBe(true);

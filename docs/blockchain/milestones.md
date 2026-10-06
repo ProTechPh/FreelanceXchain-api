@@ -10,11 +10,10 @@
 6. [Dependency Analysis](#dependency-analysis)
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
 
 ## Introduction
 
-The Milestone Registry system is a critical component of the FreelanceXchain platform, responsible for tracking project progress and triggering payments through blockchain-based verification. This documentation provides a comprehensive architectural overview of the MilestoneRegistry.sol smart contract and its integration with backend services. The system enables verifiable work history by recording milestone completions on-chain, creating immutable proof of completed work. It supports a complete workflow from milestone submission and approval to completion tracking and payment triggering, with robust validation rules and event-driven architecture.
+The `MilestoneRegistry.sol` smart contract records milestone completions on-chain to provide an immutable record of completed deliverables. This document details contract functions, data schemas, verification flows, and integration with the backend payment service.
 
 ## Project Structure
 
@@ -227,10 +226,6 @@ When troubleshooting issues with the Milestone Registry system, consider the fol
 3. **Status synchronization issues**: Verify that the contract-service integration is properly configured and that the database connection is healthy. Check for any errors in the status transition validation logic.
 
 4. **Performance bottlenecks**: Monitor transaction confirmation times and adjust the polling interval and maximum attempts in the blockchain client configuration. Consider implementing additional caching for frequently accessed milestone records.
-
-## Conclusion
-
-The Milestone Registry system provides a robust and verifiable solution for tracking project progress and triggering payments in the FreelanceXchain platform. By leveraging blockchain technology for immutable record-keeping and combining it with efficient application-level services, the system ensures data integrity while maintaining performance and usability. The modular architecture enables clear separation of concerns, making the system maintainable and extensible. The integration between on-chain verification and off-chain data management provides a comprehensive solution that meets the requirements for transparent and trustworthy freelance work tracking.
 
 ---
 

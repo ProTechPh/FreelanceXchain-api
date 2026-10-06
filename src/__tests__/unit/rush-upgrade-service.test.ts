@@ -231,10 +231,22 @@ describe('requestRushUpgrade', () => {
   it('should reject if a pending request already exists', async () => {
     const employer = seedUser({ role: 'employer' });
     const contract = seedContract({ employer_id: employer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id });
     seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
     const result = await requestRushUpgrade(employer.id, { contractId: contract.id, proposedPercentage: 25 });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('PENDING_REQUEST_EXISTS');
+  });
+
+  it('fails closed when the project cannot be read', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id, rush_fee: 0 });
+    // Do NOT seed the project: an unverifiable milestone state must not allow a rush upgrade.
+    const result = await requestRushUpgrade(employer.id, { contractId: contract.id, proposedPercentage: 25 });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    mockRushUpgradeRepo.createRequest.mockClear();
+    expect(mockRushUpgradeRepo.createRequest).not.toHaveBeenCalled();
   });
 
   it('should reject once a milestone has been approved (no retroactive re-pricing)', async () => {
@@ -845,7 +857,7 @@ describe('rush-upgrade-service - additional coverage', () => {
     if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
   });
 
-  it('should return UPDATE_FAILED when acceptCounterOffer update returns null', async () => {
+  it('should return RECONCILIATION_REQUIRED when acceptCounterOffer request update fails after settlement', async () => {
     const employer = seedUser({ role: 'employer' });
     const contract = seedContract({ employer_id: employer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
     seedProject({ id: contract.project_id });
@@ -857,7 +869,10 @@ describe('rush-upgrade-service - additional coverage', () => {
 
     const result = await acceptCounterOffer(employer.id, request.id);
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    if (!result.success) expect(result.error.code).toBe('RECONCILIATION_REQUIRED');
+    // The fee already settled and the contract was updated; only the request
+    // status is stale, which must never look like a retryable UPDATE_FAILED.
+    expect(mockContractRepo.updateContract).toHaveBeenCalled();
   });
 
   it('should return UPDATE_FAILED when acceptCounterOffer contract update fails', async () => {
@@ -1000,7 +1015,7 @@ describe('rush-upgrade-service - Coverage Gaps', () => {
       if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
     });
 
-    it('L348: should return UPDATE_FAILED when update returns null', async () => {
+    it('L348: should return RECONCILIATION_REQUIRED when update returns null', async () => {
       const employer = seedUser({ role: 'employer' });
       const contract = seedContract({ employer_id: employer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
       seedProject({ id: contract.project_id });
@@ -1012,7 +1027,7 @@ describe('rush-upgrade-service - Coverage Gaps', () => {
 
       const result = await acceptCounterOffer(employer.id, request.id);
       expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+      if (!result.success) expect(result.error.code).toBe('RECONCILIATION_REQUIRED');
     });
 
     it('L364-365: should return UPDATE_FAILED when contract update fails', async () => {
@@ -1080,12 +1095,16 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
     expect(notifications.length).toBe(1);
   });
 
-  // Line 129: projectEntity?.title ?? 'your contract' when project doesn't exist
-  it('L129: requestRushUpgrade uses fallback title when project not found', async () => {
+  // Line 129: projectEntity?.title ?? 'your contract' when the project vanishes
+  // between the milestone guard read and the notification read.
+  it('L129: requestRushUpgrade uses fallback title when project disappears', async () => {
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
     const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
-    // Do NOT seed project for contract.project_id → findProjectById returns null
+    const project = seedProject({ id: contract.project_id, title: 'My Web3 Project' });
+    mockProjectRepo.findProjectById
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce(null);
 
     const result = await requestRushUpgrade(employer.id, {
       contractId: contract.id, proposedPercentage: 25,
@@ -1095,6 +1114,21 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
     const notifications = Array.from(notificationStore.values()) as any[];
     expect(notifications.length).toBe(1);
     expect(notifications[0].message).toContain('your contract');
+  });
+
+  // Line 129: an unreadable project must not allow a rush upgrade request.
+  it('L129: requestRushUpgrade fails closed when the project cannot be read', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    // Do NOT seed project for contract.project_id findProjectById returns null
+
+    const result = await requestRushUpgrade(employer.id, {
+      contractId: contract.id, proposedPercentage: 25,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    expect(notificationStore.size).toBe(0);
   });
 
   // Line 129: projectEntity?.title when project exists
@@ -1113,8 +1147,28 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
     expect(notifications[0].message).toContain('My Web3 Project');
   });
 
-  // Line 216: projectEntity?.title ?? 'your contract' in accept notification when project not found
-  it('L216: respondToRushUpgrade accept uses fallback title when project not found', async () => {
+  // Line 216: projectEntity?.title ?? 'your contract' in accept notification when
+  // the project disappears between the guard read and the notification read.
+  it('L216: respondToRushUpgrade accept uses fallback title when project disappears', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    const project = seedProject({ id: contract.project_id, title: 'DeFi Dashboard' });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+    mockProjectRepo.findProjectById
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce(null);
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(true);
+    const notifications = Array.from(notificationStore.values()) as any[];
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].message).toContain('your contract');
+  });
+
+  it('L216: respondToRushUpgrade accept fails closed when project cannot be read', async () => {
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
     const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
@@ -1124,10 +1178,9 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
     });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
-    expect(result.success).toBe(true);
-    const notifications = Array.from(notificationStore.values()) as any[];
-    expect(notifications.length).toBe(1);
-    expect(notifications[0].message).toContain('your contract');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    expect((rushUpgradeStore.get(request.id) as { status?: string } | undefined)?.status).toBe('pending');
   });
 
   // Line 216: projectEntity?.title in accept notification when project exists
@@ -1383,7 +1436,7 @@ describe('rush upgrade - direct fee transfer', () => {
     );
   });
 
-  it('rejects pay when the payment record cannot be saved', async () => {
+  it('requires reconciliation when the payment record cannot be saved', async () => {
     mockPaymentRepo.create.mockRejectedValueOnce(new Error('db down'));
 
     const employer = seedUser({ role: 'employer' });
@@ -1399,9 +1452,14 @@ describe('rush upgrade - direct fee transfer', () => {
     const result = await payRushUpgradeFee(employer.id, { requestId: request.id });
 
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.code).toBe('PAYMENT_RECORD_FAILED');
-    // The fee was transferred but the record failed — nothing applied to the contract.
-    expect(mockContractRepo.updateContract).not.toHaveBeenCalled();
+    if (!result.success) expect(result.error.code).toBe('RECONCILIATION_REQUIRED');
+    // The fee was transferred and the contract already carries the rush fee,
+    // but the ledger record failed - the mismatch must be reconciled, never
+    // reported as a retryable failure that could transfer the fee twice.
+    expect(mockContractRepo.updateContract).toHaveBeenCalledWith(
+      contract.id,
+      expect.objectContaining({ rush_fee: 250 }),
+    );
   });
 
   it('rejects pay when the computed rush fee is not positive', async () => {
@@ -1586,6 +1644,7 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
         hash: validHash,
         status: 'success',
         to: freelancer.wallet_address,
+        from: employer.wallet_address,
         value: BigInt('200000000000000000000'), // 200 ETH in wei (1000 * 20%)
       });
 
@@ -1631,6 +1690,41 @@ describe('rush upgrade - fee folds into escrow at deploy', () => {
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.error.code).toBe('INVALID_RECIPIENT');
+      mockGetBlockchainMode.mockReturnValue('simulated');
+      mockIsWeb3Available.mockReturnValue(false);
+    });
+
+    it('rejects clientTxHash if on-chain sender does not match the employer wallet', async () => {
+      mockGetBlockchainMode.mockReturnValue('real');
+      mockIsWeb3Available.mockReturnValue(true);
+
+      const employer = seedUser({ role: 'employer', wallet_address: '0x' + '7'.repeat(40) });
+      const freelancer = seedUser({ role: 'freelancer', wallet_address: '0x' + '2'.repeat(40) });
+      const contract = seedContract({
+        employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000,
+      });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 20, status: 'accepted',
+      });
+
+      const validHash = '0x' + 'd'.repeat(64);
+      mockGetTransactionByHash.mockResolvedValueOnce({
+        hash: validHash,
+        status: 'success',
+        to: freelancer.wallet_address,
+        from: '0x' + '8'.repeat(40), // Someone else paid the freelancer
+        value: BigInt('200000000000000000000'),
+      });
+
+      const result = await payRushUpgradeFee(employer.id, {
+        requestId: request.id,
+        transactionHash: validHash,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe('INVALID_SENDER');
       mockGetBlockchainMode.mockReturnValue('simulated');
       mockIsWeb3Available.mockReturnValue(false);
     });

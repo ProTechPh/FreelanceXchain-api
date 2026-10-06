@@ -108,6 +108,70 @@ describe('LRUCache', () => {
     });
   });
 
+  describe('has', () => {
+    it('should return true for existing non-expired key', () => {
+      cache.set('key1', 'value1');
+      expect(cache.has('key1')).toBe(true);
+    });
+
+    it('should return false for missing key', () => {
+      expect(cache.has('missing')).toBe(false);
+    });
+
+    it('should return false and evict expired key', () => {
+      jest.useFakeTimers();
+      cache.set('key1', 'value1', 50);
+      jest.advanceTimersByTime(100);
+      expect(cache.has('key1')).toBe(false);
+      jest.useRealTimers();
+    });
+  });
+
+  describe('peek', () => {
+    it('should return value without promoting recency', () => {
+      cache.set('a', 'A');
+      cache.set('b', 'B');
+      cache.set('c', 'C');
+      // peek 'a' does NOT promote it to MRU
+      expect(cache.peek('a')).toBe('A');
+      // inserting 'd' should still evict 'a' because 'a' was oldest
+      cache.set('d', 'D');
+      expect(cache.get('a')).toBeUndefined();
+      expect(cache.get('b')).toBe('B');
+    });
+
+    it('should return undefined for missing or expired key', () => {
+      expect(cache.peek('missing')).toBeUndefined();
+      jest.useFakeTimers();
+      cache.set('temp', 'val', 50);
+      jest.advanceTimersByTime(100);
+      expect(cache.peek('temp')).toBeUndefined();
+      jest.useRealTimers();
+    });
+  });
+
+  describe('getStats and resetStats', () => {
+    it('should track hits and misses accurately', () => {
+      cache.set('k1', 'v1');
+      cache.get('k1'); // hit
+      cache.get('k1'); // hit
+      cache.get('missing'); // miss
+
+      const stats = cache.getStats();
+      expect(stats.hits).toBe(2);
+      expect(stats.misses).toBe(1);
+      expect(stats.size).toBe(1);
+      expect(stats.maxSize).toBe(3);
+      expect(stats.hitRate).toBeCloseTo(2 / 3);
+
+      cache.resetStats();
+      const reset = cache.getStats();
+      expect(reset.hits).toBe(0);
+      expect(reset.misses).toBe(0);
+      expect(reset.hitRate).toBe(0);
+    });
+  });
+
   describe('startCleanup / stopCleanup', () => {
     it('should start a cleanup timer that evicts expired entries', () => {
       jest.useFakeTimers();

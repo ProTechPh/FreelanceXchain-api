@@ -1,6 +1,7 @@
 import { BaseRepository, mapDocument } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
+import { userSummaryCache } from '../utils/cache.js';
 import type { AdminPermission } from '../models/user.js';
 
 export type UserEntity = {
@@ -77,8 +78,21 @@ export class UserRepository extends BaseRepository<UserEntity> {
     }
   }
 
+  async getUserByWalletAddress(walletAddress: string): Promise<UserEntity | null> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [Query.equal('wallet_address', walletAddress), Query.limit(1)]
+    );
+    return response.documents.length > 0 ? mapDocument<UserEntity>(response.documents[0]!) : null;
+  }
+
   async updateUser(id: string, updates: Partial<UserEntity>): Promise<UserEntity | null> {
-    return this.update(id, updates);
+    const updated = await this.update(id, updates);
+    if (updated) {
+      userSummaryCache.delete(id);
+    }
+    return updated;
   }
 
   async emailExists(email: string): Promise<boolean> {
@@ -98,7 +112,11 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   async updateUserName(id: string, name: string): Promise<UserEntity | null> {
-    return this.update(id, { name });
+    const updated = await this.update(id, { name });
+    if (updated) {
+      userSummaryCache.delete(id);
+    }
+    return updated;
   }
 
   async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
@@ -116,7 +134,11 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    return this.delete(id);
+    const deleted = await this.delete(id);
+    if (deleted) {
+      userSummaryCache.delete(id);
+    }
+    return deleted;
   }
 }
 

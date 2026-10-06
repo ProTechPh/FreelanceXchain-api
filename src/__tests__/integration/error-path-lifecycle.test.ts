@@ -302,6 +302,13 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
       contractStore.set(id, updated as any);
       return updated;
     }),
+    findContractByProposalId: jest.fn(async (proposalId: string) => {
+      for (const contract of contractStore.values()) {
+        const propId = (contract as any).proposal_id || contract.proposalId;
+        if (propId === proposalId) return contract;
+      }
+      return null;
+    }),
   },
   ContractRepository: jest.fn(),
 }));

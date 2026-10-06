@@ -145,6 +145,7 @@ describe('Escrow Refund Service', () => {
 
       mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm-1', status: 'pending', amount: 1000 }]));
       const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending' };
       mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
 
@@ -164,6 +165,11 @@ describe('Escrow Refund Service', () => {
 
       mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      // Two 500 milestones: a 500 request is an exact prefix of the unsettled amounts.
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm-1', status: 'pending', amount: 500 },
+        { id: 'm-2', status: 'pending', amount: 500 },
+      ]));
       const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'employer-1', amount: 500, is_partial: true, status: 'pending' };
       mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
 
@@ -311,7 +317,7 @@ describe('Escrow Refund Service', () => {
 
       mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(
+      mockProjectRepository.findProjectById.mockResolvedValue(
         makeProject([
           { id: 'm1', status: 'approved', amount: 400 },
           { id: 'm2', status: 'pending', amount: 600 },
@@ -338,10 +344,10 @@ describe('Escrow Refund Service', () => {
         status: 'active', total_amount: 1000,
       });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(
+      mockProjectRepository.findProjectById.mockResolvedValue(
         makeProject([
           { id: 'm1', status: 'approved', amount: null },
-          { id: 'm2', status: 'pending', amount: 500 },
+          { id: 'm2', status: 'pending', amount: 1000 },
         ])
       );
       const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending' };
@@ -365,6 +371,7 @@ describe('Escrow Refund Service', () => {
 
       mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm-1', status: 'pending', amount: 1000 }]));
       mockRefundRequestRepository.create.mockResolvedValueOnce(null);
 
       const result = await createRefundRequest({
@@ -392,7 +399,7 @@ describe('Escrow Refund Service', () => {
       expect(result.error.code).toBe('CREATE_FAILED');
     });
 
-    it('should fall back to full amount when project milestones cannot be loaded', async () => {
+    it('fails closed when project milestones cannot be loaded', async () => {
       const { createRefundRequest } = await importModule();
 
       mockContractRepository.getContractById.mockResolvedValueOnce({
@@ -400,10 +407,8 @@ describe('Escrow Refund Service', () => {
         status: 'active', total_amount: 1000,
       });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
-      // Milestone fetch is non-critical — conservatively use full contract amount as ceiling
+      // The unsettled-escrow ceiling cannot be proven without the milestone ledger.
       mockProjectRepository.findProjectById.mockRejectedValueOnce(new Error('DB down'));
-      const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending' };
-      mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -411,10 +416,9 @@ describe('Escrow Refund Service', () => {
         reason: 'Test',
       });
 
-      expect(result.success).toBe(true);
-      expect(mockRefundRequestRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ amount: 1000 })
-      );
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('CREATE_FAILED');
+      expect(mockRefundRequestRepository.create).not.toHaveBeenCalled();
     });
 
     it('should notify freelancer when employer requests refund', async () => {
@@ -425,6 +429,7 @@ describe('Escrow Refund Service', () => {
         status: 'active', total_amount: 1000,
       });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm-1', status: 'pending', amount: 1000 }]));
       mockRefundRequestRepository.create.mockResolvedValueOnce({
         id: 'ref-1', contract_id: 'c-1', requested_by: 'employer-1', amount: 1000, status: 'pending',
       });
@@ -521,7 +526,7 @@ describe('Escrow Refund Service', () => {
       mockRefundRequestRepository.findWithContract
         .mockResolvedValueOnce({
           id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
-          amount: 1500, is_partial: true,
+          amount: 2000, is_partial: true,
           contract: {
             project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
             total_amount: 3000, status: 'active', escrow_address: '0xescrow',
@@ -540,7 +545,7 @@ describe('Escrow Refund Service', () => {
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
 
       expect(result.success).toBe(true);
-      // Milestone-granular refund: 1500 requested -> m1 + m2 (2000 >= 1500)
+      // Milestone-granular refund: 2000 requested -> m1 + m2 (exact prefix of the unsettled amounts)
       expect(mockRefundMilestone).toHaveBeenCalledTimes(2);
       expect(mockRefundMilestone).toHaveBeenNthCalledWith(1, '0xescrow', 0);
       expect(mockRefundMilestone).toHaveBeenNthCalledWith(2, '0xescrow', 1);
@@ -593,7 +598,7 @@ describe('Escrow Refund Service', () => {
       expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c-1', { status: 'cancelled' });
     });
 
-    it('should roll back the approval when a partial refund milestone call fails (BLF-3.6)', async () => {
+    it('should not persist the approval when a partial refund milestone call fails (BLF-3.6)', async () => {
       const { approveRefund } = await importModule();
 
       mockRefundRequestRepository.findWithContract
@@ -606,11 +611,9 @@ describe('Escrow Refund Service', () => {
           },
         })
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
-      mockRefundRequestRepository.update
-        .mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' })
-        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
       mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
-        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm1', status: 'pending', amount: 500 },
+        { id: 'm2', status: 'pending', amount: 500 },
       ]));
       mockRefundMilestone.mockRejectedValueOnce(new Error('On-chain revert'));
 
@@ -618,8 +621,9 @@ describe('Escrow Refund Service', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
-      // Approval rolled back to pending; no DB milestone/contract writes
-      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-1', expect.objectContaining({ status: 'pending' }));
+      // The chain runs before any local write, so the approval is never persisted
+      // and no milestone/contract state is touched.
+      expect(mockRefundRequestRepository.update).not.toHaveBeenCalled();
       expect(mockProjectRepository.updateProject).not.toHaveBeenCalled();
       expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
     });
@@ -627,16 +631,16 @@ describe('Escrow Refund Service', () => {
     it('should skip milestones already refunded on-chain when retrying a partial refund (idempotent retry, BLF-3.6)', async () => {
       const { approveRefund } = await importModule();
 
-      // Scenario: a first attempt refunded m1 on-chain, then failed on m2 and rolled
-      // the DB approval back to 'pending'. On retry the DB still lists both as
-      // pending targets, but the ledger says m1 is already Refunded.
+      // Scenario: a first attempt refunded m1 on-chain, then failed on m2 before
+      // any local write. On retry the DB still lists both as pending targets, but
+      // the ledger says m1 is already Refunded.
       mockRefundRequestRepository.findWithContract
         .mockResolvedValueOnce({
           id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
-          amount: 1500, is_partial: true,
+          amount: 2000, is_partial: true,
           contract: {
             project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
-            total_amount: 3000, status: 'active', escrow_address: '0xescrow',
+            total_amount: 2000, status: 'active', escrow_address: '0xescrow',
           },
         })
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
@@ -688,7 +692,7 @@ describe('Escrow Refund Service', () => {
       expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c-1', { status: 'cancelled' });
     });
 
-    it('should roll back when the on-chain status read itself fails during a partial refund (BLF-3.6)', async () => {
+    it('should leave the approval unwritten when the on-chain status read itself fails during a partial refund (BLF-3.6)', async () => {
       const { approveRefund } = await importModule();
 
       mockRefundRequestRepository.findWithContract
@@ -705,7 +709,8 @@ describe('Escrow Refund Service', () => {
         .mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' })
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
       mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
-        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm1', status: 'pending', amount: 500 },
+        { id: 'm2', status: 'pending', amount: 500 },
       ]));
       // Escrow read fails (e.g. RPC error / escrow not found on-chain)
       mockAdapterGetMilestone.mockRejectedValueOnce(new Error('Escrow read failed'));
@@ -714,9 +719,10 @@ describe('Escrow Refund Service', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
-      // No refund executed, approval rolled back to pending, no DB milestone/contract writes
+      // No refund executed, so the approval is never written and no DB
+      // milestone/contract state is touched.
       expect(mockRefundMilestone).not.toHaveBeenCalled();
-      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-1', expect.objectContaining({ status: 'pending' }));
+      expect(mockRefundRequestRepository.update).not.toHaveBeenCalled();
       expect(mockProjectRepository.updateProject).not.toHaveBeenCalled();
       expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
     });
@@ -739,7 +745,7 @@ describe('Escrow Refund Service', () => {
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
       mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
       mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
-        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm1', status: 'pending', amount: 500 },
         { id: 'm2', status: 'pending', amount: 1000 },
         { id: 'm3', status: 'pending', amount: 1000 },
       ]));
@@ -775,7 +781,8 @@ describe('Escrow Refund Service', () => {
         .mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' })
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
       mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
-        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm1', status: 'pending', amount: 500 },
+        { id: 'm2', status: 'pending', amount: 1000 },
       ]));
       // DB says pending, ledger says Approved — genuine DB/ledger inconsistency
       mockAdapterGetMilestone.mockResolvedValueOnce({ status: 'Approved', amount: 1000n, description: 'M1' });
@@ -784,9 +791,9 @@ describe('Escrow Refund Service', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
-      // No refund executed, approval rolled back, no DB milestone/contract writes
+      // No refund executed, approval never written, no DB milestone/contract writes
       expect(mockRefundMilestone).not.toHaveBeenCalled();
-      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-1', expect.objectContaining({ status: 'pending' }));
+      expect(mockRefundRequestRepository.update).not.toHaveBeenCalled();
       expect(mockProjectRepository.updateProject).not.toHaveBeenCalled();
       expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
     });
@@ -796,9 +803,9 @@ describe('Escrow Refund Service', () => {
 
       setupHappyPath({
         milestones: [
-          { id: 'm1', status: 'pending' },
-          { id: 'm2', status: 'approved' },
-          { id: 'm3', status: 'refunded' },
+          { id: 'm1', status: 'pending', amount: 1000 },
+          { id: 'm2', status: 'approved', amount: 1000 },
+          { id: 'm3', status: 'refunded', amount: 1000 },
         ],
       });
 
@@ -816,6 +823,7 @@ describe('Escrow Refund Service', () => {
       mockRefundRequestRepository.findWithContract
         .mockResolvedValueOnce({
           id: 'ref-1', contract_id: 'c-1', requested_by: 'employer-1', status: 'pending',
+          amount: 1000, is_partial: false,
           contract: {
             project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
             total_amount: 1000, status: 'active', escrow_address: '0xescrow',
@@ -823,7 +831,7 @@ describe('Escrow Refund Service', () => {
         })
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
       mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
-      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm1', status: 'submitted' }]));
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm1', status: 'submitted', amount: 1000 }]));
       mockContractRepository.updateContract.mockResolvedValueOnce({});
       mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
 
@@ -838,8 +846,8 @@ describe('Escrow Refund Service', () => {
 
       setupHappyPath({
         milestones: [
-          { id: 'm1', status: 'pending' },
-          { id: 'm2', status: 'releasing' }, // approve in flight — settled by the approve SAGA, not this refund
+          { id: 'm1', status: 'pending', amount: 1000 },
+          { id: 'm2', status: 'releasing', amount: 1000 }, // approve in flight — settled by the approve SAGA, not this refund
         ],
       });
 
@@ -1050,19 +1058,20 @@ describe('Escrow Refund Service', () => {
       expect(result.error.code).toBe('INVALID_STATUS');
     });
 
-    it('should handle update failure', async () => {
+    it('should return RECONCILIATION_REQUIRED when the approval write fails after the on-chain refund', async () => {
       const { approveRefund } = await importModule();
 
       mockRefundRequestRepository.findWithContract
         .mockResolvedValueOnce({
           id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 1000, is_partial: false,
           contract: {
             project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
             total_amount: 1000, escrow_address: '0xescrow',
           },
         })
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
-      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm1', status: 'submitted' }]));
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm1', status: 'submitted', amount: 1000 }]));
       mockRefundRequestRepository.update.mockResolvedValueOnce(null);
 
       const result = await approveRefund({
@@ -1070,8 +1079,10 @@ describe('Escrow Refund Service', () => {
         approvedBy: 'employer-1',
       });
 
+      // The refund already executed on-chain, so the missing approval write must
+      // be reconciled rather than reported as a plain failure.
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe('APPROVE_FAILED');
+      expect(result.error.code).toBe('RECONCILIATION_REQUIRED');
     });
 
     it('should handle database errors', async () => {
@@ -1102,29 +1113,12 @@ describe('Escrow Refund Service', () => {
       expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
     });
 
-    it('should log CRITICAL when rollback fails after blockchain error', async () => {
-      const { approveRefund } = await importModule();
-      const { logger } = await import('../../config/logger.js');
-
-      setupHappyPath();
-      mockRefundEscrow.mockRejectedValueOnce(new Error('On-chain revert'));
-      mockRefundRequestRepository.update.mockRejectedValueOnce(new Error('Rollback failed'));
-
-      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
-
-      expect(result.success).toBe(false);
-      expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
-      expect(logger.error).toHaveBeenCalledWith(
-        'CRITICAL: Failed to rollback refund approval after blockchain failure',
-        expect.objectContaining({ error: expect.any(Error) })
-      );
-    });
-
     it('should cancel other pending refund requests for the same contract after approval', async () => {
       const { approveRefund } = await importModule();
 
       const pendingRefund = {
         id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        amount: 1000, is_partial: false,
         contract: {
           project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
           total_amount: 1000, escrow_address: '0xescrow',
@@ -1134,7 +1128,7 @@ describe('Escrow Refund Service', () => {
         .mockResolvedValueOnce(pendingRefund)
         .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
       mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
-      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm1', status: 'submitted' }]));
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([{ id: 'm1', status: 'submitted', amount: 1000 }]));
       mockContractRepository.updateContract.mockResolvedValueOnce({});
 
       // Other pending refunds for the same contract
@@ -1567,7 +1561,7 @@ describe('Escrow Refund Service - coverage gaps', () => {
     return await import('../../services/escrow-refund-service.js');
   };
 
-  it('L26/L95: tolerates a project that cannot be loaded when creating a refund request', async () => {
+  it('L26/L95: rejects a refund request when the project cannot be loaded', async () => {
     const { createRefundRequest } = await importModule();
 
     mockContractRepository.getContractById.mockResolvedValueOnce({
@@ -1577,9 +1571,6 @@ describe('Escrow Refund Service - coverage gaps', () => {
     mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
     // Both project reads (escrow computation + milestone lock ids) see no project.
     mockProjectRepository.findProjectById.mockResolvedValue(null);
-    mockRefundRequestRepository.create.mockResolvedValueOnce({
-      id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending',
-    });
 
     const result = await createRefundRequest({
       contractId: 'c-1',
@@ -1587,11 +1578,10 @@ describe('Escrow Refund Service - coverage gaps', () => {
       reason: 'Project cancelled',
     });
 
-    // Nothing released yet, so remaining escrow is the full contract amount.
-    expect(result.success).toBe(true);
-    expect(mockRefundRequestRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 1000 })
-    );
+    // Without the milestone ledger the remaining escrow cannot be verified.
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROJECT_NOT_FOUND');
+    expect(mockRefundRequestRepository.create).not.toHaveBeenCalled();
   });
 
   it('L166/L186: approval with an unloadable project reports nothing to refund', async () => {
@@ -1618,7 +1608,7 @@ describe('Escrow Refund Service - coverage gaps', () => {
     expect(mockRefundEscrow).not.toHaveBeenCalled();
   });
 
-  it('L207/L410: is_partial with a missing amount falls back to a full-escrow refund', async () => {
+  it('L207/L410: a refund record without an amount is rejected as unrepresentable', async () => {
     const { approveRefund } = await importModule();
 
     mockRefundRequestRepository.findWithContract
@@ -1631,22 +1621,22 @@ describe('Escrow Refund Service - coverage gaps', () => {
         },
       })
       .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
-    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
     mockProjectRepository.findProjectById.mockResolvedValue(
       makeProject([{ id: 'm1', status: 'pending', amount: 1000 }])
     );
-    mockContractRepository.updateContract.mockResolvedValueOnce({});
-    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
 
     const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
 
-    expect(result.success).toBe(true);
-    // Zero requested amount is not a partial refund: the whole escrow moves.
-    expect(mockRefundEscrow).toHaveBeenCalledWith('0xescrow');
+    // A zero-amount request can never equal an exact prefix of unsettled
+    // milestones, so no escrow may move on its behalf.
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_REFUND_AMOUNT');
+    expect(mockRefundEscrow).not.toHaveBeenCalled();
     expect(mockRefundMilestone).not.toHaveBeenCalled();
+    expect(mockRefundRequestRepository.update).not.toHaveBeenCalled();
   });
 
-  it('L213: partial refund treats a milestone without an amount as zero', async () => {
+  it('L213: a pending milestone without an amount blocks the refund (fail closed)', async () => {
     const { approveRefund } = await importModule();
 
     mockRefundRequestRepository.findWithContract
@@ -1659,19 +1649,18 @@ describe('Escrow Refund Service - coverage gaps', () => {
         },
       })
       .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
-    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
     // Milestone has no amount field → milestoneAmount defaults to 0.
     mockProjectRepository.findProjectById.mockResolvedValue(
       makeProject([{ id: 'm1', status: 'pending' }])
     );
-    mockContractRepository.updateContract.mockResolvedValueOnce({});
-    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
 
     const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
 
-    expect(result.success).toBe(true);
-    expect(mockRefundMilestone).toHaveBeenCalledWith('0xescrow', 0);
-    // A zero-amount target records no payment.
+    // Zero-valued milestones cannot be represented exactly, so nothing moves.
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_REFUND_AMOUNT');
+    expect(mockRefundMilestone).not.toHaveBeenCalled();
+    expect(mockRefundRequestRepository.update).not.toHaveBeenCalled();
     expect(mockPaymentRepository.create).not.toHaveBeenCalled();
   });
 

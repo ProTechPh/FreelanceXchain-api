@@ -114,6 +114,11 @@ describe('PaymentRepository', () => {
       const result = await PaymentRepository.findByTxHash('0xabc');
       expect(result).toBeNull();
     });
+
+    it('should throw on database error so duplicate checks fail closed', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('db unavailable'));
+      await expect(PaymentRepository.findByTxHash('0xabc')).rejects.toThrow('db unavailable');
+    });
   });
 
   describe('updateStatus', () => {

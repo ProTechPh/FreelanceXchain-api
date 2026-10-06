@@ -11,9 +11,9 @@
 
 ## Core Technology Stack
 
-The FreelanceXchain platform leverages a modern technology stack combining blockchain, AI, and traditional web technologies to create a decentralized freelance marketplace. The architecture is built around TypeScript as the primary language, Express.js for REST API handling, Appwrite for database and authentication, Hardhat for Ethereum smart contract development, and ethers.js for blockchain interaction.
+FreelanceXchain combines TypeScript (Node.js + Express), Appwrite (database + auth), and Ethereum smart contracts (Hardhat + ethers.js).
 
-TypeScript serves as the foundation for backend development, providing static typing that enhances code quality, maintainability, and developer productivity. The type safety offered by TypeScript reduces runtime errors and improves code documentation, making the codebase more robust and easier to understand.
+TypeScript provides static typing across the backend, catching contract and model errors at compile time and documenting service interfaces directly in code.
 
 Express.js functions as the web application framework, handling REST API requests and responses. It provides a minimalist and flexible Node.js web application framework for building single-page, multi-page, and hybrid web applications. The framework's middleware architecture enables efficient request processing and response handling.
 
@@ -81,7 +81,7 @@ Appwrite was selected for its managed Backend-as-a-Service model: schema is vers
 
 Hardhat's local blockchain testing environment provides significant advantages for smart contract development. Developers can test contract functionality, edge cases, and failure scenarios without incurring gas costs on public networks. The ability to simulate different network conditions, mine blocks programmatically, and inspect transaction details enhances the testing process and ensures contract reliability before deployment to production networks.
 
-The combination of these technologies creates a robust foundation for a decentralized application that requires both traditional web functionality and blockchain integration. The architecture separates concerns effectively, with Appwrite handling document storage and authentication, while the blockchain manages smart contracts for escrow, reputation, and dispute resolution.
+This architecture separates concerns: Appwrite handles document storage and authentication, while the blockchain manages smart contracts for escrow, reputation, and dispute resolution.
 
 ## Containerization Strategy
 
@@ -105,7 +105,7 @@ The containerization strategy ensures that the application can be deployed consi
 
 FreelanceXchain integrates with external services to enhance functionality, particularly in the area of artificial intelligence. The AI matching system uses an Anthropic-compatible LLM API (`messages`-format requests to `LLM_API_URL` + `/FreelanceXchain/AI/Recommendations`, configured via `LLM_API_URL`/`LLM_MODEL`, defaulting to `claude-haiku-4.5`).
 
-The AI integration is implemented through the ai-client.ts service, which handles communication with the LLM API. This service includes robust error handling, retry logic, and timeout management to ensure reliable operation despite network conditions. The integration supports AI-powered skill matching between freelancers and projects, proposal generation, project description enhancement, and dispute analysis.
+The AI integration is implemented through the `ai-client.ts` service, which handles communication with the LLM API. This service implements exponential retry logic and timeouts for resilience against transient network failures. The integration supports AI-powered skill matching between freelancers and projects, proposal generation, project description enhancement, and dispute analysis.
 
 The architecture includes fallback mechanisms when the AI service is unavailable. For skill matching, the system implements keyword-based matching as a fallback to the AI-powered analysis. Similarly, skill extraction includes a keyword-based fallback when the AI service cannot be reached. This ensures that core functionality remains available even when external services experience outages.
 

@@ -810,7 +810,7 @@ export async function getDisputesByContract(
   }
 
   const isParty = contractEntity.employer_id === userId || contractEntity.freelancer_id === userId;
-  const isPrivileged = userRole === 'admin' || userRole === 'arbitrator' || userRole === 'employer';
+  const isPrivileged = userRole === 'admin';
   if (!isParty && !isPrivileged) {
     return errorResult('UNAUTHORIZED', 'Only contract parties can view disputes');
   }

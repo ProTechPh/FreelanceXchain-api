@@ -30,7 +30,8 @@ jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), 
 jest.unstable_mockModule(resolveModule('src/config/stripe.ts'), () => ({ getStripeClient: () => stripeClient }));
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   getStripeWebhookSecret: () => webhookSecret,
-  config: { stripe: {} },
+  // Pro is only granted for these exact configured prices.
+  config: { stripe: { monthlyPriceId: 'price_m', annualPriceId: 'price_a' } },
   getNodeEnv: () => 'test',
 }));
 jest.unstable_mockModule(resolveModule('src/utils/async-lock.ts'), () => ({

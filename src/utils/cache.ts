@@ -13,6 +13,8 @@ export interface Cache<T> {
   delete(key: string): boolean;
   deleteMatching(predicate: (key: string) => boolean): void;
   clear(): void;
+  has?(key: string): boolean;
+  peek?(key: string): T | undefined;
 }
 
 // In-memory LRU cache implementation
@@ -21,6 +23,8 @@ export class LRUCache<T> implements Cache<T> {
   private readonly maxSize: number;
   private readonly defaultTtlMs: number;
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private hits: number = 0;
+  private misses: number = 0;
 
   constructor(maxSize: number = 500, defaultTtlMs: number = 60_000) {
     this.cache = new Map();
@@ -30,13 +34,38 @@ export class LRUCache<T> implements Cache<T> {
 
   get(key: string): T | undefined {
     const entry = this.cache.get(key);
+    if (!entry) {
+      this.misses++;
+      return undefined;
+    }
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      this.misses++;
+      return undefined;
+    }
+    this.hits++;
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    return entry.value;
+  }
+
+  has(key: string): boolean {
+    const entry = this.cache.get(key);
+    if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  peek(key: string): T | undefined {
+    const entry = this.cache.get(key);
     if (!entry) return undefined;
     if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
       return undefined;
     }
-    this.cache.delete(key);
-    this.cache.set(key, entry);
     return entry.value;
   }
 
@@ -71,6 +100,22 @@ export class LRUCache<T> implements Cache<T> {
 
   get size(): number {
     return this.cache.size;
+  }
+
+  getStats(): { hits: number; misses: number; size: number; maxSize: number; hitRate: number } {
+    const total = this.hits + this.misses;
+    return {
+      hits: this.hits,
+      misses: this.misses,
+      size: this.cache.size,
+      maxSize: this.maxSize,
+      hitRate: total > 0 ? this.hits / total : 0,
+    };
+  }
+
+  resetStats(): void {
+    this.hits = 0;
+    this.misses = 0;
   }
 
   startCleanup(intervalMs: number = 60_000): void {
@@ -132,6 +177,14 @@ export class RedisCache<T> implements Cache<T> {
   get(key: string): T | undefined {
     // Always serve from fallback cache for sync interface
     return this.fallbackCache.get(key);
+  }
+
+  has(key: string): boolean {
+    return this.fallbackCache.has(key);
+  }
+
+  peek(key: string): T | undefined {
+    return this.fallbackCache.peek(key);
   }
 
   // Asynchronous get from Redis - returns null if not found

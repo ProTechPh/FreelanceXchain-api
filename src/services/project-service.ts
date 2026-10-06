@@ -5,7 +5,8 @@ import { employerProfileRepository } from '../repositories/employer-profile-repo
 import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
-import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
+import { FileAttachment, validateAttachments, validateStoredAttachmentOwnership } from '../utils/file-validator.js';
+import { BUCKETS } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 import { getFreelancerRecommendations, invalidateProjectMatchingCache } from './matching-service.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
@@ -159,6 +160,10 @@ export async function createProject(
     const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
     if (attachmentErrors.length > 0) {
       return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
+    }
+    const ownershipErrors = await validateStoredAttachmentOwnership(input.attachments, employerId, BUCKETS.PROJECT_ATTACHMENTS);
+    if (ownershipErrors.length > 0) {
+      return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map(e => e.message));
     }
   }
 
@@ -354,6 +359,17 @@ export async function updateProject(
 
   if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
     return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
+  }
+
+  if (input.attachments !== undefined) {
+    const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
+    if (attachmentErrors.length > 0) {
+      return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
+    }
+    const ownershipErrors = await validateStoredAttachmentOwnership(input.attachments, employerId, BUCKETS.PROJECT_ATTACHMENTS);
+    if (ownershipErrors.length > 0) {
+      return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map(e => e.message));
+    }
   }
 
   const updates: Partial<ProjectEntity> = {

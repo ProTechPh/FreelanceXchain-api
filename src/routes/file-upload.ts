@@ -20,11 +20,8 @@ const MAX_PROFILE_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const ALLOWED_BUCKETS = [
   'profile-images',
-  'contract-documents',
   'proposal-attachments',
   'project-attachments',
-  'dispute-evidence',
-  'milestone-deliverables',
 ];
 
 function isValidBucket(bucket: string): boolean {

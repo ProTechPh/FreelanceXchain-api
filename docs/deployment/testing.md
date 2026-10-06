@@ -11,15 +11,14 @@
 7. [Performance and Coverage Requirements](#performance-and-coverage-requirements)
 8. [Test Case Guidelines](#test-case-guidelines)
 9. [Continuous Integration](#continuous-integration)
-10. [Conclusion](#conclusion)
 
 ## Introduction
 
-The FreelanceXchain platform employs a comprehensive testing strategy to ensure reliability, security, and functionality across its decentralized freelance marketplace. The testing framework combines unit, integration, smart contract, and end-to-end testing methodologies to validate both backend services and blockchain interactions. This document details the complete testing approach, covering authentication, authorization, business logic workflows, smart contract verification, and complete user journey simulations. The strategy emphasizes property-based testing, external dependency mocking, and blockchain interaction validation to maintain high code quality and system integrity.
+FreelanceXchain tests backend services, smart contracts, and full user flows with Jest, ts-jest, fast-check, and Hardhat. External dependencies (Appwrite, RPC providers, LLMs) are mocked for unit and integration suites to allow fast, deterministic local runs.
 
 ## Unit Testing Approach
 
-The unit testing strategy for FreelanceXchain leverages Jest as the primary testing framework with ts-jest for TypeScript support, enabling comprehensive testing of individual service methods and utility functions. The configuration in `jest.config.js` specifies ESM module handling, test environment setup, and code coverage collection from all TypeScript files in the `src/` directory while excluding type definition files and entry points.
+The unit testing strategy uses Jest with ts-jest for TypeScript support, testing individual service methods and utility functions. The configuration in `jest.config.js` specifies ESM module handling, test environment setup, and code coverage collection from all TypeScript files in `src/` while excluding type definition files and entry points.
 
 External dependencies such as database connections and blockchain clients are systematically mocked to isolate unit tests and ensure consistent, repeatable results. The authentication service tests demonstrate this approach by mocking the user repository with an in-memory store, allowing validation of registration and login logic without database dependencies. Property-based testing using the fast-check library enables comprehensive validation of business rules across thousands of randomly generated test cases, ensuring robustness against edge cases.
 
@@ -242,10 +241,6 @@ style H fill:#607D8B,stroke:#455A64
 style I fill:#3F51B5,stroke:#303F9F
 ```
 
-## Conclusion
-
-The testing strategy for FreelanceXchain provides comprehensive coverage of the platform's functionality through a multi-layered approach combining unit, integration, smart contract, and end-to-end testing. The use of Jest for service testing, Hardhat for smart contract verification, and property-based testing for robustness validation ensures high code quality and system reliability. By mocking external dependencies and simulating complete user journeys, the testing framework validates both individual components and their interactions across the system.
-
-The strategy effectively addresses the complex requirements of a decentralized freelance marketplace, including authentication, authorization, business logic workflows, blockchain interactions, and dispute resolution. With strong code coverage, comprehensive test cases, and integrated continuous integration practices, the testing approach provides confidence in the platform's functionality and security. The documented guidelines for test case writing and test data maintenance ensure the long-term sustainability and effectiveness of the testing efforts as the platform evolves.
+---
 
 [← Back to Deployment](README.md)

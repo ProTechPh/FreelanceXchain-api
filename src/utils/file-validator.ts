@@ -4,6 +4,7 @@
  */
 
 import type { FileAttachment } from '../models/milestone.js';
+import { storage, type BucketId } from '../config/appwrite.js';
 import { isHostnameSsrfAllowed } from './url-validator.js';
 export type { FileAttachment } from '../models/milestone.js';
 
@@ -260,9 +261,46 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
 // `..`, no extra segments.
 const APPWRITE_ID = '(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]{1,36}';
 const FILE_PROXY_PATH = new RegExp(`^/api/files/access/${APPWRITE_ID}/${APPWRITE_ID}$`);
+const FILE_PROXY_PARTS = new RegExp(`^/api/files/access/(${APPWRITE_ID})/(${APPWRITE_ID})$`);
 
 export function isFileProxyPath(url: string): boolean {
   return FILE_PROXY_PATH.test(url);
+}
+
+/**
+ * Verify that client-supplied attachment metadata references a real file in
+ * the expected bucket and that the authenticated user uploaded it. Resource
+ * associations must never trust a URL or filename supplied by the browser.
+ */
+export async function validateStoredAttachmentOwnership(
+  attachments: readonly FileAttachment[],
+  userId: string,
+  expectedBucket: BucketId,
+): Promise<FileValidationError[]> {
+  const results = await Promise.all(attachments.map(async (attachment, index) => {
+    const match = FILE_PROXY_PARTS.exec(attachment.url);
+    if (!match || match[1] !== expectedBucket || !match[2]) {
+      return {
+        field: `attachments[${index}].url`,
+        message: 'Attachment must be an uploaded file from the expected storage bucket',
+      };
+    }
+
+    try {
+      const file = await storage.getFile(expectedBucket, match[2]);
+      if (!file.name.startsWith(`${userId}_`)) {
+        return { field: `attachments[${index}].url`, message: 'Attachment is not owned by the authenticated user' };
+      }
+      if (file.sizeOriginal !== attachment.size || file.mimeType !== attachment.mimeType) {
+        return { field: `attachments[${index}]`, message: 'Attachment metadata does not match the stored file' };
+      }
+      return null;
+    } catch {
+      return { field: `attachments[${index}].url`, message: 'Attachment does not exist or is inaccessible' };
+    }
+  }));
+
+  return results.filter((error): error is FileValidationError => error !== null);
 }
 
 function validateFileUrl(url: string): string[] {

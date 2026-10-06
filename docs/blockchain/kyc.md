@@ -10,12 +10,11 @@
 6. [Dependency Analysis](#dependency-analysis)
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
-10. [Appendices](#appendices)
+9. [Appendices](#appendices)
 
 ## Introduction
 
-This document describes the privacy-preserving KYC verification system. It covers the on-chain smart contract that stores only verification status and cryptographic hashes, the off-chain services that orchestrate document collection and validation, and the integration points that synchronize blockchain state with the application's database. The system minimizes on-chain data exposure by storing only hashes and status, while enabling transparent, immutable verification records that can be queried by wallet address or off-chain user ID.
+The KYC verification system records identity verification status on-chain without exposing personal data. The smart contract stores only status flags, tier levels, and SHA-256 data hashes, while off-chain services handle Didit document verification and Appwrite storage.
 
 ## Project Structure
 
@@ -279,10 +278,6 @@ Common issues and resolutions:
 - Data hash mismatch:
   - Symptom: Integrity checks fail when comparing off-chain data with on-chain hash.
   - Resolution: Recompute the hash using the exact same normalization rules and ensure the same data is used for comparison.
-
-## Conclusion
-
-The KYC verification system achieves privacy-preserving identity verification by storing only hashes and status on-chain while maintaining comprehensive off-chain data and workflows. The design balances transparency, immutability, and user privacy, with robust admin controls and integrity checks. Integration with the kyc-service and blockchain client enables efficient, gas-conscious state updates and seamless synchronization between on-chain and off-chain systems.
 
 ## Appendices
 

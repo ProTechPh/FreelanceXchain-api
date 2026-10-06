@@ -10,7 +10,8 @@ import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 
 import { createAgreementOnBlockchain } from './agreement-contract.js';
-import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
+import { FileAttachment, validateAttachments, validateStoredAttachmentOwnership } from '../utils/file-validator.js';
+import { BUCKETS } from '../config/appwrite.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
@@ -64,7 +65,12 @@ export async function submitProposal(
   if (attachmentErrors.length > 0) {
     return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
   }
+  const ownershipErrors = await validateStoredAttachmentOwnership(input.attachments, freelancerId, BUCKETS.PROPOSAL_ATTACHMENTS);
+  if (ownershipErrors.length > 0) {
+    return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map(e => e.message));
+  }
 
+  return withLock(`proposal-submit:${input.projectId}:${freelancerId}`, async () => {
   const projectEntity = await projectRepository.findProjectById(input.projectId);
   if (!projectEntity) {
     return errorResult('NOT_FOUND', 'Project not found');
@@ -128,6 +134,7 @@ export async function submitProposal(
     userId: project.employerId,
     type: 'proposal_received',
     },
+  });
   });
 }
 
@@ -574,7 +581,13 @@ export async function acceptProposal(
     return errorResult('NOT_FOUND', 'Proposal not found');
   }
   return withLock(`proposal-accept:project:${proposalEntity.project_id}`, async () => {
-    const validated = await validateProposalAcceptance(proposalId, employerId, proposalEntity);
+    const freshProposal = await proposalRepository.findProposalById(proposalId);
+    if (!freshProposal) return errorResult('NOT_FOUND', 'Proposal not found');
+    const existingContract = await contractRepository.findContractByProposalId(proposalId);
+    if (existingContract) {
+      return errorResult('DUPLICATE_CONTRACT', 'A contract already exists for this proposal');
+    }
+    const validated = await validateProposalAcceptance(proposalId, employerId, freshProposal);
     if ('error' in validated) return validated.error;
 
     const { proposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;

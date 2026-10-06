@@ -91,14 +91,38 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendMessageReceivedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
+// validateStoredAttachmentOwnership reads the real storage bucket before an
+// attachment may be linked to a message; patch the singleton so the fixture can
+// prove ownership without network access.
+const mockStorageGetFile = jest.fn<any>();
+const appwriteConfig = await import('../../config/appwrite.js');
+Object.assign(appwriteConfig.storage, { getFile: mockStorageGetFile });
+
 describe('Message Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks keeps implementations and pending once-queues, which leak
+    // between tests; reset the repo/email/storage mocks to a known baseline.
     mockUserRepo.getUserById.mockReset();
     mockFreelancerProfileRepo.getById.mockReset();
     mockEmployerProfileRepo.getById.mockReset();
     mockGetConversationById.mockReset().mockResolvedValue(null);
     mockCreateNotification.mockReset().mockResolvedValue({});
+    mockFindConversation.mockReset();
+    mockCreateConversation.mockReset();
+    mockCreateMessage.mockReset();
+    mockUpdateConversation.mockReset();
+    mockGetUserConversations.mockReset();
+    mockGetConversationMessages.mockReset();
+    mockMarkMessagesAsRead.mockReset();
+    mockGetUnreadCount.mockReset();
+    mockSendGatedEmail.mockReset().mockImplementation(async (_userId: string, _pref: string, fn: any) => {
+      if (typeof fn === 'function') {
+        return await fn({ email: 'user@example.com', name: 'User' });
+      }
+      return true;
+    });
+    mockStorageGetFile.mockReset();
   });
 
   const importModule = async () => {
@@ -601,12 +625,24 @@ describe('Message Service - Attachments Branch Coverage', () => {
     const message = { id: 'msg-2', conversation_id: 'conv-2', sender_id: 'sender-1', receiver_id: 'receiver-1', content: 'See attached' };
     mockCreateMessage.mockResolvedValueOnce(message);
     mockUpdateConversation.mockResolvedValueOnce(undefined);
+    mockStorageGetFile.mockImplementation(async (_bucket: string, fileId: string) => ({
+      name: `sender-1_${fileId}_file.pdf`,
+      sizeOriginal: 12345,
+      mimeType: 'application/pdf',
+    }));
 
     const result = await sendMessage({
       senderId: 'sender-1',
       receiverId: 'receiver-1',
       content: 'See attached',
-      attachments: [{ url: 'https://example.com/file.pdf', name: 'file.pdf', type: 'application/pdf' }],
+      attachments: [{
+        url: '/api/files/access/project-attachments/msg-file-id',
+        filename: 'file.pdf',
+        name: 'file.pdf',
+        type: 'application/pdf',
+        size: 12345,
+        mimeType: 'application/pdf',
+      }],
     });
 
     expect(result.success).toBe(true);

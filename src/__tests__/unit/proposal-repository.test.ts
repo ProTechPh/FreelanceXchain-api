@@ -1148,13 +1148,13 @@ describe('Payment Repository — branch coverage', () => {
     mockDatabases.deleteDocument.mockReset();
   });
 
-  it('should handle findByTxHash with error', async () => {
+  it('should fail closed when findByTxHash hits a database error', async () => {
     const { paymentRepository: PaymentRepository } = await import('../../repositories/payment-repository.js');
 
     mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
-    const result = await PaymentRepository.findByTxHash('0xabc');
-    expect(result).toBeNull();
+    // Lookup errors must surface so duplicate-payment checks never proceed.
+    await expect(PaymentRepository.findByTxHash('0xabc')).rejects.toThrow('DB error');
   });
 
   it('should handle getTotalEarnings with error', async () => {

@@ -20,6 +20,7 @@ const userGetByEmail = jest.fn<any>();
 const userEmailExists = jest.fn<any>();
 const getContractsByFreelancer = jest.fn<any>();
 const getContractsByEmployer = jest.fn<any>();
+const countContractsByUserAndStatus = jest.fn<any>();
 const fetchMock = jest.fn<any>();
 const logger = { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() };
 const checkAccountLockout = jest.fn<any>();
@@ -78,6 +79,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
   contractRepository: {
     getContractsByFreelancer,
     getContractsByEmployer,
+    countContractsByUserAndStatus,
   },
 }));
 for (const [modulePath, exportName] of [
@@ -148,6 +150,7 @@ describe('auth service production session exchange', () => {
     accountCreateVerification.mockResolvedValue({});
     getContractsByFreelancer.mockResolvedValue({ items: [] });
     getContractsByEmployer.mockResolvedValue({ items: [] });
+    countContractsByUserAndStatus.mockReset().mockResolvedValue(0);
     fetchMock.mockResolvedValue(response());
   });
 
@@ -423,8 +426,9 @@ describe('auth service production session exchange', () => {
   });
 
   it('throws ActiveContractsError when employer has active contracts during account deletion (line 1472)', async () => {
-    getContractsByFreelancer.mockResolvedValueOnce({ items: [] });
-    getContractsByEmployer.mockResolvedValueOnce({ items: [{ status: 'active' }] });
+    countContractsByUserAndStatus.mockImplementation(async (_userId: string, status: string) => (
+      status === 'active' ? 1 : 0
+    ));
 
     const result = await auth.requestAccountDeletion('user-1');
     expect(result).toEqual({

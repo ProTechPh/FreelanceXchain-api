@@ -15,12 +15,14 @@ import {
   cancelPendingContract,
   getContractWalletAddresses,
 } from '../services/contract-service.js';
-import { initializeContractEscrow } from '../services/payment-service.js';
+import { buildEscrowMilestones, initializeContractEscrow, registerEmployerFundedEscrow } from '../services/payment-service.js';
+import { getBlockchainMode } from '../services/blockchain/factory.js';
 import { getProjectById } from '../services/project-service.js';
 import { getDisputesByContract } from '../services/dispute-service.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { withLock } from '../utils/async-lock.js';
 import type { Contract } from '../utils/entity-mapper.js';
+import { mapProjectFromEntity } from '../utils/entity-mapper.js';
 
 
 // Type definition for ensureContractEscrow return value
@@ -182,8 +184,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
   let isAuthorized = (
     contract.freelancerId === userId ||
     contract.employerId === userId ||
-    userRole === 'admin' ||
-    userRole === 'arbitrator'
+    userRole === 'admin'
   );
 
   if (!isAuthorized) {
@@ -193,13 +194,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
       try {
         const dispute = await disputeRepository.getDisputeById(disputeId);
         if (dispute && dispute.contract_id === id) {
-          if (
-            dispute.initiator_id === userId ||
-            userRole === 'employer' ||
-            userRole === 'freelancer' ||
-            userRole === 'arbitrator' ||
-            userRole === 'admin'
-          ) {
+          if (dispute.initiator_id === userId || userRole === 'admin') {
             isAuthorized = true;
           }
         }
@@ -214,7 +209,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
         const disputes = await disputeRepository.getAllDisputesByContract(id);
         if (disputes.length > 0) {
           const isDisputeParty = disputes.some(d => d.initiator_id === userId);
-          if (isDisputeParty || userRole === 'employer' || userRole === 'arbitrator' || userRole === 'admin') {
+          if (isDisputeParty || userRole === 'admin') {
             isAuthorized = true;
           }
         }
@@ -294,6 +289,7 @@ async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowRes
   return { escrowAddress: escrowResult.data.escrowAddress };
 }
 
+// eslint-disable-next-line max-lines-per-function -- funding verifies ownership, deployment proof, and activation as one locked state transition
 router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(fundContractSchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
@@ -304,7 +300,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
-  await withLock(`contract-fund:${contractId}`, async () => {
+  await withLock(`contract-money:${contractId}`, async () => {
     const contractResult = await getContractById(contractId);
     if (!contractResult.success) {
       sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
@@ -334,22 +330,43 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
       return;
     }
 
-    // CRITICAL-6: Removed client-provided escrow address for security
-    // Escrow is always deployed server-side to prevent address manipulation attacks
     let escrowAddress = contract.escrowAddress;
 
     if (!escrowAddress) {
-      // No escrow yet — deploy server-side fallback
-      const escrowResult = await ensureContractEscrow(contract);
+      let escrowResult: EnsureEscrowResult;
+      if (getBlockchainMode() === 'real') {
+        const submittedAddress = typeof req.body?.escrowAddress === 'string' ? req.body.escrowAddress : '';
+        const transactionHash = typeof req.body?.transactionHash === 'string' ? req.body.transactionHash : '';
+        if (!submittedAddress || !transactionHash) {
+          sendErrorResponse(res, 400, 'DEPLOYMENT_PROOF_REQUIRED', 'Deploy the escrow from the employer wallet and submit its address and transaction hash', { requestId });
+          return;
+        }
+        const walletResult = await getContractWalletAddresses(contractId);
+        const projectResult = await getProjectById(contract.projectId);
+        if (!walletResult.success || !projectResult.success) {
+          sendErrorResponse(res, 400, 'FUNDING_CONTEXT_INVALID', 'Contract wallets or project milestones could not be verified', { requestId });
+          return;
+        }
+        const verified = await registerEmployerFundedEscrow({
+          contract,
+          project: mapProjectFromEntity(projectResult.data),
+          employerWalletAddress: walletResult.data.employerWallet,
+          freelancerWalletAddress: walletResult.data.freelancerWallet,
+          escrowAddress: submittedAddress,
+          transactionHash,
+        });
+        escrowResult = verified.success
+          ? { escrowAddress: verified.data.escrowAddress }
+          : { error: { statusCode: 400, code: verified.error.code, message: verified.error.message } };
+      } else {
+        escrowResult = await ensureContractEscrow(contract);
+      }
       if ('error' in escrowResult) {
         sendErrorResponse(res, escrowResult.error.statusCode, escrowResult.error.code, escrowResult.error.message, { requestId });
         return;
       }
       escrowAddress = escrowResult.escrowAddress;
     }
-
-    const { contractRepository } = await import('../repositories/contract-repository.js');
-    await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
 
     // BLF-12.1: Pass userId and role to enforce authorization
     // Non-null assertions are safe here: authMiddleware guarantees req.user is populated,
@@ -415,12 +432,13 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asy
     return;
   }
 
-  const project = projectResult.data;
+  const project = mapProjectFromEntity(projectResult.data);
+  const fundingPlan = buildEscrowMilestones(project, contract);
 
   const { ethers } = await import('ethers');
-  const milestones = (project as any)?.milestones ?? [];
-  const milestoneAmounts = milestones.map((m: any) => ethers.parseEther(String(m.amount ?? 0)).toString());
-  const milestoneDescriptions = milestones.map((m: any) => m.title || `Milestone ${m.id}`);
+  const milestones = project.milestones ?? [];
+  const milestoneAmounts = fundingPlan.amounts.map(amount => ethers.parseEther(String(amount)).toString());
+  const milestoneDescriptions = milestones.map(m => m.title || `Milestone ${m.id}`);
   const totalAmount = ethers.parseEther(String(contract.totalAmount ?? 0)).toString();
 
   // Server wallet address = platform that can approve milestones on employer's behalf
@@ -447,8 +465,11 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asy
 
   let chainId = '0x539';
   try {
-    const { getBlockchainMode } = await import('../services/blockchain/factory.js');
-    chainId = getBlockchainMode() === 'real' && (process.env['BLOCKCHAIN_RPC_URL']?.includes('amoy') || process.env['BLOCKCHAIN_RPC_URL']?.includes('polygon')) ? '0x13882' : '0x539';
+    if (getBlockchainMode() === 'real') {
+      const { getProvider } = await import('../services/web3-client.js');
+      const network = await getProvider().getNetwork();
+      chainId = `0x${network.chainId.toString(16)}`;
+    }
   } catch {
     // fallback
   }

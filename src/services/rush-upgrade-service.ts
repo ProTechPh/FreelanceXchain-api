@@ -59,14 +59,29 @@ type RushUpgradeWithContract = {
  */
 const PRE_PAYMENT_MILESTONE_STATUSES = new Set(['pending', 'in_progress']);
 
-async function hasProgressedMilestones(projectId: string): Promise<boolean> {
+type MilestoneStateResult =
+  | { ok: true; progressed: boolean }
+  | { ok: false; error: ReturnType<typeof errorResult> };
+
+/**
+ * Reads the milestone state for a contract's project. Returns a discriminated
+ * result rather than throwing so callers fail closed with a typed error: an
+ * unreadable project must never be treated as "no milestone has progressed".
+ */
+async function readMilestoneState(projectId: string): Promise<MilestoneStateResult> {
   const project = await projectRepository.findProjectById(projectId);
-  // A missing project has no milestones to gate on, so it cannot be harmed by
-  // the upgrade; the rest of the flow already tolerates it (fallback titles).
-  if (!project) return false;
-  return (project.milestones ?? []).some(
-    m => !PRE_PAYMENT_MILESTONE_STATUSES.has(String(m.status))
-  );
+  if (!project) {
+    return {
+      ok: false,
+      error: errorResult('NOT_FOUND', 'Project for this contract could not be found; rush upgrade state cannot be verified'),
+    };
+  }
+  return {
+    ok: true,
+    progressed: (project.milestones ?? []).some(
+      m => !PRE_PAYMENT_MILESTONE_STATUSES.has(String(m.status))
+    ),
+  };
 }
 
 async function sendNotificationSafe(params: {
@@ -94,15 +109,50 @@ type RushFeeTransferResult =
   | { transactionHash: string }
   | { error: ReturnType<typeof errorResult> };
 
+async function recordRushFeePayment(params: {
+  contractId: string;
+  employerId: string;
+  freelancerId: string;
+  amount: number;
+  transactionHash: string;
+}): Promise<boolean> {
+  try {
+    const existing = await paymentRepository.findByTxHash(params.transactionHash);
+    if (existing) {
+      return existing.contract_id === params.contractId
+        && existing.payment_type === 'rush_fee'
+        && existing.payer_id === params.employerId
+        && existing.payee_id === params.freelancerId
+        && existing.amount === params.amount
+        && existing.status === 'completed';
+    }
+    await paymentRepository.create({
+      id: generateId(),
+      contract_id: params.contractId,
+      milestone_id: null,
+      payer_id: params.employerId,
+      payee_id: params.freelancerId,
+      amount: params.amount,
+      currency: 'ETH',
+      tx_hash: params.transactionHash,
+      status: 'completed',
+      payment_type: 'rush_fee',
+    });
+    return true;
+  } catch (error) {
+    logger.error('Rush fee requires ledger reconciliation', { error, ...params });
+    return false;
+  }
+}
+
 /**
  * Pay the accepted rush fee as a direct wallet-to-wallet transfer, outside the
  * escrow.
  *
  * The escrow was deployed and funded with the base milestone amounts, so the
  * fee can never be funded or released through it. On acceptance the fee is
- * instead transferred from the platform wallet to the freelancer's wallet
- * (real mode) — the same trust model as escrow funding, where the platform
- * wallet funds escrows on the employer's behalf. In simulated mode there is no
+ * instead transferred from the employer wallet to the freelancer wallet in
+ * real mode. In simulated mode there is no
  * chain, so a `sim-rush-fee-*` hash is generated and the payment record below
  * is the ledger. The payment record (payment_type 'rush_fee') is written in
  * both modes as the durable, queryable counterpart of the transfer.
@@ -117,13 +167,16 @@ async function transferRushFee(params: {
   amount: number;
   clientTxHash?: string | undefined;
 }): Promise<RushFeeTransferResult> {
-  const { requestId, contractId, employerId, freelancerId, amount, clientTxHash } = params;
+  const { requestId, employerId, freelancerId, amount, clientTxHash } = params;
 
   if (typeof amount !== 'number' || !isFinite(amount) || amount <= 0) {
     return { error: errorResult('VALIDATION_ERROR', 'Rush fee must be a positive amount') };
   }
 
-  const freelancer = await userRepository.getUserById(freelancerId);
+  const [freelancer, employer] = await Promise.all([
+    userRepository.getUserById(freelancerId),
+    userRepository.getUserById(employerId),
+  ]);
 
   let transactionHash: string;
   if (clientTxHash) {
@@ -133,12 +186,19 @@ async function transferRushFee(params: {
 
     const existingPayment = await paymentRepository.findByTxHash(clientTxHash);
     if (existingPayment) {
-      return { error: errorResult('DUPLICATE_TRANSACTION', 'This transaction has already been registered for a payment') };
+      const isIdempotentRetry = existingPayment.contract_id === params.contractId
+        && existingPayment.payment_type === 'rush_fee'
+        && existingPayment.payer_id === employerId
+        && existingPayment.payee_id === freelancerId
+        && existingPayment.amount === amount
+        && existingPayment.status === 'completed';
+      if (isIdempotentRetry) return { transactionHash: clientTxHash };
+      return { error: errorResult('DUPLICATE_TRANSACTION', 'This transaction has already been registered for another payment') };
     }
 
     if (getBlockchainMode() === 'real' && isWeb3Available()) {
-      if (!freelancer?.wallet_address) {
-        return { error: errorResult('MISSING_WALLET', 'Freelancer wallet address is required to verify rush fee payment') };
+      if (!freelancer?.wallet_address || !employer?.wallet_address) {
+        return { error: errorResult('MISSING_WALLET', 'Both employer and freelancer wallets are required to verify rush fee payment') };
       }
 
       try {
@@ -155,10 +215,14 @@ async function transferRushFee(params: {
           return { error: errorResult('INVALID_RECIPIENT', `Transaction recipient does not match freelancer wallet (${freelancer.wallet_address})`) };
         }
 
+        if (!tx.from || tx.from.toLowerCase() !== employer.wallet_address.toLowerCase()) {
+          return { error: errorResult('INVALID_SENDER', 'Transaction sender does not match the employer wallet') };
+        }
+
         const expectedWei = parseUnits(amount.toString(), 18);
         /* istanbul ignore next */
-        if (tx.value < expectedWei) {
-          return { error: errorResult('INSUFFICIENT_AMOUNT', `Transaction value is less than required rush fee (${amount} ETH)`) };
+        if (tx.value !== expectedWei) {
+          return { error: errorResult('INVALID_AMOUNT', `Transaction value must exactly equal the rush fee (${amount} ETH)`) };
         }
       } catch (err) {
         logger.error('Failed to verify on-chain rush fee transaction', { error: err, clientTxHash });
@@ -174,24 +238,6 @@ async function transferRushFee(params: {
   } else {
     // Simulated mode: no real chain — the payment record below is the ledger.
     transactionHash = `sim-rush-fee-${requestId}-${Date.now()}`;
-  }
-
-  try {
-    await paymentRepository.create({
-      id: generateId(),
-      contract_id: contractId,
-      milestone_id: null,
-      payer_id: employerId,
-      payee_id: freelancerId,
-      amount,
-      currency: 'ETH',
-      tx_hash: transactionHash,
-      status: 'completed',
-      payment_type: 'rush_fee',
-    });
-  } catch (error) {
-    logger.error('Failed to record rush fee payment', { error, contractId, requestId });
-    return { error: errorResult('PAYMENT_RECORD_FAILED', 'Rush fee transferred but the payment record could not be saved') };
   }
 
   return { transactionHash };
@@ -240,7 +286,9 @@ async function applyAcceptedRushFee(
 
   // Re-check milestone state under the lock (TOCTOU) BEFORE moving money: a
   // milestone may have been submitted/approved between the request and accept.
-  if (await hasProgressedMilestones(contractEntity.project_id)) {
+  const milestoneState = await readMilestoneState(contractEntity.project_id);
+  if (!milestoneState.ok) return { error: milestoneState.error };
+  if (milestoneState.progressed) {
     return { error: errorResult('INVALID_STATUS', 'Rush upgrade can only be accepted before any milestone has been submitted, approved, or refunded') };
   }
 
@@ -263,16 +311,6 @@ async function applyAcceptedRushFee(
     transactionHash = transferResult.transactionHash;
   }
 
-  const updatedEntity = await rushUpgradeRequestRepository.updateRequest(requestId, {
-    status: 'accepted',
-    responded_by: respondedBy,
-    responded_at: now,
-  });
-
-  if (!updatedEntity) {
-    return { error: errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request') };
-  }
-
   // total_amount is bumped only when the fee folds into the escrow at deploy.
   // With a deployed escrow it stays at base — the escrow releases base amounts
   // and the fee was settled by the direct transfer.
@@ -283,6 +321,30 @@ async function applyAcceptedRushFee(
   if (!updatedContractEntity) {
     logger.error('Failed to apply rush upgrade to contract');
     return { error: errorResult('UPDATE_FAILED', 'Failed to apply rush upgrade to contract') };
+  }
+
+  const updatedEntity = await rushUpgradeRequestRepository.updateRequest(requestId, {
+    status: 'accepted',
+    responded_by: respondedBy,
+    responded_at: now,
+  });
+
+  if (!updatedEntity) {
+    logger.error('Rush upgrade contract state requires request reconciliation', { requestId, contractId: contractEntity.id });
+    return { error: errorResult('RECONCILIATION_REQUIRED', 'Rush upgrade was applied but its request state requires reconciliation') };
+  }
+
+  if (transactionHash) {
+    const recorded = await recordRushFeePayment({
+      contractId: contractEntity.id,
+      employerId: contractEntity.employer_id,
+      freelancerId: contractEntity.freelancer_id,
+      amount: newRushFee,
+      transactionHash,
+    });
+    if (!recorded) {
+      return { error: errorResult('RECONCILIATION_REQUIRED', 'Rush fee was applied but its payment ledger requires reconciliation') };
+    }
   }
 
   return {
@@ -299,7 +361,7 @@ export async function requestRushUpgrade(
   input: RequestRushUpgradeInput
 ): Promise<ServiceResult<RushUpgradeRequest>> {
   // M18: Lock per contract to prevent duplicate rush upgrade requests
-  return withLock(`rush-upgrade:${input.contractId}`, async () => {
+  return withLock(`contract-money:${input.contractId}`, async () => {
     if (input.proposedPercentage <= 0 || input.proposedPercentage > 100 || hasMoreThanTwoDecimals(input.proposedPercentage)) {
       return errorResult('VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100');
     }
@@ -321,7 +383,9 @@ export async function requestRushUpgrade(
     return errorResult('ALREADY_RUSH', 'This contract already has a rush fee applied');
   }
 
-  if (await hasProgressedMilestones(contractEntity.project_id)) {
+  const milestoneState = await readMilestoneState(contractEntity.project_id);
+  if (!milestoneState.ok) return milestoneState.error;
+  if (milestoneState.progressed) {
     return errorResult('INVALID_STATUS', 'Rush upgrade can only be requested before any milestone has been submitted, approved, or refunded');
   }
 
@@ -413,7 +477,9 @@ async function acceptRushUpgrade(
   const { requestEntity, contractEntity } = context;
 
   // Re-check milestone state under the lock (TOCTOU) BEFORE moving money or accepting
-  if (await hasProgressedMilestones(contractEntity.project_id)) {
+  const milestoneState = await readMilestoneState(contractEntity.project_id);
+  if (!milestoneState.ok) return milestoneState.error;
+  if (milestoneState.progressed) {
     return errorResult('INVALID_STATUS', 'Rush upgrade can only be accepted before any milestone has been submitted, approved, or refunded');
   }
 
@@ -566,7 +632,7 @@ export async function respondToRushUpgrade(
   // `rush-upgrade:{contractId}` key requestRushUpgrade uses — so a concurrent
   // accept cannot double-apply the rush fee or race a counter-offer. The request
   // is re-read under the lock so the status transition is atomic.
-  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+  return withLock(`contract-money:${initialRequest.contract_id}`, async () => {
     const validated = await validateRushUpgradeResponse(freelancerId, input);
     if ('error' in validated) return validated.error;
 
@@ -599,7 +665,7 @@ export async function acceptCounterOffer(
   // M19: Serialize with respondToRushUpgrade (same lock key per contract). The
   // request is re-read under the lock so accept and counter-offer cannot both
   // apply the rush fee (double-apply) on the same contract.
-  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+  return withLock(`contract-money:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   /* istanbul ignore next */
   if (!requestEntity) {
@@ -668,7 +734,7 @@ export async function payRushUpgradeFee(
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
-  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+  return withLock(`contract-money:${initialRequest.contract_id}`, async () => {
     const requestEntity = await rushUpgradeRequestRepository.getRequestById(input.requestId);
     /* istanbul ignore next */
     if (!requestEntity) {
@@ -686,13 +752,15 @@ export async function payRushUpgradeFee(
       return errorResult('INVALID_STATUS', 'Can only pay for an accepted rush upgrade request');
     }
 
-    /* istanbul ignore next */
-    if (contractEntity.rush_fee > 0) {
-      return errorResult('ALREADY_PAID', 'Rush fee has already been paid for this contract');
-    }
-
     const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
     const newRushFee = calculateRushFee(contractEntity.base_amount, agreedPercentage);
+
+    if (contractEntity.rush_fee > 0 && contractEntity.rush_fee !== newRushFee) {
+      return errorResult('ALREADY_PAID', 'A different rush fee has already been applied to this contract');
+    }
+    if (contractEntity.rush_fee > 0 && !input.transactionHash) {
+      return errorResult('RECONCILIATION_REQUIRED', 'The existing rush fee requires its original transaction hash for reconciliation');
+    }
 
     const transferResult = await transferRushFee({
       requestId: input.requestId,
@@ -707,13 +775,24 @@ export async function payRushUpgradeFee(
       return transferResult.error;
     }
 
-    const updatedContractEntity = await contractRepository.updateContract(contractEntity.id, {
-      rush_fee: newRushFee,
-    });
+    const updatedContractEntity = contractEntity.rush_fee === newRushFee
+      ? contractEntity
+      : await contractRepository.updateContract(contractEntity.id, { rush_fee: newRushFee });
 
     /* istanbul ignore next */
     if (!updatedContractEntity) {
       return errorResult('UPDATE_FAILED', 'Failed to update contract with rush fee');
+    }
+
+    const recorded = await recordRushFeePayment({
+      contractId: contractEntity.id,
+      employerId: contractEntity.employer_id,
+      freelancerId: contractEntity.freelancer_id,
+      amount: newRushFee,
+      transactionHash: transferResult.transactionHash,
+    });
+    if (!recorded) {
+      return errorResult('RECONCILIATION_REQUIRED', 'Rush fee was applied but its payment ledger requires reconciliation');
     }
 
     await sendNotificationSafe({
@@ -746,7 +825,7 @@ export async function declineCounterOffer(
   }
 
   // M19: Serialize with acceptCounterOffer and respondToRushUpgrade (same key).
-  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+  return withLock(`contract-money:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   /* istanbul ignore next */
   if (!requestEntity) {
@@ -833,7 +912,7 @@ export async function withdrawRushUpgradeRequest(
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
-  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+  return withLock(`contract-money:${initialRequest.contract_id}`, async () => {
     const request = await rushUpgradeRequestRepository.getRequestById(requestId);
     /* istanbul ignore next */
     if (!request) {

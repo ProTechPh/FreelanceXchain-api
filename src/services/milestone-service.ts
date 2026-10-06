@@ -446,7 +446,7 @@ export async function getContractMilestones(
     }
 
     const isParty = userId && (contract.employer_id === userId || contract.freelancer_id === userId);
-    const isPrivileged = userRole === 'admin' || userRole === 'arbitrator' || userRole === 'employer';
+    const isPrivileged = userRole === 'admin';
     if (!isParty && !isPrivileged) {
       return errorResult('UNAUTHORIZED', 'You are not authorized to view these milestones');
     }

@@ -287,37 +287,18 @@ export async function resolveDispute(
     throw new Error('freelancerBps must be between 0 and 10000');
   }
 
-  try {
-    const receipt = await waitForReceipt(
-      await getEscrowContractWithArbiterSigner(escrowAddress).resolveDispute(milestoneIndex, freelancerBps)
-    );
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithArbiterSigner(escrowAddress).resolveDispute(milestoneIndex, freelancerBps)
+  );
 
-    return {
-      transactionHash: receipt.hash,
-      receipt,
-    };
-  } catch (arbiterErr) {
-    logger.warn('Arbiter resolution failed on-chain', { error: arbiterErr, escrowAddress, milestoneIndex, freelancerBps });
-    if (freelancerBps === 0) {
-      try {
-        return await refundMilestone(escrowAddress, milestoneIndex);
-      } catch (refundErr) {
-        logger.warn('Direct refund fallback also failed', { error: refundErr });
-      }
-    }
-    if (freelancerBps === 10000) {
-      try {
-        return await approveMilestone(escrowAddress, milestoneIndex);
-      } catch (approveErr) {
-        logger.warn('Direct approve fallback also failed', { error: approveErr });
-      }
-    }
-    const dummyHash = `0x${'c'.repeat(64)}`;
-    return {
-      transactionHash: dummyHash,
-      receipt: { hash: dummyHash, status: 1 } as unknown as TransactionReceipt,
-    };
+  if (receipt.status !== 1) {
+    throw new Error('Dispute resolution transaction failed on-chain');
   }
+
+  return {
+    transactionHash: receipt.hash,
+    receipt,
+  };
 }
 
 /**

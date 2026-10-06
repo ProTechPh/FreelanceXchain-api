@@ -53,6 +53,9 @@ import {
 } from '../validators/auth.schema.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { randomBytes } from 'node:crypto';
+import { verifyMessage, getAddress } from 'ethers';
+import { redis } from '../config/redis.js';
 import { getErrorMessage } from '../utils/index.js';
 import { auditLogRepository } from '../repositories/audit-log-repository.js';
 import { setAuthCookies, clearAuthCookies, extractTokenFromRequest } from '../utils/auth-cookie-helpers.js';
@@ -1779,8 +1782,33 @@ router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Requ
  *       404:
  *         description: User not found
  */
+router.post('/wallet/challenge', authMiddleware, walletRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const walletAddress = typeof req.body?.walletAddress === 'string' ? req.body.walletAddress : '';
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+  if (!WALLET_REGEX.test(walletAddress)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid Ethereum wallet address format', { requestId });
+    return;
+  }
+  const normalizedAddress = getAddress(walletAddress);
+  const nonce = randomBytes(24).toString('hex');
+  const message = [
+    'FreelanceXchain wallet verification',
+    `User: ${userId}`,
+    `Wallet: ${normalizedAddress}`,
+    `Nonce: ${nonce}`,
+    'This request does not authorize a blockchain transaction.',
+  ].join('\n');
+  await redis.set(`wallet-link:${userId}:${nonce}`, JSON.stringify({ walletAddress: normalizedAddress, message }), 'EX', 300, 'NX');
+  sendSuccessResponse(res, 200, { nonce, message, walletAddress: normalizedAddress }, requestId);
+}));
+
 router.patch('/wallet', authMiddleware, walletRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { walletAddress } = req.body;
+  const { walletAddress, nonce, signature } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -1800,10 +1828,34 @@ router.patch('/wallet', authMiddleware, walletRateLimiter, asyncHandler(async (r
     return;
   }
 
+  if (typeof nonce !== 'string' || !/^[a-f0-9]{48}$/.test(nonce) || typeof signature !== 'string') {
+    sendErrorResponse(res, 400, 'WALLET_PROOF_REQUIRED', 'A valid one-time wallet signature is required', { requestId });
+    return;
+  }
+  const key = `wallet-link:${userId}:${nonce}`;
+  const consumeScript = `local value = redis.call('get', KEYS[1]); if value then redis.call('del', KEYS[1]); end; return value`;
+  const rawChallenge = await redis.eval(consumeScript, 1, key);
+  if (typeof rawChallenge !== 'string') {
+    sendErrorResponse(res, 400, 'WALLET_CHALLENGE_EXPIRED', 'Wallet challenge is invalid, expired, or already used', { requestId });
+    return;
+  }
+  const challenge = JSON.parse(rawChallenge) as { walletAddress: string; message: string };
+  let recoveredAddress: string;
+  try {
+    recoveredAddress = verifyMessage(challenge.message, signature);
+  } catch {
+    sendErrorResponse(res, 400, 'INVALID_WALLET_SIGNATURE', 'Wallet signature is invalid', { requestId });
+    return;
+  }
+  if (getAddress(walletAddress) !== getAddress(challenge.walletAddress) || getAddress(recoveredAddress) !== getAddress(challenge.walletAddress)) {
+    sendErrorResponse(res, 400, 'INVALID_WALLET_SIGNATURE', 'Wallet signature does not match the requested address', { requestId });
+    return;
+  }
+
   const result = await updateUserWallet(userId, walletAddress);
 
   if (isAuthError(result)) {
-    const statusCode = result.code === 'USER_NOT_FOUND' ? 404 : result.code === 'WALLET_LOCKED' ? 409 : 500;
+    const statusCode = result.code === 'USER_NOT_FOUND' ? 404 : (result.code === 'WALLET_LOCKED' || result.code === 'WALLET_IN_USE') ? 409 : 500;
     sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
     return;
   }

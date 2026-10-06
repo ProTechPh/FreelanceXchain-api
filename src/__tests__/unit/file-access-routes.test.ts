@@ -15,11 +15,27 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   storage: mockStorage,
   BUCKETS: {
     DISPUTE_EVIDENCE: 'dispute-evidence',
+    MILESTONE_DELIVERABLES: 'milestone-deliverables',
+    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+    PROJECT_ATTACHMENTS: 'project-attachments',
     KYC_DOCUMENTS: 'kyc-documents',
     PORTFOLIO_IMAGES: 'portfolio-images',
     AVATARS: 'avatars',
     ATTACHMENTS: 'attachments',
   },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: { queryAll: jest.fn().mockResolvedValue([]) },
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
+  projectRepository: { queryAll: jest.fn().mockResolvedValue([]), findProjectById: jest.fn().mockResolvedValue(null) },
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
+  disputeRepository: { queryAll: jest.fn().mockResolvedValue([]) },
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: { getContractById: jest.fn().mockResolvedValue(null), getContractsByProject: jest.fn().mockResolvedValue([]) },
 }));
 
 let mockUser: any = { userId: 'user-1', role: 'user' };
@@ -215,7 +231,7 @@ describe('File Access Routes', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('converts Appwrite URLs and preserves other URLs', async () => {
+    it('converts authorized Appwrite URLs and rejects external URLs', async () => {
       const urls = [
         'https://appwrite.io/v1/storage/buckets/portfolio-images/files/file-123/view',
         'https://example.com/other-image.jpg',
@@ -226,8 +242,8 @@ describe('File Access Routes', () => {
       expect(res.body.urls).toHaveLength(2);
       expect(res.body.urls[0].secure).toBe('/api/files/access/portfolio-images/file-123');
       expect(res.body.urls[0].accessible).toBe(true);
-      expect(res.body.urls[1].secure).toBe('https://example.com/other-image.jpg');
-      expect(res.body.urls[1].accessible).toBe(true);
+      expect(res.body.urls[1].secure).toBeNull();
+      expect(res.body.urls[1].accessible).toBe(false);
     });
 
     it('returns inaccessible record when url item cannot be matched', async () => {

@@ -49,7 +49,7 @@
   "license": "ISC",
   "dependencies": {
     "@opencoredev/email-sdk": "^0.6.5",
-    "compression": "^1.8.1",
+    "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csrf-csrf": "^4.0.3",
@@ -142,7 +142,10 @@
       "body-parser@<1.20.6": "1.20.6",
       "browserslist@<=4.28.6": ">=4.28.7",
       "qs@<6.16.0": ">=6.16.0",
-      "smol-toml@<=1.7.0": ">=1.7.1"
+      "smol-toml@<=1.8.0": ">=1.9.0",
+      "katex@>=0.11.0 <0.18.2": ">=0.18.2",
+      "proxy-addr@>=1.1.0 <2.0.8": ">=2.0.8",
+      "compression@<1.8.2": ">=1.8.2"
     }
   }
 }

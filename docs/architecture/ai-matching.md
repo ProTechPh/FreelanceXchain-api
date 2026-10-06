@@ -10,12 +10,11 @@
 6. [Dependency Analysis](#dependency-analysis)
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
-10. [Appendices](#appendices)
+9. [Appendices](#appendices)
 
 ## Introduction
 
-This document explains the AI-powered skill matching system in FreelanceXchain. The platform integrates OpenAI-compatible LLM APIs (default provider: Anthropic Claude, via `LLM_API_URL`/`LLM_MODEL`) to extract skills from project descriptions and freelancer profiles, compute compatibility scores, and generate intelligent recommendations. It also includes an AI assistant that enhances user interactions through natural language processing for proposals, project descriptions, and dispute analysis. The system emphasizes robust error handling, fallbacks, and performance characteristics such as retries, timeouts, and rate limiting.
+FreelanceXchain uses OpenAI-compatible LLM APIs (Anthropic Claude by default, via `LLM_API_URL`/`LLM_MODEL`) to extract skills from project descriptions and freelancer profiles, compute compatibility scores, and generate candidate recommendations. It also provides helper prompts for drafting proposals, refining project scopes, and summarizing disputes. When LLM calls fail or timeout, the service falls back to keyword matching.
 
 ## Project Structure
 
@@ -57,7 +56,7 @@ AC --> LLM
 
 ## Core Components
 
-- AI Client: Sends prompts to the LLM API, parses JSON responses, and provides robust error handling with exponential backoff and timeouts.
+- AI Client: Sends prompts to the LLM API, parses JSON responses, and handles transient failures with exponential backoff and request timeouts.
 - Matching Service: Computes skill match scores, extracts skills from text, and performs skill gap analysis with AI-backed and keyword-based fallbacks.
 - AI Assistant: Generates tailored proposals, improves project descriptions, and analyzes disputes using AI.
 - Routes: Expose endpoints for project and freelancer recommendations, skill extraction, and skill gap analysis.
@@ -279,10 +278,6 @@ Operational checks:
 - Confirm environment variables for LLM configuration.
 - Validate that the LLM API accepts the configured model and key.
 - Monitor rate-limit responses and adjust client-side throttling.
-
-## Conclusion
-
-The AI-powered matching system in FreelanceXchain integrates OpenAI-compatible LLM APIs (default provider: Anthropic Claude) to enhance skill matching, extraction, and gap analysis. It provides robust fallbacks, structured error handling, and clear separation of concerns across routes, services, and clients. With rate limiting and timeouts, the system balances reliability and responsiveness. Extending caching strategies for taxonomy and extraction results would further improve performance and reduce LLM usage costs.
 
 ## Appendices
 

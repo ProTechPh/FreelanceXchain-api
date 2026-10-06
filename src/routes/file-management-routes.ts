@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { listUserFiles, getFileQuota, deleteFile } from '../utils/storage-uploader.js';
 import { BUCKETS, BucketId } from '../config/appwrite.js';
-import { config } from '../config/env.js';
 import { sendErrorResponse, sendSuccessResponse, getRequestId } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -52,7 +51,7 @@ router.get('/', authMiddleware, asyncHandler(async (req: Request, res: Response)
           size: file.sizeOriginal || 0,
           createdAt: file.$createdAt,
           updatedAt: file.$updatedAt,
-          publicUrl: `${config.appwrite.endpoint}/storage/buckets/${bucketId}/files/${file.$id}/view?project=${config.appwrite.projectId}`,
+          publicUrl: `/api/files/access/${bucketId}/${file.$id}`,
         }));
       })
     );
