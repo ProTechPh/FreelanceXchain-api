@@ -39,6 +39,12 @@ let conversationStore: Map<string, any> = new Map();
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Attachment fixtures are strict stored-file proxy paths, so ownership is
+// proven against storage metadata instead of trusting an arbitrary URL.
+const mockStorageGetFile = jest.fn<any>();
+const appwriteConfig = await import('../../config/appwrite.js');
+Object.assign(appwriteConfig.storage, { getFile: mockStorageGetFile });
+
 // Mock User Repository
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {
@@ -808,12 +814,17 @@ describe('Happy Path Integration - Complete User & Marketplace Lifecycle', () =>
     // -------------------------------------------------------------
     // STEP 4: Proposal Submission & Negotiation
     // -------------------------------------------------------------
+    mockStorageGetFile.mockResolvedValue({
+      name: `${freelancerId}_portfolio-doc-1_portfolio.pdf`,
+      sizeOriginal: 2048576,
+      mimeType: 'application/pdf',
+    });
     const proposalResult = await submitProposal(freelancerId, {
       projectId: project.id,
       coverLetter: 'I have delivered multiple decentralized escrow projects with automated testing.',
       attachments: [
         {
-          url: 'https://test.appwrite.co/storage/v1/object/public/proposal-attachments/portfolio.pdf',
+          url: '/api/files/access/proposal-attachments/portfolio-doc-1',
           filename: 'portfolio.pdf',
           size: 2048576,
           mimeType: 'application/pdf',

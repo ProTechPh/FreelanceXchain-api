@@ -174,7 +174,10 @@ describe('File Upload Routes', () => {
     });
 
     it('should accept all allowed buckets', async () => {
-      const buckets = ['profile-images', 'contract-documents', 'proposal-attachments', 'dispute-evidence', 'milestone-deliverables'];
+      // The generic upload/signed-url endpoint is deliberately limited to the
+      // self-service buckets; dispute evidence and milestone deliverables are
+      // only writable through their dedicated, resource-scoped routes.
+      const buckets = ['profile-images', 'proposal-attachments', 'project-attachments'];
 
       for (const bucket of buckets) {
         mockUploadFile.mockResolvedValue({ success: true, url: 'https://example.com/file', path: 'path' });
@@ -273,7 +276,7 @@ describe('File Upload Routes', () => {
       mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+        .get('/api/files/signed-url/project-attachments/user-123/doc.pdf');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -287,7 +290,7 @@ describe('File Upload Routes', () => {
       });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+        .get('/api/files/signed-url/project-attachments/user-123/doc.pdf');
 
       expect(res.status).toBe(401);
     });
@@ -305,7 +308,7 @@ describe('File Upload Routes', () => {
       mockGetSignedUrl.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/other-user/doc.pdf');
+        .get('/api/files/signed-url/project-attachments/other-user/doc.pdf');
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('FORBIDDEN');
@@ -315,27 +318,27 @@ describe('File Upload Routes', () => {
       mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123/doc.pdf?expiresIn=999999');
+        .get('/api/files/signed-url/project-attachments/user-123/doc.pdf?expiresIn=999999');
 
       expect(res.status).toBe(200);
-      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf', 'user-123');
+      expect(mockGetSignedUrl).toHaveBeenCalledWith('project-attachments', 'user-123/doc.pdf', 'user-123');
     });
 
     it('should clamp negative expiresIn to 60', async () => {
       mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123/doc.pdf?expiresIn=-100');
+        .get('/api/files/signed-url/project-attachments/user-123/doc.pdf?expiresIn=-100');
 
       expect(res.status).toBe(200);
-      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf', 'user-123');
+      expect(mockGetSignedUrl).toHaveBeenCalledWith('project-attachments', 'user-123/doc.pdf', 'user-123');
     });
 
     it('should return 400 when getSignedUrl fails', async () => {
       mockGetSignedUrl.mockResolvedValue({ success: false, error: 'Sign error' });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+        .get('/api/files/signed-url/project-attachments/user-123/doc.pdf');
 
       expect(res.status).toBe(400);
       expect(res.body.error.message).toBe('Sign error');
@@ -345,7 +348,7 @@ describe('File Upload Routes', () => {
       mockGetSignedUrl.mockRejectedValue(new Error('Unexpected'));
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+        .get('/api/files/signed-url/project-attachments/user-123/doc.pdf');
 
       expect(res.status).toBe(500);
     });
@@ -354,7 +357,7 @@ describe('File Upload Routes', () => {
       mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
 
       const res = await request(app)
-        .get('/api/files/signed-url/contract-documents/user-123');
+        .get('/api/files/signed-url/project-attachments/user-123');
 
       expect(res.status).toBe(200);
     });
@@ -518,14 +521,14 @@ describe('File Upload - path traversal protection', () => {
 
   it('L128: GET signed-url should reject path with .. (path traversal)', async () => {
     const res = await request(app)
-      .get('/api/files/signed-url/contract-documents/user-123/..secret/file.txt');
+      .get('/api/files/signed-url/project-attachments/user-123/..secret/file.txt');
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe('Invalid file path');
   });
 
   it('L129: GET signed-url should reject path with backslash', async () => {
     const res = await request(app)
-      .get('/api/files/signed-url/contract-documents/user-123/some%5Cpath');
+      .get('/api/files/signed-url/project-attachments/user-123/some%5Cpath');
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe('Invalid file path');
   });
@@ -571,16 +574,16 @@ describe('File Upload - ?? and || fallback branches', () => {
   it('L121: GET signed-url should use ?? fallback when filePath param is undefined', async () => {
     mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
     const res = await request(app)
-      .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+      .get('/api/files/signed-url/project-attachments/user-123/doc.pdf');
     expect(res.status).toBe(200);
-    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123', 'user-123');
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('project-attachments', 'user-123', 'user-123');
   });
 
   it('L140: GET signed-url should use filePath || userId fallback when filePath is empty', async () => {
     mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
     const res = await request(app)
-      .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+      .get('/api/files/signed-url/project-attachments/user-123/doc.pdf');
     expect(res.status).toBe(200);
-    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123', 'user-123');
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('project-attachments', 'user-123', 'user-123');
   });
 });

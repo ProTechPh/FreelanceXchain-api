@@ -18,7 +18,7 @@ import {
   notifyPaymentReleased,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
-import { parseUnits } from 'ethers';
+import { Contract as EthersContract, getAddress, parseUnits } from 'ethers';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import {
@@ -26,13 +26,13 @@ import {
   approveMilestoneOnRegistry,
 } from './milestone-registry.js';
 import { completeAgreement } from './agreement-contract.js';
-import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow, getMilestoneStatus, submitMilestone as submitMilestoneOnChain, type OnChainMilestoneStatus } from './escrow-blockchain.js';
-import { isWeb3Available } from './web3-client.js';
+import { approveMilestone as approveOnChainMilestone, getMilestoneStatus, submitMilestone as submitMilestoneOnChain, type OnChainMilestoneStatus } from './escrow-blockchain.js';
+import { getProvider, isWeb3Available } from './web3-client.js';
+import { FreelanceEscrowABI, FreelanceEscrowDeployedBytecode } from './contract-abis.js';
 import { getBlockchainMode } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { rescaleMilestoneAmounts } from '../utils/milestone-amounts.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
-import { SagaOrchestrator } from '../utils/saga-orchestrator.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
@@ -452,27 +452,58 @@ type ReleaseOnBlockchainInput = {
  * Release the milestone on-chain (real) or in the simulated escrow ledger.
  * Returns the transaction hash or a ServiceResult error.
  */
+type ReleaseOutcome =
+  | { transactionHash: string; rollbackSafe?: false }
+  | { error: ServiceResult<MilestoneApprovalResult>; rollbackSafe: boolean };
+
 async function releaseOnBlockchain(
   input: ReleaseOnBlockchainInput
-): Promise<
-  { transactionHash: string } | { error: ServiceResult<MilestoneApprovalResult> }
-> {
+): Promise<ReleaseOutcome> {
   if (getBlockchainMode() === 'real' && isWeb3Available()) {
     if (!input.contract.escrowAddress) {
-      return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow contract address found on this contract.') };
+      return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow contract address found on this contract.'), rollbackSafe: true };
     }
-    const onChainResult = await approveOnChainMilestone(input.contract.escrowAddress, input.milestoneIndex);
-    logger.info('Real blockchain milestone release tx', { transactionHash: onChainResult.transactionHash });
-    return { transactionHash: onChainResult.transactionHash };
+    try {
+      const onChainResult = await approveOnChainMilestone(input.contract.escrowAddress, input.milestoneIndex);
+      logger.info('Real blockchain milestone release tx', { transactionHash: onChainResult.transactionHash });
+      return { transactionHash: onChainResult.transactionHash };
+    } catch (error) {
+      // A real-mode throw is ambiguous: the transaction may already have been
+      // broadcast. Never rewind local state to "submitted" on that basis.
+      logger.error('CRITICAL: on-chain release outcome is unknown; milestone requires reconciliation', {
+        error,
+        escrowAddress: input.contract.escrowAddress,
+        milestoneId: input.milestoneId,
+        milestoneIndex: input.milestoneIndex,
+      });
+      return {
+        error: errorResult('RECONCILIATION_REQUIRED', 'The release transaction outcome is unknown and requires reconciliation'),
+        rollbackSafe: false,
+      };
+    }
   }
 
   // Simulated mode: only run when NOT using real blockchain
   const escrow = await escrowOps.getEscrowByContractId(input.contractId);
   if (!escrow) {
-    return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow record found for this contract. Payment cannot be released.') };
+    return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow record found for this contract. Payment cannot be released.'), rollbackSafe: true };
   }
-  const simReceipt = await escrowOps.releaseMilestone(escrow.address, input.milestoneId, input.employerWallet);
-  return { transactionHash: simReceipt.transactionHash };
+  try {
+    const simReceipt = await escrowOps.releaseMilestone(escrow.address, input.milestoneId, input.employerWallet);
+    return { transactionHash: simReceipt.transactionHash };
+  } catch (error) {
+    // No external value moved in the simulated ledger, so restoring
+    // `submitted` is safe and the request can be retried.
+    logger.warn('Simulated escrow release failed before any transfer', {
+      error,
+      contractId: input.contractId,
+      milestoneId: input.milestoneId,
+    });
+    return {
+      error: errorResult('PAYMENT_RELEASE_FAILED', error instanceof Error ? error.message : 'Failed to release escrow payment'),
+      rollbackSafe: true,
+    };
+  }
 }
 
 /**
@@ -554,8 +585,10 @@ type ReleaseEscrowPaymentInput = {
 };
 
 /**
- * Record SAGA releasing intent and release escrow payment.
- * Returns transactionHash or a ServiceResult error. Rolls back on failure.
+ * Record a releasing intent and release escrow payment. Before the on-chain
+ * transaction succeeds, failures may safely restore `submitted`. After an
+ * irreversible transfer, failures leave `releasing` and require reconciliation;
+ * business state must never be rewound to imply that funds were not moved.
  */
 async function releaseEscrowPaymentWithSaga(
   input: ReleaseEscrowPaymentInput
@@ -564,68 +597,60 @@ async function releaseEscrowPaymentWithSaga(
 > {
   const { contract, project, milestoneId, milestoneIndex, milestoneAmount, employerId, employerWallet, contractId, releasingBaseEntity } = input;
 
-  interface MilestonePaymentSagaContext {
-    transactionHash?: string;
-    errorResult?: ServiceResult<MilestoneApprovalResult>;
+  const releasingMilestones = releasingBaseEntity.milestones.map((m, i) =>
+    i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
+  );
+  const marked = await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
+  if (!marked) {
+    return { error: errorResult('PAYMENT_RELEASE_FAILED', 'Failed to persist payment release intent') };
   }
 
-  const saga = new SagaOrchestrator<MilestonePaymentSagaContext>('MilestoneApprovalRelease');
-
-  saga
-    .addStep({
-      name: 'mark-releasing-in-db',
-      execute: async () => {
-        const releasingMilestones = releasingBaseEntity.milestones.map((m, i) =>
-          i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
-        );
-        await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
-      },
-      compensate: async () => {
-        await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
-      },
-    })
-    .addStep({
-      name: 'release-on-blockchain',
-      execute: async (ctx) => {
-        const releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet });
-        if ('error' in releaseResult) {
-          ctx.errorResult = releaseResult.error;
-          throw new Error('On-chain release returned error');
-        }
-        ctx.transactionHash = releaseResult.transactionHash;
-      },
-    })
-    .addStep({
-      name: 'record-payment-in-db',
-      execute: async (ctx) => {
-        const recordedAmount = await readEscrowRecordedAmount(contractId, milestoneId, milestoneAmount);
-        await createPaymentRecord({
-          contractId,
-          milestoneId,
-          payerId: employerId,
-          payeeId: contract.freelancerId,
-          amount: recordedAmount,
-          paymentType: 'milestone_release',
-          txHash: ctx.transactionHash ?? null,
-          status: 'completed',
-        });
-      },
+  let releaseResult: ReleaseOutcome;
+  try {
+    releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet });
+  } catch (error) {
+    // Defensive: releaseOnBlockchain is expected to classify its own failures,
+    // but anything escaping is treated as an unknown outcome (no rollback).
+    logger.error('CRITICAL: escrow release threw unexpectedly; milestone requires reconciliation', {
+      error, contractId, milestoneId,
     });
-
-  const sagaResult = await saga.execute({});
-  if (!sagaResult.success) {
-    if (sagaResult.context.errorResult) {
-      return { error: sagaResult.context.errorResult };
+    return { error: errorResult('RECONCILIATION_REQUIRED', 'The release transaction outcome is unknown and requires reconciliation') };
+  }
+  if ('error' in releaseResult) {
+    if (releaseResult.rollbackSafe) {
+      await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
     }
-    return {
-      error: errorResult(
-        'PAYMENT_RELEASE_FAILED',
-        sagaResult.error instanceof Error ? sagaResult.error.message : 'Failed to release escrow payment'
-      ),
-    };
+    return { error: releaseResult.error };
   }
 
-  return { transactionHash: sagaResult.context.transactionHash! };
+  const transactionHash = releaseResult.transactionHash;
+  try {
+    const recordedAmount = await readEscrowRecordedAmount(contractId, milestoneId, milestoneAmount);
+    await createPaymentRecord({
+      contractId,
+      milestoneId,
+      payerId: employerId,
+      payeeId: contract.freelancerId,
+      amount: recordedAmount,
+      paymentType: 'milestone_release',
+      txHash: transactionHash,
+      status: 'completed',
+    });
+  } catch (error) {
+    logger.error('CRITICAL: released milestone requires ledger reconciliation', {
+      error,
+      contractId,
+      milestoneId,
+      transactionHash,
+    });
+    return { error: errorResult('RECONCILIATION_REQUIRED', 'Payment was released on-chain but its ledger requires reconciliation') };
+  }
+
+  // Invalidate payment summary cache so employer & freelancer dashboards reflect updated earnings/spend immediately
+  paymentSummaryCache.delete(employerId);
+  paymentSummaryCache.delete(contract.freelancerId);
+
+  return { transactionHash };
 }
 
 /**
@@ -816,17 +841,28 @@ export async function approveMilestone(
     });
     if ('error' in released) return released.error;
 
-    const result = await finalizeMilestoneApproval({
-      contractId,
-      contract,
-      project,
-      milestoneId,
-      milestone,
-      milestoneIndex,
-      employerId,
-      releasingBaseEntity,
-      transactionHash: released.transactionHash,
-    });
+    let result: MilestoneApprovalResult;
+    try {
+      result = await finalizeMilestoneApproval({
+        contractId,
+        contract,
+        project,
+        milestoneId,
+        milestone,
+        milestoneIndex,
+        employerId,
+        releasingBaseEntity,
+        transactionHash: released.transactionHash,
+      });
+    } catch (error) {
+      logger.error('CRITICAL: released milestone requires state reconciliation', {
+        error,
+        contractId,
+        milestoneId,
+        transactionHash: released.transactionHash,
+      });
+      return errorResult('RECONCILIATION_REQUIRED', 'Payment was released on-chain but milestone state requires reconciliation');
+    }
 
     // BLF-12.2: durable audit trail — milestone approvals (escrow releases) are
     // recorded with the employer as actor, the freelancer as target user, and the
@@ -1144,7 +1180,7 @@ function hasMoreThanTwoDecimals(value: number): boolean {
   return decimalStr !== undefined && decimalStr.length > 2;
 }
 
-function buildEscrowMilestones(project: Project, contract: Contract): {
+export function buildEscrowMilestones(project: Project, contract: Contract): {
   milestones: EscrowMilestone[];
   amounts: number[];
   scaled: boolean;
@@ -1192,56 +1228,6 @@ function validateEscrowAmounts(
   return totalFromMilestones === toWei(contractTotalAmount) ? totalFromMilestones : null;
 }
 
-/**
- * Deploy the escrow on the real blockchain (Ganache), also saving a simulated
- * escrow record for status tracking (non-critical).
- */
-async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promise<{ escrowAddress: string; transactionHash: string | null }> {
-  const { contract, project, escrowMilestones, contractTotalAmount, employerWalletAddress, freelancerWalletAddress } = input;
-
-  const milestoneAmounts = escrowMilestones.map(m => m.amount);
-  const milestoneDescriptions = project.milestones.map(m => m.title || `Milestone ${m.id}`);
-
-  // Use a dedicated platform arbiter address.
-  // The server wallet (msg.sender) is the on-chain "employer" (deployer).
-  // The arbiter must differ from both the deployer and the freelancer.
-  const platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress;
-  if (!platformArbiterAddress) {
-    throw new Error('PLATFORM_ARBITER_ADDRESS environment variable is required for real escrow deployment');
-  }
-
-  const realDeployment = await deployRealEscrow({
-    contractId: contract.id,
-    freelancerAddress: freelancerWalletAddress,
-    arbiterAddress: platformArbiterAddress,
-    milestoneAmounts,
-    milestoneDescriptions,
-    totalAmount: contractTotalAmount,
-  });
-
-  logger.info('Real escrow deployed', { escrowAddress: realDeployment.escrowAddress, contractTotalAmount: contractTotalAmount.toString() });
-
-  // Also save to simulated escrow DB for status tracking
-  try {
-    const simDeployment = await escrowOps.deployEscrow({
-      contractId: contract.id,
-      employerAddress: employerWalletAddress,
-      freelancerAddress: freelancerWalletAddress,
-      totalAmount: contractTotalAmount,
-      milestones: escrowMilestones,
-    });
-    await escrowOps.depositToEscrow(
-      simDeployment.escrowAddress,
-      contractTotalAmount,
-      employerWalletAddress
-    );
-  } catch (simError) {
-    logger.error('Failed to save simulated escrow state (non-critical)', { error: simError });
-  }
-
-  return { escrowAddress: realDeployment.escrowAddress, transactionHash: realDeployment.transactionHash };
-}
-
 async function deploySimulatedEscrow(input: EscrowDeploymentInput): Promise<{ escrowAddress: string; transactionHash: string | null }> {
   const { contract, escrowMilestones, contractTotalAmount, employerWalletAddress, freelancerWalletAddress } = input;
 
@@ -1277,6 +1263,116 @@ async function persistEscrowAddress(contract: Contract, escrowAddress: string): 
   }
 }
 
+type EmployerFundedEscrowInput = {
+  contract: Contract;
+  project: Project;
+  employerWalletAddress: string;
+  freelancerWalletAddress: string;
+  escrowAddress: string;
+  transactionHash: string;
+};
+
+export async function registerEmployerFundedEscrow(input: EmployerFundedEscrowInput): Promise<ServiceResult<{ escrowAddress: string }>> {
+  const { contract, project, employerWalletAddress, freelancerWalletAddress, escrowAddress, transactionHash } = input;
+  try {
+    if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
+      return errorResult('INVALID_BLOCKCHAIN_MODE', 'External escrow registration is only available in real blockchain mode');
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(escrowAddress) || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return errorResult('INVALID_TRANSACTION', 'A valid escrow address and deployment transaction hash are required');
+    }
+    if (await paymentRepository.findByTxHash(transactionHash)) {
+      return errorResult('DUPLICATE_TRANSACTION', 'This deployment transaction has already been registered');
+    }
+
+    const { milestones: expectedMilestones, amounts: scaledAmounts, scaled } = buildEscrowMilestones(project, contract);
+    const expectedTotal = validateEscrowAmounts(expectedMilestones, contract.totalAmount);
+    if (expectedTotal === null) {
+      return errorResult('AMOUNT_MISMATCH', 'Contract total amount does not match total milestone amount');
+    }
+
+    const provider = getProvider();
+    const [transaction, receipt, code] = await Promise.all([
+      provider.getTransaction(transactionHash),
+      provider.waitForTransaction(transactionHash, 1),
+      provider.getCode(escrowAddress),
+    ]);
+    if (!transaction || !receipt || receipt.status !== 1) {
+      return errorResult('TRANSACTION_NOT_CONFIRMED', 'Escrow deployment transaction is missing or unsuccessful');
+    }
+    if (transaction.to !== null || !receipt.contractAddress || getAddress(receipt.contractAddress) !== getAddress(escrowAddress)) {
+      return errorResult('INVALID_DEPLOYMENT', 'Transaction did not deploy the submitted escrow contract');
+    }
+    if (getAddress(transaction.from) !== getAddress(employerWalletAddress)) {
+      return errorResult('INVALID_FUNDER', 'Escrow was not deployed by the employer wallet');
+    }
+    if (transaction.value !== expectedTotal || code === '0x') {
+      return errorResult('INVALID_FUNDING', 'Escrow deployment value or contract code is invalid');
+    }
+    if (!FreelanceEscrowDeployedBytecode || code.toLowerCase() !== FreelanceEscrowDeployedBytecode.toLowerCase()) {
+      return errorResult('INVALID_ESCROW_CODE', 'Deployed contract bytecode does not match the approved escrow implementation');
+    }
+
+    const escrow = new EthersContract(escrowAddress, FreelanceEscrowABI, provider);
+    const expectedArbiter = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress;
+    const platformAddress = process.env['PLATFORM_WALLET_ADDRESS'] || (await import('./web3-client.js')).getWallet().address;
+    if (!expectedArbiter) return errorResult('MISSING_ARBITER', 'Platform arbiter is not configured');
+
+    const [onChainEmployer, onChainFreelancer, onChainArbiter, onChainPlatform, onChainContractId, onChainTotal] = await Promise.all([
+      escrow.getFunction('employer')() as Promise<string>,
+      escrow.getFunction('freelancer')() as Promise<string>,
+      escrow.getFunction('arbiter')() as Promise<string>,
+      escrow.getFunction('platform')() as Promise<string>,
+      escrow.getFunction('contractId')() as Promise<string>,
+      escrow.getFunction('totalAmount')() as Promise<bigint>,
+    ]);
+    if (
+      getAddress(onChainEmployer) !== getAddress(employerWalletAddress) ||
+      getAddress(onChainFreelancer) !== getAddress(freelancerWalletAddress) ||
+      getAddress(onChainArbiter) !== getAddress(expectedArbiter) ||
+      getAddress(onChainPlatform) !== getAddress(platformAddress) ||
+      onChainContractId !== contract.id ||
+      onChainTotal !== expectedTotal
+    ) {
+      return errorResult('ESCROW_VERIFICATION_FAILED', 'Deployed escrow parameters do not match this contract');
+    }
+    for (let index = 0; index < expectedMilestones.length; index++) {
+      const milestone = await escrow.getFunction('milestones')(index) as [bigint, bigint, string];
+      if (milestone[0] !== expectedMilestones[index]!.amount || milestone[1] !== 0n) {
+        return errorResult('ESCROW_VERIFICATION_FAILED', 'Deployed escrow milestones do not match this contract');
+      }
+    }
+
+    await persistEscrowAddress(contract, getAddress(escrowAddress));
+    if (scaled) {
+      const updatedProject = await projectRepository.updateProject(project.id, {
+        milestones: project.milestones.map((milestone, index) => ({
+          ...milestone,
+          due_date: milestone.dueDate,
+          amount: scaledAmounts[index] ?? milestone.amount,
+        })),
+      });
+      if (!updatedProject) throw new Error('Failed to persist fee-adjusted milestone amounts');
+    }
+    await createPaymentRecord({
+      contractId: contract.id,
+      milestoneId: null,
+      payerId: contract.employerId,
+      payeeId: contract.freelancerId,
+      amount: contract.totalAmount,
+      paymentType: 'escrow_deposit',
+      txHash: transactionHash,
+      status: 'completed',
+    });
+    paymentSummaryCache.delete(contract.employerId);
+    paymentSummaryCache.delete(contract.freelancerId);
+    return successResult({ escrowAddress: getAddress(escrowAddress) });
+  } catch (error) {
+    logger.error('Failed to verify employer-funded escrow', error, { contractId: contract.id, transactionHash });
+    return errorResult('ESCROW_VERIFICATION_FAILED', error instanceof Error ? error.message : 'Escrow verification failed');
+  }
+}
+
 export async function initializeContractEscrow(
   contract: Contract,
   project: Project,
@@ -1308,9 +1404,10 @@ export async function initializeContractEscrow(
       freelancerWalletAddress,
     };
 
-    const deployment = getBlockchainMode() === 'real' && isWeb3Available()
-      ? await deployRealEscrowIfAvailable(deploymentInput)
-      : await deploySimulatedEscrow(deploymentInput);
+    if (getBlockchainMode() === 'real' && isWeb3Available()) {
+      return errorResult('EMPLOYER_WALLET_REQUIRED', 'The employer must deploy and fund the escrow from their connected wallet');
+    }
+    const deployment = await deploySimulatedEscrow(deploymentInput);
 
     await persistEscrowAddress(contract, deployment.escrowAddress);
 
@@ -1331,6 +1428,8 @@ export async function initializeContractEscrow(
         txHash: deployment.transactionHash,
         status: 'completed',
       });
+      paymentSummaryCache.delete(contract.employerId);
+      paymentSummaryCache.delete(contract.freelancerId);
     } catch (recordError) {
       logger.error('Failed to record escrow deposit payment (payments log may diverge from ledger)', {
         error: recordError,

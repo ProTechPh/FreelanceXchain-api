@@ -28,6 +28,7 @@ jest.unstable_mockModule('ethers', () => ({
 jest.unstable_mockModule(path.resolve(process.cwd(), 'src/services/contract-abis.ts'), () => ({
   FreelanceEscrowABI: [],
   FreelanceEscrowBytecode: '0x',
+  FreelanceEscrowDeployedBytecode: '0x',
   FreelanceReputationABI: [],
 }));
 
@@ -277,6 +278,7 @@ describe('Escrow Blockchain Integration - Refactored', () => {
       const mockReceipt = {
         hash: '0xResolveHash',
         blockNumber: 104,
+        status: 1,
       };
 
       mockContract.resolveDispute.mockResolvedValue({
@@ -299,6 +301,7 @@ describe('Escrow Blockchain Integration - Refactored', () => {
       const mockReceipt = {
         hash: '0xResolveHashEmployer',
         blockNumber: 105,
+        status: 1,
       };
 
       mockContract.resolveDispute.mockResolvedValue({

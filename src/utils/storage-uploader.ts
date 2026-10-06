@@ -122,7 +122,7 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
 
     // Sensitive buckets use user-scoped read permissions; public buckets use public read.
     // All user-uploaded files store the owner in a write permission for ownership verification.
-    const SENSITIVE_BUCKETS = [BUCKETS.DISPUTE_EVIDENCE, BUCKETS.MILESTONE_DELIVERABLES];
+    const SENSITIVE_BUCKETS = [BUCKETS.PROPOSAL_ATTACHMENTS, BUCKETS.DISPUTE_EVIDENCE, BUCKETS.MILESTONE_DELIVERABLES];
     const permissions = SENSITIVE_BUCKETS.includes(bucket) && userId
       ? [`read("user:${userId}")`, `write("user:${userId}")`]
       : userId
@@ -522,7 +522,7 @@ export async function getFileQuota(userId: string): Promise<{
     buckets.map(bucket => listUserFiles(bucket, userId))
   );
 
-  // listUserFiles never throws, but a bucket listing can fail — surface that
+  // listUserFiles never throws, but a bucket listing can fail ï¿½ surface that
   // instead of reporting a silently-undersized quota.
   const failed = results.find(r => !r.success);
   if (failed) {

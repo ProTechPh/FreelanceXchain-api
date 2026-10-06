@@ -19,19 +19,21 @@ import { persistAuditEntry } from '../utils/admin-audit.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
 import { paymentSummaryCache } from '../utils/cache.js';
 
-async function computeRemainingEscrow(projectId: string, totalAmount: number): Promise<number> {
-  let releasedAmount = 0;
-  try {
-    const project = await projectRepository.findProjectById(projectId);
-    const contractMilestones = project?.milestones ?? [];
-    /* istanbul ignore next -- contractMilestones is always an array (assigned via ?? [] on the line above) */
-    releasedAmount = ((contractMilestones ?? []) as Array<{ status: string; amount?: number }>)
-      .filter(m => m.status === 'approved')
-      .reduce((sum, m) => sum + (m.amount ?? 0), 0);
-  } catch {
-    // Expected - no action needed: releasedAmount defaults to 0
-  }
+async function computeRemainingEscrow(projectId: string, totalAmount: number): Promise<number | null> {
+  const project = await projectRepository.findProjectById(projectId);
+  // Fail closed: without the milestone ledger we cannot prove how much escrow
+  // is still unsettled, so the caller must reject the request.
+  if (!project) return null;
+  const releasedAmount = (project.milestones ?? [])
+    .filter(m => m.status === 'approved' || m.status === 'refunded')
+    .reduce((sum, m) => sum + (m.amount ?? 0), 0);
   return Math.max(0, totalAmount - releasedAmount);
+}
+
+const AMOUNT_EPSILON = 0.00000001;
+
+function isSameAmount(left: number, right: number): boolean {
+  return Math.abs(left - right) <= AMOUNT_EPSILON;
 }
 
 type RefundRequestCreation = {
@@ -49,7 +51,7 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
     return { error: errorResult('CONTRACT_NOT_FOUND', 'Contract not found') };
   }
   if (contract.status !== 'active') {
-    return { error: errorResult('INVALID_STATUS', `Cannot request refund on a  contract`) };
+    return { error: errorResult('INVALID_STATUS', `Cannot request refund on a ${contract.status} contract`) };
   }
   const isInvolved = contract.freelancer_id === input.requestedBy || contract.employer_id === input.requestedBy;
   if (!isInvolved) {
@@ -60,16 +62,42 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
     return { error: errorResult('DUPLICATE_REQUEST', 'There is already a pending refund request for this contract') };
   }
   const remainingEscrow = await computeRemainingEscrow(contract.project_id, contract.total_amount);
+  if (remainingEscrow === null) {
+    return { error: errorResult('PROJECT_NOT_FOUND', 'Project milestones could not be verified') };
+  }
   if (input.amount !== undefined) {
     if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
       return { error: errorResult('VALIDATION_ERROR', 'Refund amount must be a positive number') };
     }
     if (input.amount > remainingEscrow) {
-      return { error: errorResult('VALIDATION_ERROR', `Refund amount () exceeds remaining escrow balance ()`) };
+      return { error: errorResult('VALIDATION_ERROR', `Refund amount (${input.amount}) exceeds remaining escrow balance (${remainingEscrow})`) };
     }
   }
   const requestedAmount = input.amount ?? remainingEscrow;
-  const isPartial = requestedAmount < contract.total_amount;
+  const project = await projectRepository.findProjectById(contract.project_id);
+  if (!project) {
+    return { error: errorResult('PROJECT_NOT_FOUND', 'Project milestones could not be verified') };
+  }
+  if ((project.milestones ?? []).some(m => m.status === 'disputed')) {
+    return { error: errorResult('DISPUTE_PENDING', 'Resolve the open dispute before requesting a refund') };
+  }
+  const refundableAmounts = (project.milestones ?? [])
+    .filter(m => !['approved', 'refunded', 'releasing'].includes(String(m.status)))
+    .map(m => Number(m.amount ?? 0));
+  let representedAmount = 0;
+  let representable = false;
+  for (const amount of refundableAmounts) {
+    representedAmount += amount;
+    if (isSameAmount(representedAmount, requestedAmount)) {
+      representable = true;
+      break;
+    }
+    if (representedAmount > requestedAmount + AMOUNT_EPSILON) break;
+  }
+  if (!representable) {
+    return { error: errorResult('INVALID_REFUND_AMOUNT', 'Refund amount must exactly equal the total of one or more unsettled milestones') };
+  }
+  const isPartial = !isSameAmount(requestedAmount, remainingEscrow);
   return { contract, requestedAmount, isPartial };
 }
 
@@ -115,11 +143,11 @@ export async function createRefundRequest(input: CreateRefundRequestInput): Prom
           userId: otherPartyId,
           type: 'refund_requested',
           title: 'Refund Requested',
-          message: `A refund has been requested for contract. Reason: `,
+          message: `A refund has been requested for contract ${input.contractId}. Reason: ${input.reason}`,
           data: { relatedId: input.contractId, relatedType: 'contract' },
         });
         if (notificationResult.success) await sendNotificationToUser(otherPartyId, notificationResult.data);
-        logger.info(`Refund request created for contract `);
+        logger.info(`Refund request created for contract ${input.contractId}`);
         return successResult(refund as unknown as RefundRequest);
       });
     } catch (error) {
@@ -204,20 +232,19 @@ async function validateMilestonesForRefund(projectId: string, refundId: string):
 
 type RefundTarget = { index: number; amount: number };
 
-function computeRefundTargets(refund: RefundRequestEntity, pendingMilestones: Array<Record<string, unknown> & { index: number }>): RefundTarget[] {
-  const isPartialRefund = refund.is_partial === true && (refund.amount ?? 0) > 0;
-  if (isPartialRefund) {
-    const targets: RefundTarget[] = [];
-    let remaining = refund.amount;
-    for (const m of pendingMilestones) {
-      if (remaining <= 0) break;
-      const milestoneAmount = Number((m as { amount?: unknown }).amount ?? 0);
-      targets.push({ index: m.index, amount: milestoneAmount });
-      remaining -= milestoneAmount;
-    }
-    return targets;
+function computeRefundTargets(refund: RefundRequestEntity, pendingMilestones: Array<Record<string, unknown> & { index: number }>): RefundTarget[] | null {
+  const requestedAmount = Number(refund.amount ?? 0);
+  const targets: RefundTarget[] = [];
+  let selectedAmount = 0;
+  for (const milestone of pendingMilestones) {
+    const milestoneAmount = Number((milestone as { amount?: unknown }).amount ?? 0);
+    if (!(milestoneAmount > 0)) return null;
+    targets.push({ index: milestone.index, amount: milestoneAmount });
+    selectedAmount += milestoneAmount;
+    if (isSameAmount(selectedAmount, requestedAmount)) return targets;
+    if (selectedAmount > requestedAmount + AMOUNT_EPSILON) return null;
   }
-  return pendingMilestones.map(m => ({ index: m.index, amount: Number((m as { amount?: unknown }).amount ?? 0) }));
+  return null;
 }
 
 interface ExecuteBlockchainRefundOptions {
@@ -244,7 +271,7 @@ async function executeBlockchainRefund(
           continue;
         }
         if (onChainStatus.status !== 'Pending') {
-          throw new Error(`Milestone  is  on-chain; expected Pending for refund`);
+          throw new Error(`Milestone ${target.index} is ${onChainStatus.status} on-chain; expected Pending for refund`);
         }
         const refundResult = await adapter.refundMilestone(escrowAddress, target.index);
         refundTxHashes[target.index] = refundResult.transactionHash ?? null;
@@ -259,13 +286,8 @@ async function executeBlockchainRefund(
     }
     return successResult(refundTxHashes);
   } catch (blockchainError) {
-    logger.error('Failed to execute blockchain refund or read milestone status, rolling back DB approval', { error: blockchainError, refundId });
-    try {
-      await refundRequestRepository.update(refundId, { status: 'pending', updated_at: new Date().toISOString() });
-    } catch (rollbackError) {
-      logger.error('CRITICAL: Failed to rollback refund approval after blockchain failure', { error: rollbackError, refundId });
-    }
-    return errorResult('BLOCKCHAIN_REFUND_FAILED', 'Blockchain refund failed; approval has been rolled back');
+    logger.error('Failed to execute blockchain refund or read milestone status', { error: blockchainError, refundId });
+    return errorResult('BLOCKCHAIN_REFUND_FAILED', 'Blockchain refund failed; the request remains pending');
   }
 }
 
@@ -398,18 +420,15 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
 
         const { projectMilestones, pendingMilestones } = validationResult.data;
 
-        const updated = await refundRequestRepository.update(input.refundId, {
-          status: 'approved',
-          approved_by: input.approvedBy,
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-
-        if (!updated) throw new Error('Failed to approve refund');
-
         const refundTargets = computeRefundTargets(refund, pendingMilestones);
+        if (!refundTargets) {
+          return errorResult('INVALID_REFUND_AMOUNT', 'Refund amount no longer exactly matches unsettled milestones');
+        }
         const refundsAllPending = refundTargets.length === pendingMilestones.length;
-        const isPartialRefund = refund.is_partial === true && (refund.amount ?? 0) > 0;
+        // Per-milestone refunds are used whenever the request was recorded as
+        // partial or when the computed targets do not cover every unsettled
+        // milestone. Only an exact whole-escrow refund may call refundEscrow.
+        const isPartialRefund = refund.is_partial === true || !refundsAllPending;
 
         const blockchainResult = await executeBlockchainRefund({
           escrowAddress: contract.escrow_address,
@@ -429,6 +448,21 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
           contractId: refund.contract_id
         });
 
+        const updated = await refundRequestRepository.update(input.refundId, {
+          status: 'approved',
+          approved_by: input.approvedBy,
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+        if (!updated) {
+          logger.error('CRITICAL: On-chain refund succeeded but refund status could not be persisted', undefined, {
+            refundId: input.refundId,
+            transactionHashes: blockchainResult.data,
+          });
+          return errorResult('RECONCILIATION_REQUIRED', 'Refund succeeded on-chain but local state requires reconciliation');
+        }
+
         await recordRefundPayments({
           refund,
           contract,
@@ -444,7 +478,7 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
 
         await persistRefundAuditEntry({ refund, approvedBy: input.approvedBy, refundId: input.refundId, contract, refundTargets });
 
-        logger.info(`Refund  approved by `);
+        logger.info(`Refund ${input.refundId} approved by ${input.approvedBy}`);
 
         return successResult(updated as unknown as RefundRequest);
       });
@@ -495,7 +529,7 @@ export async function rejectRefund(input: RejectRefundInput): Promise<ServiceRes
         userId: refundData.requested_by,
         type: 'refund_rejected',
         title: 'Refund Rejected',
-        message: `Your refund request was rejected. Reason: `,
+        message: `Your refund request was rejected. Reason: ${input.reason}`,
         data: {
           relatedId: refundData.contract_id,
           relatedType: 'contract',
@@ -524,7 +558,7 @@ export async function rejectRefund(input: RejectRefundInput): Promise<ServiceRes
         error_message: null,
       });
 
-      logger.info(`Refund  rejected by `);
+      logger.info(`Refund ${input.refundId} rejected by ${input.rejectedBy}`);
 
       return successResult(updated as unknown as RefundRequest);
     } catch (error) {

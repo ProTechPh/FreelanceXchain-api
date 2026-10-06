@@ -18,6 +18,8 @@ import {
 } from '../services/milestone-service.js';
 import { approveMilestone as approveMilestoneWithPayment } from '../services/payment-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { BUCKETS } from '../config/appwrite.js';
+import { isFileProxyPath, validateStoredAttachmentOwnership } from '../utils/file-validator.js';
 
 const router = Router();
 
@@ -81,7 +83,9 @@ function validateDeliverablesList(deliverables: unknown): { valid: boolean; erro
     if (typeof url !== 'string' || url.trim().length === 0) {
       return { valid: false, error: `Valid URL is required for deliverable at index ${i}` };
     }
-    try {
+    if (isFileProxyPath(url)) {
+      // Ownership and bucket are verified asynchronously before submission.
+    } else try {
       const parsed = new URL(url);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         return { valid: false, error: `Deliverable URL at index ${i} must use http or https protocol` };
@@ -299,6 +303,10 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
       if (!val.valid) {
         return sendErrorResponse(res, 400, 'VALIDATION_ERROR', val.error || 'Invalid deliverables', { requestId: getRequestId(req) });
       }
+      const ownershipErrors = await validateStoredAttachmentOwnership(deliverables, userId, BUCKETS.MILESTONE_DELIVERABLES);
+      if (ownershipErrors.length > 0) {
+        return sendErrorResponse(res, 400, 'VALIDATION_ERROR', ownershipErrors[0]!.message, { requestId: getRequestId(req) });
+      }
     }
     if (notes !== undefined && (typeof notes !== 'string' || notes.length > 5000)) {
       return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Notes must be at most 5000 characters', { requestId: getRequestId(req) });
@@ -378,6 +386,10 @@ router.post('/:id/submit-with-files',
         const val = validateDeliverablesList(existingFiles);
         if (!val.valid) {
           return sendErrorResponse(res, 400, 'VALIDATION_ERROR', val.error || 'Invalid existingDeliverables', { requestId: getRequestId(req) });
+        }
+        const ownershipErrors = await validateStoredAttachmentOwnership(existingFiles, userId, BUCKETS.MILESTONE_DELIVERABLES);
+        if (ownershipErrors.length > 0) {
+          return sendErrorResponse(res, 400, 'VALIDATION_ERROR', ownershipErrors[0]!.message, { requestId: getRequestId(req) });
         }
       }
 

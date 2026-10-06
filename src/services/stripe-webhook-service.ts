@@ -25,6 +25,7 @@ import { subscriptionRepository } from '../repositories/subscription-repository.
 import { invalidateEntitlement } from './subscription-service.js';
 import { fetchSubscription } from './stripe-billing-service.js';
 import type { PlanTier, SubscriptionStatus } from '../models/subscription.js';
+import { config } from '../config/env.js';
 
 /** Events this integration reacts to. Configure exactly these in Stripe. */
 export const HANDLED_EVENTS = [
@@ -75,7 +76,21 @@ export function verifyAndParseEvent(rawBody: string | undefined, signature: stri
 /** Pro only while the price matches the configured Pro price. */
 function planForSubscription(subscription: Stripe.Subscription): PlanTier {
   const priceId = subscription.items?.data?.[0]?.price?.id;
-  return priceId ? 'pro' : 'free';
+  const proPriceIds = new Set(
+    [config.stripe.monthlyPriceId, config.stripe.annualPriceId].filter(
+      (configured): configured is string => Boolean(configured)
+    )
+  );
+  if (!priceId || !proPriceIds.has(priceId)) {
+    if (priceId) {
+      logger.error('Stripe subscription references an unrecognized price; Pro access denied', undefined, {
+        subscriptionId: subscription.id,
+        priceId,
+      });
+    }
+    return 'free';
+  }
+  return 'pro';
 }
 
 function periodEndIso(subscription: Stripe.Subscription): string | null {

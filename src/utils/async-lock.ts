@@ -3,9 +3,8 @@
  *
  * Uses a Redis-backed distributed lock (SET NX PX + tokenized release) when
  * Redis is available, so serialization holds across multiple server replicas.
- * Falls back to an in-process per-key promise chain when Redis is not ready
- * or a Redis call fails (local development, tests, degraded deployments) —
- * availability over strictness, matching the pre-distributed behavior.
+ * In production, distributed lock failures fail closed. Local fallback is only
+ * used outside production, where the application is expected to be single-process.
  *
  * NOTE: the distributed lock is not re-entrant. Do not call withLock with the
  * same key from inside a callback that already holds that key.
@@ -49,6 +48,28 @@ else
   return 0
 end
 `;
+
+/** Lua script: refresh the lock only while the token still belongs to us. */
+const REFRESH_SCRIPT = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  return redis.call('pexpire', KEYS[1], ARGV[2])
+else
+  return 0
+end
+`;
+
+export class LockUnavailableError extends Error {
+  readonly code = 'LOCK_UNAVAILABLE';
+
+  constructor(key: string) {
+    super(`Unable to acquire distributed lock for ${key}`);
+    this.name = 'LockUnavailableError';
+  }
+}
+
+function allowLocalFallback(): boolean {
+  return process.env['NODE_ENV'] !== 'production' && process.env['ASYNC_LOCK_REQUIRE_REDIS'] !== 'true';
+}
 
 function isRedisReady(): boolean {
   try {
@@ -105,26 +126,31 @@ async function redisWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
       if (acquired === 'OK') break;
 
       if (Date.now() >= deadline) {
-        // Could not acquire the distributed lock in time — degrade to the
-        // in-process lock so the request is not blocked indefinitely.
-        logger.warn('[async-lock] timed out acquiring distributed lock, falling back to in-process lock', { key });
-        return localWithLock(key, fn);
+        logger.warn('[async-lock] timed out acquiring distributed lock; operation rejected', { key });
+        throw new LockUnavailableError(key);
       }
 
       await new Promise((resolve) => setTimeout(resolve, getLockRetryIntervalMs()));
     }
   } catch (error) {
-    // Redis failure — fall back to the in-process lock so callers still get
-    // mutual exclusion within this instance.
-    logger.warn('[async-lock] Redis unavailable, falling back to in-process lock', { error, key });
+    if (error instanceof LockUnavailableError) throw error;
+    if (!allowLocalFallback()) {
+      logger.error('[async-lock] Redis unavailable; operation rejected', { error, key });
+      throw new LockUnavailableError(key);
+    }
+    logger.warn('[async-lock] Redis unavailable; using development-only in-process lock', { error, key });
     return localWithLock(key, fn);
   }
 
   // Lock held — run the callback. Errors propagate untouched (no re-run) and
   // the lock is always released with the ownership token.
   const refresher = setInterval(() => {
-    redis.pexpire(lockKey, lockTtl).catch(() => {
-      /* best-effort refresh */
+    redis.eval(REFRESH_SCRIPT, 1, lockKey, token, lockTtl).then((refreshed) => {
+      if (Number(refreshed) !== 1) {
+        logger.error('[async-lock] lost lock ownership while refreshing', { key });
+      }
+    }).catch((error) => {
+      logger.error('[async-lock] failed to refresh distributed lock', { error, key });
     });
   }, getLockRefreshIntervalMs());
   if (typeof (refresher as NodeJS.Timeout).unref === 'function') {
@@ -148,5 +174,8 @@ async function redisWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
  * Concurrent calls with the same key will queue and execute sequentially.
  */
 export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  return isRedisReady() ? redisWithLock(key, fn) : localWithLock(key, fn);
+  if (isRedisReady()) return redisWithLock(key, fn);
+  if (allowLocalFallback()) return localWithLock(key, fn);
+  logger.error('[async-lock] Redis is not ready; operation rejected', { key });
+  throw new LockUnavailableError(key);
 }

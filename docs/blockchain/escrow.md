@@ -10,12 +10,11 @@
 6. [Dependency Analysis](#dependency-analysis)
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
-10. [Appendices](#appendices)
+9. [Appendices](#appendices)
 
 ## Introduction
 
-This document explains the architecture and integration of the FreelanceEscrow smart contract and its backend service layer. It covers how the contract securely holds funds during freelance engagements, the milestone-based payment flow, fund locking conditions, and withdrawal validation logic. It also documents the TypeScript escrow-contract service that interfaces with the contract using a simulated blockchain client, transaction construction, confirmation polling, and event-like notifications. Finally, it outlines security considerations, backend integration patterns, and testing strategies for escrow workflows.
+The `FreelanceEscrow` contract holds funds in escrow during a project and releases them on milestone approval. This document covers contract funding, fund-locking rules, milestone release and refund mechanics, dispute holds, and the TypeScript service layer (`escrow-contract.ts`) that orchestrates transactions.
 
 ## Project Structure
 
@@ -297,10 +296,6 @@ Common issues and resolutions:
   - Escrow balance must cover milestone amount before release/refund.
 - Duplicate submissions:
   - Milestone registry prevents duplicate submissions; ensure unique hashes.
-
-## Conclusion
-
-The escrow system combines a secure Solidity contract with a robust backend orchestration layer. The FreelanceEscrow contract enforces access control and reentrancy protections, while the TypeScript services simulate blockchain interactions and coordinate milestone lifecycle events. The API exposes clear endpoints for clients, and the deployment script demonstrates end-to-end testing. Together, these components provide a secure, verifiable, and scalable foundation for milestone-based payments.
 
 ## Appendices
 

@@ -40,6 +40,29 @@ const mockEmployerProfileRepo = createMockEmployerProfileRepository(employerProf
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Appwrite storage is consulted by validateStoredAttachmentOwnership before a
+// proposal can be persisted; mock it so fixtures can prove file ownership.
+const mockStorageGetFile = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  storage: { getFile: mockStorageGetFile },
+  databases: {},
+  account: {},
+  users: {},
+  DATABASE_ID: 'freelancexchain',
+  BUCKETS: {
+    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+    PROJECT_ATTACHMENTS: 'project-attachments',
+    DISPUTE_EVIDENCE: 'dispute-evidence',
+    PORTFOLIO_IMAGES: 'portfolio-images',
+    MILESTONE_DELIVERABLES: 'milestone-deliverables',
+  },
+  Query: { equal: jest.fn(), orderDesc: jest.fn(), limit: jest.fn(), cursorAfter: jest.fn() },
+  ID: { unique: jest.fn(() => 'generated-id') },
+  Permission: {},
+  Role: {},
+  createUserClient: jest.fn(() => ({})),
+}));
+
 // Mock all repositories
 jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
   proposalRepository: mockProposalRepo,
@@ -1625,6 +1648,7 @@ describe('Proposal Service - Additional Branch Coverage', () => {
 
 describe('Proposal Service - parse function branch coverage (proposal-repository.ts:24)', () => {
   beforeEach(() => {
+    mockStorageGetFile.mockReset();
     mockProposalRepo.clear();
     mockProjectRepo.clear();
     mockContractRepo.clear();
@@ -1637,13 +1661,18 @@ describe('Proposal Service - parse function branch coverage (proposal-repository
   it('should create proposal with attachments as valid JSON string (parse success path)', async () => {
     const project = createTestProject({ status: 'open' });
     projectStore.set(project.id, project);
+    mockStorageGetFile.mockResolvedValue({
+      name: 'freelancer-123_doc-uuid_resume.pdf',
+      sizeOriginal: 1024,
+      mimeType: 'application/pdf',
+    });
 
     const result = await submitProposal('freelancer-123', {
       projectId: project.id,
       proposedRate: 75,
       estimatedDuration: 45,
       attachments: [
-        { url: 'https://appwrite.io/resume.pdf', filename: 'resume.pdf', size: 1024, mimeType: 'application/pdf' },
+        { url: '/api/files/access/proposal-attachments/doc-uuid', filename: 'resume.pdf', size: 1024, mimeType: 'application/pdf' },
       ],
     });
 
@@ -1676,10 +1705,15 @@ describe('Proposal Service - parse function branch coverage (proposal-repository
     projectStore.set(project.id, project);
 
     const attachments = [
-      { url: 'https://appwrite.io/file1.pdf', filename: 'file1.pdf', size: 100, mimeType: 'application/pdf' },
-      { url: 'https://appwrite.io/file2.png', filename: 'file2.png', size: 200, mimeType: 'image/png' },
-      { url: 'https://appwrite.io/file3.doc', filename: 'file3.doc', size: 300, mimeType: 'application/msword' },
+      { url: '/api/files/access/proposal-attachments/file1-uuid', filename: 'file1.pdf', size: 100, mimeType: 'application/pdf' },
+      { url: '/api/files/access/proposal-attachments/file2-uuid', filename: 'file2.png', size: 200, mimeType: 'image/png' },
+      { url: '/api/files/access/proposal-attachments/file3-uuid', filename: 'file3.doc', size: 300, mimeType: 'application/msword' },
     ];
+    mockStorageGetFile.mockImplementation(async (_bucket: string, fileId: string) => ({
+      name: `freelancer-789_${fileId}_stored`,
+      sizeOriginal: attachments.find(a => a.url.endsWith(`/${fileId}`))?.size ?? 0,
+      mimeType: attachments.find(a => a.url.endsWith(`/${fileId}`))?.mimeType ?? 'application/octet-stream',
+    }));
 
     const result = await submitProposal('freelancer-789', {
       projectId: project.id,
@@ -1692,6 +1726,28 @@ describe('Proposal Service - parse function branch coverage (proposal-repository
     if (result.success) {
       expect(result.data.proposal.attachments).toHaveLength(3);
     }
+  });
+
+  it('rejects attachments that are not owned stored files', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+    mockStorageGetFile.mockResolvedValue({
+      name: 'someone-else_doc-uuid_resume.pdf',
+      sizeOriginal: 50,
+      mimeType: 'application/pdf',
+    });
+
+    const result = await submitProposal('freelancer-999', {
+      projectId: project.id,
+      proposedRate: 75,
+      estimatedDuration: 45,
+      attachments: [
+        { url: '/api/files/access/proposal-attachments/doc-uuid', filename: 'resume.pdf', size: 50, mimeType: 'application/pdf' },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('VALIDATION_ERROR');
   });
 });
 

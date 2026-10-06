@@ -28,6 +28,12 @@ let skillStore: Map<string, Skill> = new Map();
 let skillCategoryStore: Map<string, SkillCategory> = new Map();
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Attachment fixtures are strict stored-file proxy paths, so ownership is
+// proven against storage metadata instead of trusting an arbitrary URL.
+const mockStorageGetFile = jest.fn<any>();
+const appwriteConfig = await import('../../config/appwrite.js');
+Object.assign(appwriteConfig.storage, { getFile: mockStorageGetFile });
+
 
 // Mock all repositories
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
@@ -920,11 +926,16 @@ describe('Integration Tests - Critical Flows', () => {
         expect(milestonesResult.data.milestones.length).toBe(3);
       }
       const milestoneTotal = milestoneInputs.reduce((sum, milestone) => sum + milestone.amount, 0);
+      mockStorageGetFile.mockResolvedValue({
+        name: `${freelancerId}_proposal-doc-1_proposal.pdf`,
+        sizeOriginal: 1048576,
+        mimeType: 'application/pdf',
+      });
       const proposalResult = await submitProposal(freelancerId, {
         projectId: project.id,
         attachments: [
           {
-            url: 'https://test.appwrite.co/storage/v1/object/public/proposal-attachments/test.pdf',
+            url: '/api/files/access/proposal-attachments/proposal-doc-1',
             filename: 'proposal.pdf',
             size: 1048576,
             mimeType: 'application/pdf',

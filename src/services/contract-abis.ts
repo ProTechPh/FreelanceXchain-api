@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { InterfaceAbi } from 'ethers';
 
-function tryLoadArtifact(contractPath: string): { abi: InterfaceAbi; bytecode: string } | null {
+function tryLoadArtifact(contractPath: string): { abi: InterfaceAbi; bytecode: string; deployedBytecode?: string } | null {
   try {
     const artifactPath = join(process.cwd(), 'artifacts/contracts', contractPath);
     const content = readFileSync(artifactPath, 'utf-8');
@@ -27,3 +27,4 @@ export const FreelanceReputationABI: InterfaceAbi = FreelanceReputationArtifact?
 export const FreelanceEscrowABI: InterfaceAbi = FreelanceEscrowArtifact?.abi ?? [];
 
 export const FreelanceEscrowBytecode = FreelanceEscrowArtifact?.bytecode ?? '';
+export const FreelanceEscrowDeployedBytecode = FreelanceEscrowArtifact?.deployedBytecode ?? '';

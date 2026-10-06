@@ -48,6 +48,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
   contractRepository: {
     getContractsByFreelancer: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     getContractsByEmployer: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    countContractsByUserAndStatus: jest.fn().mockResolvedValue(0),
   },
 }));
 
@@ -99,6 +100,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
     })),
     getUserByEmail: jest.fn().mockResolvedValue(null),
     getUserById: jest.fn().mockResolvedValue(null),
+    getUserByWalletAddress: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue({}),
     updateUser: jest.fn().mockResolvedValue({}),
     deleteUser: jest.fn().mockResolvedValue(true),
@@ -526,6 +528,8 @@ describe('Auth Service - Authentication Properties', () => {
 describe('auth-service comprehensive coverage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    userRepository.getUserByWalletAddress.mockResolvedValue(null);
+    contractRepository.countContractsByUserAndStatus.mockResolvedValue(0);
 
     // Reset mockAppwriteAccount methods to clean state with defaults
     const maa = global.mockAppwriteAccount;
@@ -2335,6 +2339,10 @@ describe('auth-service - Additional Branch Coverage', () => {
 describe('auth-service - updateUserWallet', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks keeps implementations: reset the lifecycle guards so a
+    // count-based fixture from one test cannot leak into the next.
+    userRepository.getUserByWalletAddress.mockReset().mockResolvedValue(null);
+    contractRepository.countContractsByUserAndStatus.mockReset().mockResolvedValue(0);
   });
 
   it('should update the wallet address successfully when none is set', async () => {
@@ -2414,12 +2422,9 @@ describe('auth-service - updateUserWallet', () => {
       ['employer', 'disputed'],
     ])('blocks disconnecting when a %s contract is %s', async (side, status) => {
       userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
-      contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
-        items: side === 'freelancer' ? [{ status }] : [], total: side === 'freelancer' ? 1 : 0,
-      });
-      contractRepository.getContractsByEmployer.mockResolvedValueOnce({
-        items: side === 'employer' ? [{ status }] : [], total: side === 'employer' ? 1 : 0,
-      });
+      contractRepository.countContractsByUserAndStatus.mockImplementation(
+        async (_userId, queriedStatus) => queriedStatus === status ? 1 : 0
+      );
 
       const result = await disconnectUserWallet('u-1');
 
@@ -2427,22 +2432,18 @@ describe('auth-service - updateUserWallet', () => {
       expect(userRepository.updateUser).not.toHaveBeenCalled();
     });
 
-    it('disconnects safely when contract lookups are unavailable', async () => {
+    it('fails closed when contract lookups are unavailable', async () => {
       userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
-      contractRepository.getContractsByFreelancer.mockRejectedValueOnce(new Error('freelancer contracts unavailable'));
-      contractRepository.getContractsByEmployer.mockRejectedValueOnce(new Error('employer contracts unavailable'));
-      userRepository.updateUser.mockResolvedValueOnce({ id: 'u-1', wallet_address: '' });
+      contractRepository.countContractsByUserAndStatus.mockRejectedValueOnce(new Error('contracts unavailable'));
 
       await expect(disconnectUserWallet('u-1')).resolves.toEqual({
-        success: true, message: 'Wallet disconnected successfully.',
+        code: 'UPDATE_FAILED', message: 'Failed to disconnect wallet.',
       });
-      expect(userRepository.updateUser).toHaveBeenCalledWith('u-1', { wallet_address: '' });
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
     });
 
     it('returns UPDATE_FAILED when clearing the wallet throws', async () => {
       userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
-      contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
-      contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
       userRepository.updateUser.mockRejectedValueOnce(new Error('database unavailable'));
 
       await expect(disconnectUserWallet('u-1')).resolves.toEqual({
@@ -2462,6 +2463,9 @@ describe('auth-service - updateUserWallet', () => {
     beforeEach(() => {
       mockSendAccountDeletionCodeEmail.mockClear();
       mockSendAccountDeletedEmail.mockClear();
+      // Re-assert clean lifecycle-guard defaults (clearAllMocks keeps implementations).
+      userRepository.getUserByWalletAddress.mockReset().mockResolvedValue(null);
+      contractRepository.countContractsByUserAndStatus.mockReset().mockResolvedValue(0);
       mockFreelancerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
       mockFreelancerProfileRepository.delete.mockReset().mockResolvedValue(true);
       mockEmployerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
@@ -2481,10 +2485,9 @@ describe('auth-service - updateUserWallet', () => {
 
       it('should return ACTIVE_CONTRACTS_EXIST when user has active contracts', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
-        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
-          items: [{ id: 'c-1', status: 'active' }],
-          total: 1,
-        });
+        contractRepository.countContractsByUserAndStatus.mockImplementation(
+          async (_userId, status) => status === 'active' ? 1 : 0
+        );
 
         const result = await requestAccountDeletion('del-user-1');
         expect(result).toMatchObject({
@@ -2539,7 +2542,7 @@ describe('auth-service - updateUserWallet', () => {
 
       it('returns REQUEST_FAILED when a contract provider throws synchronously', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
-        contractRepository.getContractsByFreelancer.mockImplementationOnce(() => {
+        contractRepository.countContractsByUserAndStatus.mockImplementationOnce(() => {
           throw new Error('contract provider unavailable');
         });
 
@@ -2633,10 +2636,9 @@ describe('auth-service - updateUserWallet', () => {
 
       it('should return ACTIVE_CONTRACTS_EXIST when user has active contracts', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
-        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
-          items: [{ id: 'c-1', status: 'active' }],
-          total: 1,
-        });
+        contractRepository.countContractsByUserAndStatus.mockImplementation(
+          async (_userId, status) => status === 'active' ? 1 : 0
+        );
 
         const result = await deleteUserAccount('del-user-1');
         expect(result).toMatchObject({
@@ -2709,7 +2711,7 @@ describe('auth-service - updateUserWallet', () => {
 
       it('returns DELETE_FAILED when a contract provider throws synchronously', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
-        contractRepository.getContractsByFreelancer.mockImplementationOnce(() => {
+        contractRepository.countContractsByUserAndStatus.mockImplementationOnce(() => {
           throw new Error('contract provider unavailable');
         });
 
@@ -2744,8 +2746,9 @@ describe('auth-service - remaining coverage gaps', () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
-    userRepository.getUserByEmail.mockReset().mockResolvedValue(null);
-    userRepository.getUserById.mockReset().mockResolvedValue(null);
+      userRepository.getUserByEmail.mockReset().mockResolvedValue(null);
+      userRepository.getUserById.mockReset().mockResolvedValue(null);
+      userRepository.getUserByWalletAddress.mockReset().mockResolvedValue(null);
     userRepository.update.mockReset().mockResolvedValue({});
     userRepository.updateUser.mockReset().mockResolvedValue({});
     userRepository.deleteUser.mockReset().mockResolvedValue(true);
@@ -2753,8 +2756,9 @@ describe('auth-service - remaining coverage gaps', () => {
     users.create.mockReset().mockResolvedValue({ $id: 'test-appwrite-user-id' });
     users.delete.mockReset().mockResolvedValue({});
 
-    contractRepository.getContractsByFreelancer.mockReset().mockResolvedValue({ items: [], total: 0 });
-    contractRepository.getContractsByEmployer.mockReset().mockResolvedValue({ items: [], total: 0 });
+      contractRepository.getContractsByFreelancer.mockReset().mockResolvedValue({ items: [], total: 0 });
+      contractRepository.getContractsByEmployer.mockReset().mockResolvedValue({ items: [], total: 0 });
+      contractRepository.countContractsByUserAndStatus.mockReset().mockResolvedValue(0);
     getKycVerificationByUserId.mockReset().mockResolvedValue(null);
 
     mockFreelancerProfileRepository.getProfileByUserId.mockReset().mockResolvedValue(null);
@@ -2827,26 +2831,21 @@ describe('auth-service - remaining coverage gaps', () => {
     expect(result).toEqual({ code: 'INTERNAL_ERROR', message: '' });
   });
 
-  // L1468 + L1469: ensureNoActiveContracts .catch(() => null) callbacks
-  it('L1468/L1469: survives contract lookup failures when requesting account deletion', async () => {
+  it('fails closed on contract lookup failures when requesting account deletion', async () => {
     userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-fl-reject' });
-    contractRepository.getContractsByFreelancer.mockRejectedValueOnce(new Error('freelancer contracts unavailable'));
-    contractRepository.getContractsByEmployer.mockRejectedValueOnce(new Error('employer contracts unavailable'));
+    contractRepository.countContractsByUserAndStatus.mockRejectedValueOnce(new Error('contracts unavailable'));
 
     const result = await requestAccountDeletion('del-fl-reject');
 
-    expect(result).toMatchObject({ success: true });
-    expect(contractRepository.getContractsByFreelancer).toHaveBeenCalledWith('del-fl-reject', { limit: 50 });
-    expect(contractRepository.getContractsByEmployer).toHaveBeenCalledWith('del-fl-reject', { limit: 50 });
+    expect(result).toMatchObject({ code: 'REQUEST_FAILED' });
   });
 
   // L1471: freelancer side of the active-contract check with a disputed contract
   it('L1471: blocks deletion when a freelancer contract is disputed', async () => {
     userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-fl-disputed' });
-    contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
-      items: [{ id: 'c-1', status: 'disputed' }],
-      total: 1,
-    });
+    contractRepository.countContractsByUserAndStatus.mockImplementation(
+      async (_userId, status) => status === 'disputed' ? 1 : 0
+    );
 
     const result = await requestAccountDeletion('del-fl-disputed');
 
@@ -2856,11 +2855,9 @@ describe('auth-service - remaining coverage gaps', () => {
   // L1472: employer side of the active-contract check with a disputed contract
   it('L1472: blocks deletion when an employer contract is disputed', async () => {
     userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-emp-disputed', role: 'employer' });
-    contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
-    contractRepository.getContractsByEmployer.mockResolvedValueOnce({
-      items: [{ id: 'c-2', status: 'disputed' }],
-      total: 1,
-    });
+    contractRepository.countContractsByUserAndStatus.mockImplementation(
+      async (_userId, status) => status === 'disputed' ? 1 : 0
+    );
 
     const result = await requestAccountDeletion('del-emp-disputed');
 
@@ -2989,11 +2986,9 @@ describe('auth-service - remaining coverage gaps', () => {
       id: 'disc-fl',
       wallet_address: '0x123',
     });
-    contractRepository.getContractsByFreelancer.mockResolvedValueOnce({
-      items: [{ status: 'disputed' }],
-      total: 1,
-    });
-    contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
+    contractRepository.countContractsByUserAndStatus.mockImplementation(
+      async (_userId, status) => status === 'disputed' ? 1 : 0
+    );
 
     const result = await disconnectUserWallet('disc-fl');
 

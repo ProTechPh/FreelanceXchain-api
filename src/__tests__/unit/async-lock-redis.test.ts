@@ -19,13 +19,14 @@ const defaultSetImpl = async (key: string, value: string, _px: string, _ttl: num
 };
 const mockSet = jest.fn(defaultSetImpl);
 const mockPexpire = jest.fn(async () => 1);
-const mockEval = jest.fn(async (_script: string, _numKeys: number, key: string, token: string) => {
-  if (store.get(key) === token) {
-    store.delete(key);
-    return 1;
-  }
-  return 0;
-});
+const defaultEvalImpl = async (script: string, _numKeys: number, key: string, token: string) => {
+  if (store.get(key) !== token) return 0;
+  // Refresh (pexpire) must not release the lock — only the release script deletes it.
+  if (String(script).includes('pexpire')) return 1;
+  store.delete(key);
+  return 1;
+};
+const mockEval = jest.fn(defaultEvalImpl);
 
 jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({
   redis: {
@@ -67,6 +68,8 @@ describe('async-lock — Redis-backed distributed lock', () => {
     // Restore the default SET NX behavior — a previous test may have
     // replaced it with mockRejectedValue, which clearAllMocks does NOT reset.
     mockSet.mockImplementation(defaultSetImpl);
+    mockEval.mockReset();
+    mockEval.mockImplementation(defaultEvalImpl);
   });
 
   it('should serialize concurrent operations on the same key via Redis', async () => {
@@ -156,8 +159,9 @@ describe('async-lock — Redis-backed distributed lock', () => {
     expect(after).toBe('released');
   });
 
-  it('should fall back to the in-process lock when the distributed lock cannot be acquired in time', async () => {
-    // Lock is held forever by "another process".
+  it('should reject when the distributed lock is contended beyond the acquire timeout', async () => {
+    // Lock is held forever by "another process" — contention must fail closed
+    // rather than silently continuing without mutual exclusion.
     store.set('lock:contested-key', 'other-token');
     const order: number[] = [];
     const p1 = withLock('contested-key', async () => {
@@ -165,10 +169,17 @@ describe('async-lock — Redis-backed distributed lock', () => {
       order.push(1);
     });
     const p2 = withLock('contested-key', async () => order.push(2));
-    await Promise.all([p1, p2]);
-    // Both fell back to the local chain after the short acquire timeout and serialized.
-    expect(order).toEqual([1, 2]);
-    // The acquire-timeout fallback warns and hands off to the in-process lock.
+    const results = await Promise.allSettled([p1, p2]);
+
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        expect(result.reason).toBeInstanceOf(Error);
+        expect((result.reason as { code?: string }).code).toBe('LOCK_UNAVAILABLE');
+      }
+    }
+    // The callbacks never ran without a lock.
+    expect(order).toEqual([]);
     expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('timed out'), expect.any(Object));
   });
 
@@ -199,14 +210,29 @@ describe('async-lock — Redis-backed distributed lock', () => {
   });
 
   it('should refresh the TTL while the lock is held (and tolerate refresh failures)', async () => {
-    // Hold the lock past the refresh interval so the refresher fires pexpire.
-    mockPexpire.mockRejectedValueOnce(new Error('pexpire failed'));
+    // First refresh call fails (transient network error); the release still runs.
+    let evalCalls = 0;
+    mockEval.mockImplementation(async (...args: any[]) => {
+      evalCalls += 1;
+      if (evalCalls === 1) throw new Error('refresh failed');
+      return defaultEvalImpl(...(args as Parameters<typeof defaultEvalImpl>));
+    });
+
     const result = await withLock('refresh-key', async () => {
       await new Promise((r) => setTimeout(r, 50));
       return 'held';
     });
+
     expect(result).toBe('held');
-    // At least one refresh fired while the lock was held (best-effort, even though it rejected).
-    expect(mockPexpire).toHaveBeenCalled();
+    // At least one refresh fired while the lock was held (best-effort, even though the first rejected).
+    expect(mockEval).toHaveBeenCalledWith(
+      expect.stringContaining('pexpire'),
+      1,
+      'lock:refresh-key',
+      expect.any(String),
+      expect.any(Number),
+    );
+    // The lock was still released at the end (token match, no early delete).
+    expect(store.has('lock:refresh-key')).toBe(false);
   });
 });

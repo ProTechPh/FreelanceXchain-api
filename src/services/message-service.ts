@@ -12,6 +12,8 @@ import { userSummaryCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
+import { validateAttachments, validateStoredAttachmentOwnership } from '../utils/file-validator.js';
+import { BUCKETS } from '../config/appwrite.js';
 
 interface PaginationOptions {
   page?: number;
@@ -97,6 +99,17 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
 
     if (!content || content.trim().length === 0) {
       return errorResult('VALIDATION_ERROR', 'Message content is required');
+    }
+
+    if (attachments !== undefined) {
+      const attachmentErrors = validateAttachments(attachments);
+      if (attachmentErrors.length > 0) {
+        return errorResult('VALIDATION_ERROR', 'Invalid message attachments', attachmentErrors.map(error => error.message));
+      }
+      const ownershipErrors = await validateStoredAttachmentOwnership(attachments, senderId, BUCKETS.PROJECT_ATTACHMENTS);
+      if (ownershipErrors.length > 0) {
+        return errorResult('VALIDATION_ERROR', 'Message attachments must be files uploaded by the sender', ownershipErrors.map(error => error.message));
+      }
     }
 
     const resolvedReceiverId = await resolveReceiverUserId(receiverId);

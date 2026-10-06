@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-next-line MD041 -->
 <div align="center">
 
-# 🔗 FreelanceXchain API
+# FreelanceXchain API
 
 **Blockchain-Based Freelance Marketplace with AI Skill Matching**
 
@@ -10,23 +10,23 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org)
 
-A decentralized freelance marketplace API where employers post projects, freelancers get matched by AI and hired on-chain, and payments are held in smart-contract escrow and released milestone-by-milestone — no 20% platform fees, no fake reviews, no payment disputes that favor the house.
+A decentralized freelance marketplace API where employers post projects, freelancers get matched by AI and hired on-chain, and payments are held in smart-contract escrow and released milestone-by-milestone. No 20% platform fee.
 
 </div>
 
 ---
 
-## 📖 What is this?
+## What is this?
 
-FreelanceXchain is a **backend API** (Node.js + Express + TypeScript) for a freelance marketplace built on three pillars:
+FreelanceXchain is a **backend API** (Node.js + Express + TypeScript) for a freelance marketplace built around three components:
 
-1. **Appwrite** — users, profiles, projects, and data persistence
-2. **Ethereum smart contracts** (Solidity/Hardhat) — escrow, agreements, disputes, and reputation, deployed on **Polygon Amoy** in production
-3. **LLM-powered AI matching** — skill extraction and project↔freelancer recommendations (OpenAI-compatible, Claude by default)
+1. **Appwrite**: users, profiles, projects, and data persistence
+2. **Ethereum smart contracts** (Solidity/Hardhat): escrow, agreements, disputes, and reputation, deployed on **Polygon Amoy** in production
+3. **LLM-powered AI matching**: skill extraction and project↔freelancer recommendations (OpenAI-compatible, Claude by default)
 
 **Who it's for:** freelancers who want guaranteed, on-time payment; employers who want vetted, well-matched talent; and anyone tired of platforms that take a cut of every payment.
 
-## 🔄 How it works
+## How it works
 
 ```
 Employer posts a project  →  AI matches freelancers  →  Freelancer submits a proposal
@@ -42,11 +42,11 @@ Contract completes → both parties rate each other (on-chain reputation)
 Disputes (if any) are resolved by an arbiter, or partially refunded
 ```
 
-- **Escrow** — funds are locked in the `FreelanceEscrow` contract until work is approved; nobody can run away with the money.
-- **Reputation** — ratings live on-chain in `FreelanceReputation`, so history is portable and can't be scrubbed.
-- **Disputes** — milestone-level disputes with evidence, arbiter resolution, and milestone-granular partial refunds.
+- **Escrow**: funds are locked in the `FreelanceEscrow` contract until work is approved; nobody can run away with the money.
+- **Reputation**: ratings live on-chain in `FreelanceReputation`, so history is portable and can't be scrubbed.
+- **Disputes**: milestone-level disputes with evidence, arbiter resolution, and milestone-granular partial refunds.
 
-## ✨ Key features
+## Key features
 
 | Problem | Solution |
 | --- | --- |
@@ -57,7 +57,7 @@ Disputes (if any) are resolved by an arbiter, or partially refunded
 | Unvetted users | KYC via Didit (220+ countries) |
 | Deadlocked payments | Arbiter disputes + milestone-granular partial refunds |
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 Routes → Services → Repositories → Appwrite (database, auth, storage)
@@ -67,27 +67,27 @@ Routes → Services → Repositories → Appwrite (database, auth, storage)
       AI services (OpenAI-compatible LLM API)
 ```
 
-The blockchain layer uses an adapter pattern: set `BLOCKCHAIN_MODE=simulated` (the default) to emulate escrow in Appwrite with zero setup — great for local dev and the test suite — or `real` to talk to actual contracts on Ganache / Polygon Amoy.
+The blockchain layer uses an adapter pattern: set `BLOCKCHAIN_MODE=simulated` (the default) to emulate escrow in Appwrite with zero setup (great for local dev and the test suite), or `real` to talk to actual contracts on Ganache / Polygon Amoy.
 
-## 🚀 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
 | **Backend** | Node.js 20+, Express, TypeScript (ESM) |
 | **Database / Auth** | Appwrite (schema versioned in `scripts/setup-appwrite-db.ts`) |
-| **Blockchain** | Solidity 0.8.26, Hardhat, Ethers.js — Polygon Amoy (prod), Ganache (dev) |
+| **Blockchain** | Solidity 0.8.26, Hardhat, Ethers.js; Polygon Amoy (prod), Ganache (dev) |
 | **AI/ML** | OpenAI-compatible LLM API (default: Anthropic Claude) |
 | **Auth** | Appwrite session JWTs, MFA, CSRF, role-based access, Didit KYC |
 | **Infra** | Redis (rate limiting), Docker (multi-stage), Swagger/OpenAPI |
 
-## 📦 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 - **Node.js** 20+ and **pnpm** 8+
-- An **Appwrite** project ([appwrite.io](https://appwrite.io)) — the only hard requirement
-- A wallet / Ganache node — only if you want **real** blockchain mode
-- An **LLM API key** — only for AI matching features (skill matching falls back to keyword matching without it)
+- An **Appwrite** project ([appwrite.io](https://appwrite.io)): the only hard requirement
+- A wallet / Ganache node: only if you want **real** blockchain mode
+- An **LLM API key**: only for AI matching features (skill matching falls back to keyword matching without it)
 
 ### Quick Setup
 
@@ -101,7 +101,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 # At minimum: APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, CSRF_SECRET
 
-# 3. Compile smart contracts (required — the runtime loads ABIs from artifacts/)
+# 3. Compile smart contracts (required; the runtime loads ABIs from artifacts/)
 pnpm run compile
 
 # 4. Apply the Appwrite schema (idempotent, safe to re-run)
@@ -111,9 +111,9 @@ pnpm run setup:appwrite-db
 pnpm run dev
 ```
 
-The API listens on **`http://localhost:3000`** by default (set `PORT` to change it). Enable the interactive docs with `ENABLE_API_DOCS=true`, then open **`http://localhost:3000/api-docs`**.
+The API listens on `http://localhost:3000` by default (set `PORT` to change it). Enable the interactive docs with `ENABLE_API_DOCS=true`, then open `http://localhost:3000/api-docs`.
 
-> ⚠️ **Blockchain mode gotcha:** `pnpm run dev` forces `BLOCKCHAIN_MODE=real` and expects a **Ganache node at `http://127.0.0.1:7545`** (start it with `pnpm run deploy:local`, or run your own). Without a node, either start Ganache or run in simulated mode instead:
+> **Blockchain mode gotcha:** `pnpm run dev` forces `BLOCKCHAIN_MODE=real` and expects a **Ganache node at `http://127.0.0.1:7545`** (start it with `pnpm run deploy:local`, or run your own). Without a node, either start Ganache or run in simulated mode instead:
 >
 > ```bash
 > BLOCKCHAIN_MODE=simulated pnpm exec tsx src/index.ts
@@ -126,13 +126,13 @@ docker build -t freelancexchain-api:latest .
 docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
-> 🏷️ **Versioning:** every push to `main` bumps the patch version (1.0.0 → 1.0.1 → 1.0.2), rebuilds the Docker image, and bakes the commit SHA in — so `GET /` returns a fresh version like `1.0.1+build.4671a01`.
+> **Versioning:** every push to `main` bumps the patch version (1.0.0 → 1.0.1 → 1.0.2), rebuilds the Docker image, and bakes the commit SHA in, so `GET /` returns a fresh version like `1.0.1+build.4671a01`.
 >
-> 📖 Detailed setup: [Developer Setup Guide](docs/deployment/setup.md) · [Deployment Configuration](docs/deployment/configuration.md)
+> Detailed setup: [Developer Setup Guide](docs/deployment/setup.md) · [Deployment Configuration](docs/deployment/configuration.md)
 
-## 🔑 Environment Variables
+## Environment Variables
 
-Curated list — the **authoritative, complete list is `.env.example`**. Required variables crash the server at startup if missing.
+Curated list. The authoritative, complete list is `.env.example`. Required variables crash the server at startup if missing.
 
 | Variable | Description |
 | --- | --- |
@@ -148,13 +148,13 @@ Curated list — the **authoritative, complete list is `.env.example`**. Require
 | `APP_BUILD_SHA` | Commit SHA baked into the Docker image on push to `main`; `GET /` reports it as version metadata (`1.0.0+build.<sha>`) |
 | `APPWRITE_*_BUCKET` | Storage bucket names (proposals, project attachments, dispute evidence, portfolio, deliverables) |
 
-## 📡 API Modules
+## API Modules
 
 All routes are prefixed with `/api`. Full interactive docs at `/api-docs` (set `ENABLE_API_DOCS=true`).
 
 | Module | Path | Description |
 | --- | --- | --- |
-| Root / Version | `/` | Health check — reports the live build version (e.g. `1.0.0+build.abc1234`) |
+| Root / Version | `/` | Health check: reports the live build version (e.g. `1.0.0+build.abc1234`) |
 | Health | `/api/health` | Liveness & readiness probes |
 | Auth | `/api/auth` | Register, login, OAuth, MFA, tokens, password recovery |
 | Skills | `/api/skills` | Skill taxonomy + custom skills + suggestions |
@@ -175,7 +175,7 @@ All routes are prefixed with `/api`. Full interactive docs at `/api-docs` (set `
 | Webhooks | `/api/webhooks` · `/api/inbox/webhook` · `/api/kyc/webhook` | Blockchain / email / Didit events |
 | Dashboard / Metrics | `/api/dashboard` · `/api/metrics` | Summary + SLI metrics |
 
-## ⛓️ Smart Contracts
+## Smart Contracts
 
 Five non-upgradeable Solidity contracts in [`contracts/`](contracts/README.md):
 
@@ -193,7 +193,7 @@ pnpm run deploy:contracts:dev    # Ganache
 pnpm run deploy:contracts:prod   # Polygon Amoy testnet
 ```
 
-## 🧪 Testing & Quality
+## Testing & Quality
 
 ```bash
 pnpm test              # Full test suite (Jest, 5,400+ tests)
@@ -205,7 +205,7 @@ pnpm run security:alerts # Fails (exit 1) if any Dependabot alerts are open (nee
 pnpm run build         # Production build
 ```
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 ├── contracts/                 # Solidity smart contracts (5 contracts)
@@ -223,7 +223,7 @@ pnpm run build         # Production build
 └── dist/                      # Compiled TypeScript (gitignored)
 ```
 
-## 📚 Documentation
+## Documentation
 
 | Topic | Link |
 | --- | --- |
@@ -235,7 +235,7 @@ pnpm run build         # Production build
 | Deployment & Setup | [docs/deployment/](docs/deployment/) |
 | Smart Contracts | [contracts/README.md](contracts/README.md) |
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
 
@@ -245,11 +245,11 @@ We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) 
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📜 License
+## License
 
 This project is licensed under the [ISC License](LICENSE).
 
-## 🆘 Support
+## Support
 
 - **Bug Reports & Feature Requests:** [GitHub Issues](https://github.com/ProTechPh/FreelanceXchain-api/issues)
 - **Documentation:** [docs/](docs/)

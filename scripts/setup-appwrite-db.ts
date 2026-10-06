@@ -886,6 +886,24 @@ const COLLECTIONS: CollectionDef[] = [
 // (contract_id, reviewer_id) rows, creation will fail — de-duplicate first.
 const INDEXES = [
   {
+    // Global race backstop: one proposal per freelancer and project. Remove
+    // pre-existing duplicate pairs before applying this index.
+    collectionId: 'proposals',
+    key: 'unique_project_freelancer',
+    type: 'key',
+    attributes: ['project_id', 'freelancer_id'],
+    indexes: ['unique'],
+  },
+  {
+    // A proposal may create exactly one contract, even when acceptance
+    // requests arrive concurrently on different API replicas.
+    collectionId: 'contracts',
+    key: 'unique_contract_proposal',
+    type: 'key',
+    attributes: ['proposal_id'],
+    indexes: ['unique'],
+  },
+  {
     collectionId: 'reviews',
     key: 'unique_contract_reviewer',
     type: 'key',

@@ -6,6 +6,18 @@ import request from 'supertest';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Local stand-ins for payment-service exports that contract-routes imports.
+// Mirrors the shape of buildEscrowMilestones (amounts only matter to fund-info).
+const stubBuildEscrowMilestones = (project: any) => ({
+  milestones: [],
+  amounts: (project?.milestones ?? []).map((m: any) => Number(m.amount ?? 0)),
+  scaled: false,
+});
+const stubRegisterEmployerFundedEscrow = jest.fn<any>().mockResolvedValue({
+  success: false,
+  error: { code: 'ESCROW_NOT_FOUND', message: 'Employer-funded escrow is unavailable in tests' },
+});
+
 const mockGetContractById = jest.fn<any>();
 const mockGetUserContracts = jest.fn<any>();
 const mockUpdateContractStatus = jest.fn<any>();
@@ -22,6 +34,8 @@ jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () =
 
 const mockInitializeContractEscrow = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+  buildEscrowMilestones: stubBuildEscrowMilestones,
+  registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
   initializeContractEscrow: mockInitializeContractEscrow,
 }));
 
@@ -411,6 +425,8 @@ describe('contract-routes.ts - Branch Coverage', () => {
       getProjectById: mockGetProjectById,
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: mockInitializeContractEscrow,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -424,11 +440,22 @@ describe('contract-routes.ts - Branch Coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
       getWallet: () => ({ address: '0xWALLET' }),
+      getArbiterWallet: () => ({ address: '0xWALLET' }),
+      getContract: jest.fn(),
+      getContractWithSigner: jest.fn(),
+      getContractWithArbiterSigner: jest.fn(),
+      isWeb3Available: () => false,
+      getProvider: jest.fn(),
+      getTransactionByHash: jest.fn(),
     }));
 
     // Mock ethers at the node_modules level for dynamic import in routes
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+      ContractFactory: class ContractFactory {},
+      Contract: class Contract {},
+      JsonRpcProvider: class JsonRpcProvider {},
+      Wallet: class Wallet {},
     }));
 
     const express = (await import('express')).default;
@@ -571,6 +598,8 @@ describe('contract-routes - fund endpoint error branches and fund-info', () => {
       getProjectById: mockGetProjectById,
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: mockInitializeContractEscrow,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -584,9 +613,20 @@ describe('contract-routes - fund endpoint error branches and fund-info', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
       getWallet: () => ({ address: '0xWALLET' }),
+      getArbiterWallet: () => ({ address: '0xWALLET' }),
+      getContract: jest.fn(),
+      getContractWithSigner: jest.fn(),
+      getContractWithArbiterSigner: jest.fn(),
+      isWeb3Available: () => false,
+      getProvider: jest.fn(),
+      getTransactionByHash: jest.fn(),
     }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+      ContractFactory: class ContractFactory {},
+      Contract: class Contract {},
+      JsonRpcProvider: class JsonRpcProvider {},
+      Wallet: class Wallet {},
     }));
 
     const express = (await import('express')).default;
@@ -693,6 +733,8 @@ describe('contract-routes - fund endpoint error branches and fund-info', () => {
       getProjectById: mockGetProjectById,
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: mockInitializeContractEscrow,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -706,9 +748,20 @@ describe('contract-routes - fund endpoint error branches and fund-info', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
       getWallet: () => ({ address: '0xWALLET' }),
+      getArbiterWallet: () => ({ address: '0xWALLET' }),
+      getContract: jest.fn(),
+      getContractWithSigner: jest.fn(),
+      getContractWithArbiterSigner: jest.fn(),
+      isWeb3Available: () => false,
+      getProvider: jest.fn(),
+      getTransactionByHash: jest.fn(),
     }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+      ContractFactory: class ContractFactory {},
+      Contract: class Contract {},
+      JsonRpcProvider: class JsonRpcProvider {},
+      Wallet: class Wallet {},
     }));
 
     const express2 = (await import('express')).default;
@@ -825,6 +878,8 @@ describe('contract-routes - ?? nullish fallback branches', () => {
       getProjectById: mockGetProjectById,
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: mockInitializeContractEscrow,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -849,6 +904,10 @@ describe('contract-routes - ?? nullish fallback branches', () => {
     }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+      ContractFactory: class ContractFactory {},
+      Contract: class Contract {},
+      JsonRpcProvider: class JsonRpcProvider {},
+      Wallet: class Wallet {},
     }));
 
     const express = (await import('express')).default;
@@ -982,6 +1041,8 @@ describe('contract-routes - remaining branch coverage', () => {
       getProjectById: mockGetProjectById,
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: mockInitializeContractEscrow,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -996,8 +1057,18 @@ describe('contract-routes - remaining branch coverage', () => {
     jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
       getWallet: () => ({ address: '0xWALLET' }),
     }));
+    // Re-assert simulated mode: an earlier describe registers a 'real' factory
+    // mock and unstable_mockModule registrations leak across describes.
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: () => 'simulated',
+      getBlockchainAdapter: jest.fn(),
+    }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+      ContractFactory: class ContractFactory {},
+      Contract: class Contract {},
+      JsonRpcProvider: class JsonRpcProvider {},
+      Wallet: class Wallet {},
     }));
 
     const express = (await import('express')).default;
@@ -1125,6 +1196,8 @@ describe('contract-routes - escrow withdraw endpoints', () => {
       getProjectById: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -1580,6 +1653,8 @@ describe('contract-routes.ts - Remaining coverage gaps', () => {
       getProjectById: mockGetProjectById,
     }));
     jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      buildEscrowMilestones: stubBuildEscrowMilestones,
+      registerEmployerFundedEscrow: stubRegisterEmployerFundedEscrow,
       initializeContractEscrow: mockInitializeContractEscrow,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -1615,6 +1690,10 @@ describe('contract-routes.ts - Remaining coverage gaps', () => {
     }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+      ContractFactory: class ContractFactory {},
+      Contract: class Contract {},
+      JsonRpcProvider: class JsonRpcProvider {},
+      Wallet: class Wallet {},
     }));
 
     const express = (await import('express')).default;

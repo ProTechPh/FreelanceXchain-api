@@ -10,12 +10,11 @@
 6. [Dependency Analysis](#dependency-analysis)
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
-10. [Appendices](#appendices)
+9. [Appendices](#appendices)
 
 ## Introduction
 
-This document provides comprehensive documentation for the Contract Agreement system that formalizes freelance engagements on-chain. It covers the Solidity smart contract that stores agreement terms and signatures, the agreement-contract service that orchestrates blockchain interactions, and the integration with the backend contract-service for synchronized state between blockchain and database records. It also documents the agreement lifecycle, security measures, and operational guidance for creating and updating agreements, including error recovery and audit logging practices.
+The Contract Agreement system formalizes freelance engagements on-chain. It pairs a Solidity smart contract (`ContractAgreement.sol`) that records immutable agreement terms and multi-party signatures with backend services that synchronize contract lifecycle states between the blockchain and Appwrite.
 
 ## Project Structure
 
@@ -350,10 +349,6 @@ ENV["env.ts"] --> BC
   - cancelAgreement requires Pending status and party authorization
 - Status transition errors:
   - contract-service.ts validates allowed transitions and returns structured errors
-
-## Conclusion
-
-The Contract Agreement system combines on-chain immutability with off-chain orchestration to manage freelance engagements securely and transparently. The Solidity contract stores immutable terms and status, while the agreement-contract service coordinates transactions and maintains an in-memory ledger for simulation. The contract-service and repository layers handle database persistence and status transitions, enabling a robust, auditable workflow. Security is enforced through signature validation, authorization modifiers, and replay-prevention via transaction lifecycle management.
 
 ## Appendices
 

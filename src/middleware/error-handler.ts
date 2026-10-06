@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../config/logger.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
+import { LockUnavailableError } from '../utils/async-lock.js';
 
 export type ValidationError = {
   field: string;
@@ -51,6 +52,17 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const requestId = (req.headers['x-request-id'] as string) ?? uuidv4();
+
+  if (err instanceof LockUnavailableError) {
+    logger.warn('State-changing operation rejected because its lock was unavailable', {
+      requestId,
+      path: req.path,
+      method: req.method,
+    });
+    res.setHeader('Retry-After', '2');
+    sendErrorResponse(res, 503, err.code, 'This operation is temporarily busy. Please retry.', { requestId });
+    return;
+  }
 
   if (err instanceof AppError) {
     if (err.statusCode >= 500) {

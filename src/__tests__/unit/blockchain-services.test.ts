@@ -61,6 +61,7 @@ jest.unstable_mockModule(resolveModule('src/services/contract-abis.ts'), () => (
   FreelanceReputationABI: [],
   FreelanceEscrowABI: [],
   FreelanceEscrowBytecode: '0x',
+  FreelanceEscrowDeployedBytecode: '0x',
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/contracts.ts'), () => ({

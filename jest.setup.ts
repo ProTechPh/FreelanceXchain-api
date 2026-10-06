@@ -209,6 +209,7 @@ jest.unstable_mockModule('./src/services/contract-abis.js', () => ({
   MilestoneRegistryABI: [],
   FreelanceReputationBytecode: '',
   FreelanceEscrowBytecode: '',
+  FreelanceEscrowDeployedBytecode: '',
   ContractAgreementBytecode: '',
   DisputeResolutionBytecode: '',
   MilestoneRegistryBytecode: '',

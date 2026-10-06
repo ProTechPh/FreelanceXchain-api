@@ -122,8 +122,8 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
       );
       if (response.documents.length === 0) return null;
       return mapPayment(response.documents[0]!);
-    } catch {
-      return null;
+    } catch (error) {
+      throw new Error(`Failed to verify transaction uniqueness: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 

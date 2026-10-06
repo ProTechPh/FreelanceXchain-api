@@ -51,6 +51,11 @@ const multerModule = await import('multer');
 const multer = multerModule.default;
 const upload = multer({ storage: multer.memoryStorage() });
 
+// validateStoredAttachmentOwnership checks the real storage bucket before a
+// deliverable may be associated with a milestone; patch the singleton so tests
+// can prove ownership without network access.
+const mockStorageGetFile = jest.fn<(bucket: string, fileId: string) => Promise<unknown>>();
+
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
   createFileUploadMiddleware: jest.fn((fieldName: string, options?: any) => {
     return [upload.array(fieldName, options?.maxFiles || 10)];
@@ -258,6 +263,15 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 
 // Mock payment service
 jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+  buildEscrowMilestones: (project: any) => ({
+    milestones: [],
+    amounts: (project?.milestones ?? []).map((m: any) => Number(m.amount ?? 0)),
+    scaled: false,
+  }),
+  registerEmployerFundedEscrow: jest.fn(async () => ({
+    success: false,
+    error: { code: 'ESCROW_NOT_FOUND', message: 'Employer-funded escrow is unavailable in tests' },
+  })),
   requestMilestoneCompletion: jest.fn(async (contractId: string, milestoneId: string, freelancerId: string, metadata?: any) => {
     lastSubmittedDeliverables = metadata?.deliverables ?? [];
     lastSubmittedNotes = metadata?.notes;
@@ -291,6 +305,8 @@ beforeAll(async () => {
   createApp = appModule.createApp;
   ({ generateId } = await import('../../utils/id.js'));
   fs = await import('fs');
+  const { storage } = await import('../../config/appwrite.js');
+  Object.assign(storage, { getFile: mockStorageGetFile });
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -434,11 +450,16 @@ describe('Milestone Attachments API', () => {
       const existingDeliverables = JSON.stringify([
         {
           filename: 'existing-file.pdf',
-          url: 'https://example.com/existing-file.pdf',
+          url: '/api/files/access/milestone-deliverables/existing-file-id',
           size: 12345,
           mimeType: 'application/pdf',
         },
       ]);
+      mockStorageGetFile.mockImplementation(async (_bucket: string, fileId: string) => ({
+        name: `${freelancerId}_${fileId}_existing-file.pdf`,
+        sizeOriginal: 12345,
+        mimeType: 'application/pdf',
+      }));
 
       const response = await request(app)
         .post(`/api/milestones/${milestoneId}/submit-with-files`)
@@ -468,17 +489,25 @@ describe('Milestone Attachments API', () => {
       const deliverables = [
         {
           filename: 'project-source.zip',
-          url: 'https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/project-source.zip',
+          url: '/api/files/access/milestone-deliverables/source-file-id',
           size: 2048576,
           mimeType: 'application/zip',
         },
         {
           filename: 'documentation.pdf',
-          url: 'https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/documentation.pdf',
+          url: '/api/files/access/milestone-deliverables/doc-file-id',
           size: 1024000,
           mimeType: 'application/pdf',
         },
       ];
+      mockStorageGetFile.mockImplementation(async (_bucket: string, fileId: string) => {
+        const stored = deliverables.find((file) => file.url.endsWith(`/${fileId}`));
+        return {
+          name: `${freelancerId}_${fileId}_${stored?.filename ?? 'file'}`,
+          sizeOriginal: stored?.size ?? 0,
+          mimeType: stored?.mimeType ?? 'application/octet-stream',
+        };
+      });
 
       const response = await request(app)
         .post(`/api/milestones/${milestoneId}/submit`)

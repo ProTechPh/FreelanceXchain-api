@@ -47,6 +47,13 @@ const mockDisputeRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+jest.unstable_mockModule(resolveModule('src/services/contract-abis.ts'), () => ({
+  FreelanceEscrowABI: [],
+  FreelanceEscrowBytecode: '0x',
+  FreelanceEscrowDeployedBytecode: '0x',
+  FreelanceReputationABI: [],
+}));
+
 
 // Mock Appwrite client - return the global mock so beforeEach can modify it
 
