@@ -8,11 +8,12 @@ RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 WORKDIR /app
 
-# Ensure artifacts directory exists
-RUN mkdir -p /app/artifacts
+# Ensure artifacts and patches directories exist
+RUN mkdir -p /app/artifacts /app/patches
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy package files, workspace config, and patches
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY patches* ./patches/
 
 # Install all dependencies (including dev for build)
 RUN pnpm install --frozen-lockfile
@@ -37,8 +38,12 @@ RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Ensure patches directory exists
+RUN mkdir -p /app/patches
+
+# Copy package files, workspace config, and patches
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY patches* ./patches/
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
