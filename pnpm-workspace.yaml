@@ -15,3 +15,17 @@ minimumReleaseAgeExclude:
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - semver@6.3.1
+
+# Unfixable advisory accepted for the duration of the local mitigation below.
+auditConfig:
+  ignoreGhsas:
+    # braces <=3.0.3 stack-exhaustion DoS (CVE-2026-93687). Mitigated by
+    # patches/braces@3.0.3.patch (the depth limits from upstream PR
+    # micromatch/braces#72), since no fixed release exists on npm yet. pnpm
+    # audit matches on version only, so it still flags the patched 3.0.3.
+    # Once 3.0.4 ships, delete this entry, the patch and its
+    # patchedDependencies line, and add a `braces@3: ^3.0.4` override.
+    - GHSA-vfj7-8cjw-p6xm
+
+patchedDependencies:
+  braces@3.0.3: patches/braces@3.0.3.patch
