@@ -605,6 +605,24 @@ async function processDisputeEscrowPayment(
   return { success: true };
 }
 
+async function completeOnChainAgreementAfterDispute(
+  contractId: string,
+  employerId: string,
+  disputeId: string
+): Promise<void> {
+  try {
+    const employer = await userRepository.getUserById(employerId);
+    if (employer?.wallet_address) {
+      await completeAgreement(contractId, employer.wallet_address);
+    }
+  } catch (error) {
+    logger.error('Failed to complete agreement on blockchain after dispute resolution', {
+      error,
+      disputeId,
+    });
+  }
+}
+
 type UpdateDisputeStatusesInput = {
   disputeId: string;
   disputeEntity: DisputeEntity;
@@ -647,17 +665,7 @@ async function updateDisputeStatuses(
       // Mirror the approval path (payment-service.completeContractIfAllMilestonesDone):
       // complete the on-chain agreement registry best-effort so it matches the DB
       // contract completion. A failed agreement write never fails the resolution.
-      try {
-        const employer = await userRepository.getUserById(contract.employerId);
-        if (employer?.wallet_address) {
-          await completeAgreement(disputeEntity.contract_id, employer.wallet_address);
-        }
-      } catch (error) {
-        logger.error('Failed to complete agreement on blockchain after dispute resolution', {
-          error,
-          disputeId,
-        });
-      }
+      await completeOnChainAgreementAfterDispute(disputeEntity.contract_id, contract.employerId, disputeId);
     } else {
       await contractRepository.updateContract(disputeEntity.contract_id, { status: 'active' });
     }

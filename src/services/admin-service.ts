@@ -172,6 +172,50 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
     }
 }
 
+async function resolveUserKyc(userId: string): Promise<KycVerification | null> {
+  const isTest = process.env.NODE_ENV === 'test';
+  if (!isTest) {
+    const cached = kycStatusCache.get(userId);
+    if (cached && cached.expires > Date.now()) {
+      return { status: cached.status } as KycVerification;
+    }
+  }
+
+  const verification = await getKycVerificationByUserId(userId).catch(() => null);
+  if (!isTest && verification) {
+    kycStatusCache.set(userId, {
+      status: verification.status,
+      expires: Date.now() + 60_000,
+    });
+  }
+  return verification;
+}
+
+async function resolveUserEmailVerification(
+  user: UserEntity,
+  appwriteUsersMap: Map<string, boolean>
+): Promise<boolean> {
+  if (appwriteUsersMap.has(user.id)) {
+    return appwriteUsersMap.get(user.id)!;
+  }
+
+  const userEntityAny = user as Record<string, unknown>;
+  const localVerified = Boolean(userEntityAny['email_verified'] ?? userEntityAny['emailVerification'] ?? false);
+  if (localVerified || appwriteUsersMap.size > 0) {
+    return localVerified;
+  }
+
+  try {
+    if (users && typeof users.get === 'function') {
+      const appwriteUser = await users.get(user.id);
+      return Boolean(appwriteUser?.emailVerification);
+    }
+  } catch {
+    // If Appwrite lookup fails, default to false
+  }
+  return false;
+}
+
 /**
  * Get user management data with filters
  */
@@ -192,47 +236,19 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
       // In tests or if users.list fails, fallback to per-user lookup
     }
 
-    const isTest = process.env.NODE_ENV === 'test';
-    const usersWithKyc = await Promise.all(allUsers.map(async (user) => {
-      let verification: KycVerification | null = null;
-      if (!isTest) {
-        const cached = kycStatusCache.get(user.id);
-        if (cached && cached.expires > Date.now()) {
-          verification = { status: cached.status } as KycVerification;
-        }
-      }
-      if (!verification) {
-        verification = await getKycVerificationByUserId(user.id).catch(() => null);
-        if (!isTest && verification) {
-          kycStatusCache.set(user.id, {
-            status: verification.status,
-            expires: Date.now() + 60_000,
-          });
-        }
-      }
+    const usersWithKyc = await Promise.all(
+      allUsers.map(async (user) => {
+        const verification = await resolveUserKyc(user.id);
+        const emailVerified = await resolveUserEmailVerification(user, appwriteUsersMap);
 
-      let emailVerified = appwriteUsersMap.has(user.id)
-        ? appwriteUsersMap.get(user.id)!
-        : Boolean((user as any).email_verified ?? (user as any).emailVerification ?? false);
-
-      if (!appwriteUsersMap.has(user.id) && !emailVerified && appwriteUsersMap.size === 0) {
-        try {
-          if (users && typeof users.get === 'function') {
-            const appwriteUser = await users.get(user.id);
-            emailVerified = Boolean(appwriteUser?.emailVerification);
-          }
-        } catch {
-          // If Appwrite lookup fails, default to false
-        }
-      }
-
-      return {
-        ...user,
-        kyc_status: verification?.status ?? 'not_started' as const,
-        kyc_verified: verification?.status === 'approved',
-        email_verified: emailVerified,
-      };
-    }));
+        return {
+          ...user,
+          kyc_status: verification?.status ?? ('not_started' as const),
+          kyc_verified: verification?.status === 'approved',
+          email_verified: emailVerified,
+        };
+      })
+    );
 
     let filtered = usersWithKyc;
 

@@ -1263,6 +1263,31 @@ async function persistEscrowAddress(contract: Contract, escrowAddress: string): 
   }
 }
 
+async function recordEscrowDepositPayment(
+  contract: Contract,
+  txHash: string | null
+): Promise<void> {
+  try {
+    await createPaymentRecord({
+      contractId: contract.id,
+      milestoneId: null,
+      payerId: contract.employerId,
+      payeeId: contract.freelancerId,
+      amount: contract.totalAmount,
+      paymentType: 'escrow_deposit',
+      txHash,
+      status: 'completed',
+    });
+    paymentSummaryCache.delete(contract.employerId);
+    paymentSummaryCache.delete(contract.freelancerId);
+  } catch (recordError) {
+    logger.error('Failed to record escrow deposit payment (payments log may diverge from ledger)', {
+      error: recordError,
+      contractId: contract.id,
+    });
+  }
+}
+
 type EmployerFundedEscrowInput = {
   contract: Contract;
   project: Project;
@@ -1354,18 +1379,7 @@ export async function registerEmployerFundedEscrow(input: EmployerFundedEscrowIn
       });
       if (!updatedProject) throw new Error('Failed to persist fee-adjusted milestone amounts');
     }
-    await createPaymentRecord({
-      contractId: contract.id,
-      milestoneId: null,
-      payerId: contract.employerId,
-      payeeId: contract.freelancerId,
-      amount: contract.totalAmount,
-      paymentType: 'escrow_deposit',
-      txHash: transactionHash,
-      status: 'completed',
-    });
-    paymentSummaryCache.delete(contract.employerId);
-    paymentSummaryCache.delete(contract.freelancerId);
+    await recordEscrowDepositPayment(contract, transactionHash);
     return successResult({ escrowAddress: getAddress(escrowAddress) });
   } catch (error) {
     logger.error('Failed to verify employer-funded escrow', error, { contractId: contract.id, transactionHash });
@@ -1415,27 +1429,7 @@ export async function initializeContractEscrow(
     // contract amount at deploy; record it so the payments log matches the
     // ledger. Best-effort: a failed record write never fails the deployment
     // (the funds already moved on-chain).
-    try {
-      await createPaymentRecord({
-        contractId: contract.id,
-        milestoneId: null,
-        payerId: contract.employerId,
-        payeeId: contract.freelancerId,
-        // contractTotalAmount is wei; contract.totalAmount is the same value in
-        // ETH units (validated equal via toWei) and matches the read model.
-        amount: contract.totalAmount,
-        paymentType: 'escrow_deposit',
-        txHash: deployment.transactionHash,
-        status: 'completed',
-      });
-      paymentSummaryCache.delete(contract.employerId);
-      paymentSummaryCache.delete(contract.freelancerId);
-    } catch (recordError) {
-      logger.error('Failed to record escrow deposit payment (payments log may diverge from ledger)', {
-        error: recordError,
-        contractId: contract.id,
-      });
-    }
+    await recordEscrowDepositPayment(contract, deployment.transactionHash);
 
     // If the escrow was funded with scaled (fee-inclusive) amounts while the DB
     // milestones still held base amounts, persist the scaled amounts so the read

@@ -56,19 +56,31 @@ type ValidatedProposal = {
   rushFeePercentage: number;
 };
 
+async function validateProposalAttachments(
+  attachments: FileAttachment[],
+  freelancerId: string
+): Promise<ServiceResult<never> | null> {
+  const attachmentErrors = validateAttachments(attachments);
+  if (attachmentErrors.length > 0) {
+    return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map((e) => e.message));
+  }
+  const ownershipErrors = await validateStoredAttachmentOwnership(
+    attachments,
+    freelancerId,
+    BUCKETS.PROPOSAL_ATTACHMENTS
+  );
+  if (ownershipErrors.length > 0) {
+    return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map((e) => e.message));
+  }
+  return null;
+}
 
 export async function submitProposal(
   freelancerId: string,
   input: CreateProposalInput
 ): Promise<ServiceResult<ProposalWithNotification>> {
-  const attachmentErrors = validateAttachments(input.attachments);
-  if (attachmentErrors.length > 0) {
-    return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
-  }
-  const ownershipErrors = await validateStoredAttachmentOwnership(input.attachments, freelancerId, BUCKETS.PROPOSAL_ATTACHMENTS);
-  if (ownershipErrors.length > 0) {
-    return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map(e => e.message));
-  }
+  const attachmentValidation = await validateProposalAttachments(input.attachments, freelancerId);
+  if (attachmentValidation) return attachmentValidation;
 
   return withLock(`proposal-submit:${input.projectId}:${freelancerId}`, async () => {
   const projectEntity = await projectRepository.findProjectById(input.projectId);

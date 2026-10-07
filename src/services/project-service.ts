@@ -152,20 +152,75 @@ async function buildSkillReferences(skillIds: string[], activeSkills?: SkillEnti
   }));
 }
 
+async function validateProjectAttachments(
+  attachments: FileAttachment[] | undefined,
+  employerId: string
+): Promise<ServiceResult<never> | null> {
+  if (!attachments || attachments.length === 0) return null;
+
+  const attachmentErrors = validateAttachments(attachments, { maxFiles: 10 });
+  if (attachmentErrors.length > 0) {
+    return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map((e) => e.message));
+  }
+
+  const ownershipErrors = await validateStoredAttachmentOwnership(
+    attachments,
+    employerId,
+    BUCKETS.PROJECT_ATTACHMENTS
+  );
+  if (ownershipErrors.length > 0) {
+    return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map((e) => e.message));
+  }
+
+  return null;
+}
+
+function validateRushFee(isRush?: boolean, rushFeePercentage?: number): ServiceResult<never> | null {
+  if (isRush && rushFeePercentage !== undefined) {
+    if (rushFeePercentage <= 0 || rushFeePercentage > 100) {
+      return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
+    }
+  }
+  return null;
+}
+
+function validateFreelancerLimit(limit?: number): ServiceResult<never> | null {
+  if (limit !== undefined && (limit < 1 || !Number.isInteger(limit))) {
+    return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
+  }
+  return null;
+}
+
+const PROJECT_STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ['open', 'cancelled'],
+  open: ['draft', 'in_progress', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
+  completed: [],        // Terminal state - no transitions allowed
+  cancelled: [],        // Terminal state - no transitions allowed
+  disputed: [],
+  in_review: [],
+};
+
+function validateStatusTransition(
+  currentStatus: string,
+  targetStatus: string
+): ServiceResult<never> | null {
+  const allowed = PROJECT_STATUS_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes(targetStatus)) {
+    return errorResult(
+      'INVALID_STATUS_TRANSITION',
+      `Cannot transition project from "${currentStatus}" to "${targetStatus}". Allowed: ${allowed.join(', ') || 'none (terminal state)'}`
+    );
+  }
+  return null;
+}
+
 export async function createProject(
   employerId: string,
   input: CreateProjectInput
 ): Promise<ServiceResult<ProjectEntity>> {
-  if (input.attachments && input.attachments.length > 0) {
-    const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
-    if (attachmentErrors.length > 0) {
-      return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
-    }
-    const ownershipErrors = await validateStoredAttachmentOwnership(input.attachments, employerId, BUCKETS.PROJECT_ATTACHMENTS);
-    if (ownershipErrors.length > 0) {
-      return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map(e => e.message));
-    }
-  }
+  const attachmentValidation = await validateProjectAttachments(input.attachments, employerId);
+  if (attachmentValidation) return attachmentValidation;
 
   const skillIds = input.requiredSkills.map(s => s.skillId);
   // Fetch once, share between validation and reference building
@@ -178,15 +233,11 @@ export async function createProject(
 
   const skillRefs = await buildSkillReferences(skillIds, activeSkills);
 
-  if (input.isRush && input.rushFeePercentage !== undefined) {
-    if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
-      return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
-    }
-  }
+  const rushFeeError = validateRushFee(input.isRush, input.rushFeePercentage);
+  if (rushFeeError) return rushFeeError;
 
-  if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
-    return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
-  }
+  const freelancerLimitError = validateFreelancerLimit(input.freelancerLimit);
+  if (freelancerLimitError) return freelancerLimitError;
 
   const projectInput = {
     id: generateId(),
@@ -336,41 +387,18 @@ export async function updateProject(
   }
 
   if (input.status && input.status !== existingProject.status) {
-    const validTransitions: Record<string, string[]> = {
-      draft: ['open', 'cancelled'],
-      open: ['draft', 'in_progress', 'cancelled'],
-      in_progress: ['completed', 'cancelled'],
-      completed: [],        // Terminal state - no transitions allowed
-      cancelled: [],        // Terminal state - no transitions allowed
-    };
-
-    const currentStatus = existingProject.status;
-    const allowedNextStatuses = validTransitions[currentStatus] ?? [];
-    if (!allowedNextStatuses.includes(input.status)) {
-      return errorResult('INVALID_STATUS_TRANSITION', `Cannot transition project from "${currentStatus}" to "${input.status}". Allowed: ${allowedNextStatuses.join(', ') || 'none (terminal state)'}`);
-    }
+    const transitionError = validateStatusTransition(existingProject.status, input.status);
+    if (transitionError) return transitionError;
   }
 
-  if (input.isRush && input.rushFeePercentage !== undefined) {
-    if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
-      return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
-    }
-  }
+  const rushFeeError = validateRushFee(input.isRush, input.rushFeePercentage);
+  if (rushFeeError) return rushFeeError;
 
-  if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
-    return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
-  }
+  const freelancerLimitError = validateFreelancerLimit(input.freelancerLimit);
+  if (freelancerLimitError) return freelancerLimitError;
 
-  if (input.attachments !== undefined) {
-    const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
-    if (attachmentErrors.length > 0) {
-      return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
-    }
-    const ownershipErrors = await validateStoredAttachmentOwnership(input.attachments, employerId, BUCKETS.PROJECT_ATTACHMENTS);
-    if (ownershipErrors.length > 0) {
-      return errorResult('VALIDATION_ERROR', 'Invalid attachments', ownershipErrors.map(e => e.message));
-    }
-  }
+  const attachmentValidation = await validateProjectAttachments(input.attachments, employerId);
+  if (attachmentValidation) return attachmentValidation;
 
   const updates: Partial<ProjectEntity> = {
     ...(input.title && { title: input.title }),
