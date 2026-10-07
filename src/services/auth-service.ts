@@ -293,6 +293,54 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
   };
 }
 
+interface AppwriteUserMeta {
+  emailVerification: boolean;
+  authProvider: 'email' | 'oauth';
+}
+
+async function resolveAppwriteUserMeta(
+  userId: string,
+  contextDescription: string
+): Promise<AppwriteUserMeta> {
+  let emailVerification = false;
+  let authProvider: 'email' | 'oauth' = 'email';
+  try {
+    if (typeof users?.get === 'function') {
+      const appwriteUser = await users.get(userId);
+      emailVerification = appwriteUser.emailVerification ?? false;
+      if (appwriteUser.passwordUpdate === '') {
+        authProvider = 'oauth';
+      }
+    }
+  } catch (error) {
+    logger.warn(`Failed to ${contextDescription}`, { userId, error });
+  }
+  return { emailVerification, authProvider };
+}
+
+const DEFAULT_PWNED_MESSAGE =
+  'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.';
+
+function isPasswordPwnedError(error: unknown): boolean {
+  const errorType = getErrorType(error);
+  const errorMessage = getErrorMessage(error) || '';
+  const lowerMsg = errorMessage.toLowerCase();
+  return (
+    errorType === 'password_pwned' ||
+    lowerMsg.includes('data breach') ||
+    lowerMsg.includes('pwned') ||
+    lowerMsg.includes('exposed in a known data breach')
+  );
+}
+
+function createPasswordPwnedError(error: unknown): AuthError {
+  const errorMessage = getErrorMessage(error) || '';
+  return {
+    code: 'PASSWORD_PWNED',
+    message: errorMessage || DEFAULT_PWNED_MESSAGE,
+  };
+}
+
 export async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult | AuthError> {
   if (user.is_suspended) {
     return {
@@ -303,20 +351,10 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
 
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(user.id);
-
-  let emailVerification = false;
-  let authProvider: 'email' | 'oauth' = 'email';
-  try {
-    if (typeof users?.get === 'function') {
-      const appwriteUser = await users.get(user.id);
-      emailVerification = appwriteUser.emailVerification ?? false;
-      if (appwriteUser.passwordUpdate === '') {
-        authProvider = 'oauth';
-      }
-    }
-  } catch (error) {
-    logger.warn('Failed to fetch Appwrite user details during token generation', { userId: user.id, error });
-  }
+  const { emailVerification, authProvider } = await resolveAppwriteUserMeta(
+    user.id,
+    'fetch Appwrite user details during token generation'
+  );
 
   const permissions = extractPermissions(user.permissions);
 
@@ -376,16 +414,8 @@ function toAuthError(error: unknown): AuthError {
     };
   }
 
-  if (
-    errorType === 'password_pwned' ||
-    errorMessage?.toLowerCase().includes('data breach') ||
-    errorMessage?.toLowerCase().includes('pwned') ||
-    errorMessage?.toLowerCase().includes('exposed in a known data breach')
-  ) {
-    return {
-      code: 'PASSWORD_PWNED',
-      message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
-    };
+  if (isPasswordPwnedError(error)) {
+    return createPasswordPwnedError(error);
   }
 
   return {
@@ -427,13 +457,15 @@ async function createPublicUserRecord(
   return publicUser;
 }
 
-async function ensureEmailIsUnique(email: string): Promise<void> {
+async function checkEmailUniqueness(email: string): Promise<AuthError | null> {
   const emailExists = await userRepository.emailExists(email);
   if (emailExists) {
-    throw Object.assign(new Error('An account with this email already exists'), {
+    return {
       code: 'DUPLICATE_EMAIL',
-    });
+      message: 'An account with this email already exists',
+    };
   }
+  return null;
 }
 
 function buildAuthResult(publicUser: UserEntity, sessionSecret: string): AuthResult {
@@ -461,16 +493,9 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     };
   }
 
-  try {
-    await ensureEmailIsUnique(normalizedEmail);
-  } catch (error) {
-    if ((error as any).code === 'DUPLICATE_EMAIL') {
-      return {
-        code: 'DUPLICATE_EMAIL',
-        message: 'An account with this email already exists',
-      };
-    }
-    throw error;
+  const duplicateEmailError = await checkEmailUniqueness(normalizedEmail);
+  if (duplicateEmailError) {
+    return duplicateEmailError;
   }
 
   logger.info('Registration attempt', { email: normalizedEmail, role: input.role });
@@ -761,16 +786,8 @@ export async function resetPasswordWithRecovery(
 
     logger.error('Password reset with recovery failed', { error: errorMessage, type: errorType, userId });
 
-    if (
-      errorType === 'password_pwned' ||
-      lowerMsg.includes('data breach') ||
-      lowerMsg.includes('pwned') ||
-      lowerMsg.includes('exposed in a known data breach')
-    ) {
-      return {
-        code: 'PASSWORD_PWNED',
-        message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
-      };
+    if (isPasswordPwnedError(error)) {
+      return createPasswordPwnedError(error);
     }
 
     if (
@@ -827,22 +844,11 @@ export async function updatePassword(accessToken: string, newPassword: string): 
 
     return { success: true };
   } catch (error: unknown) {
-    const errorType = getErrorType(error);
-    const errorMessage = getErrorMessage(error) || '';
-    const lowerMsg = errorMessage.toLowerCase();
-
-    if (
-      errorType === 'password_pwned' ||
-      lowerMsg.includes('data breach') ||
-      lowerMsg.includes('pwned') ||
-      lowerMsg.includes('exposed in a known data breach')
-    ) {
-      return {
-        code: 'PASSWORD_PWNED',
-        message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
-      };
+    if (isPasswordPwnedError(error)) {
+      return createPasswordPwnedError(error);
     }
 
+    const errorMessage = getErrorMessage(error) || '';
     logger.error('Password update failed', { error: errorMessage });
 
     return {
@@ -894,21 +900,13 @@ export async function changePassword(
 
     return { success: true };
   } catch (error: unknown) {
+    if (isPasswordPwnedError(error)) {
+      return createPasswordPwnedError(error);
+    }
+
     const errorType = getErrorType(error);
     const errorMessage = getErrorMessage(error) || '';
     const lowerMsg = errorMessage.toLowerCase();
-
-    if (
-      errorType === 'password_pwned' ||
-      lowerMsg.includes('data breach') ||
-      lowerMsg.includes('pwned') ||
-      lowerMsg.includes('exposed in a known data breach')
-    ) {
-      return {
-        code: 'PASSWORD_PWNED',
-        message: errorMessage || 'The password you are trying to use has been exposed in a known data breach. For your security, please choose a different password and try again.',
-      };
-    }
 
     if (
       errorType === 'user_invalid_credentials' ||
@@ -963,20 +961,10 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     };
   }
 
-  let authProvider: 'email' | 'oauth' = 'email';
-
-  let emailVerification = false;
-  try {
-    if (typeof users?.get === 'function') {
-      const appwriteUser = await users.get(userId);
-      emailVerification = appwriteUser.emailVerification ?? false;
-      if (appwriteUser.passwordUpdate === '') {
-        authProvider = 'oauth';
-      }
-    }
-  } catch (error) {
-    logger.warn('Failed to retrieve Appwrite user metadata for current user', { userId, error });
-  }
+  const { emailVerification, authProvider } = await resolveAppwriteUserMeta(
+    userId,
+    'retrieve Appwrite user metadata for current user'
+  );
 
   const permissions = extractPermissions(user.permissions);
 
@@ -1482,6 +1470,24 @@ async function ensureNoActiveContracts(userId: string): Promise<void> {
   }
 }
 
+async function validateNoActiveContracts(
+  userId: string,
+  customErrorMessage?: string
+): Promise<AuthError | null> {
+  try {
+    await ensureNoActiveContracts(userId);
+    return null;
+  } catch (error) {
+    if (error instanceof ActiveContractsError) {
+      return {
+        code: 'ACTIVE_CONTRACTS_EXIST',
+        message: customErrorMessage || error.message,
+      };
+    }
+    throw error;
+  }
+}
+
 async function cleanupUserData(userId: string, role: string): Promise<void> {
   if (role === 'freelancer') {
     const profile = await freelancerProfileRepository.getProfileByUserId(userId).catch(() => null);
@@ -1551,16 +1557,9 @@ export async function requestAccountDeletion(userId: string): Promise<{ success:
       };
     }
 
-    try {
-      await ensureNoActiveContracts(userId);
-    } catch (error) {
-      if (error instanceof ActiveContractsError) {
-        return {
-          code: 'ACTIVE_CONTRACTS_EXIST',
-          message: error.message,
-        };
-      }
-      throw error;
+    const contractsError = await validateNoActiveContracts(userId);
+    if (contractsError) {
+      return contractsError;
     }
 
     cleanExpiredDeletionCodes();
@@ -1646,16 +1645,9 @@ export async function deleteUserAccount(userId: string): Promise<{ success: bool
       };
     }
 
-    try {
-      await ensureNoActiveContracts(userId);
-    } catch (error) {
-      if (error instanceof ActiveContractsError) {
-        return {
-          code: 'ACTIVE_CONTRACTS_EXIST',
-          message: error.message,
-        };
-      }
-      throw error;
+    const contractsError = await validateNoActiveContracts(userId);
+    if (contractsError) {
+      return contractsError;
     }
 
     const userEmail = user.email;
@@ -1710,16 +1702,12 @@ export async function disconnectUserWallet(userId: string): Promise<{ success: b
       };
     }
 
-    try {
-      await ensureNoActiveContracts(userId);
-    } catch (error) {
-      if (error instanceof ActiveContractsError) {
-        return {
-          code: 'ACTIVE_CONTRACTS_EXIST',
-          message: 'Cannot disconnect wallet while you have active contracts with locked escrow funds.',
-        };
-      }
-      throw error;
+    const contractsError = await validateNoActiveContracts(
+      userId,
+      'Cannot disconnect wallet while you have active contracts with locked escrow funds.'
+    );
+    if (contractsError) {
+      return contractsError;
     }
 
     await userRepository.updateUser(userId, { wallet_address: '' });

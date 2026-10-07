@@ -277,6 +277,45 @@ async function syncRatingToBlockchain(
   return transactionHash;
 }
 
+type DispatchRatingNotificationsInput = {
+  rateeId: string;
+  raterId: string;
+  contractId: string;
+  reviewId: string;
+  rating: number;
+  projectTitle: string;
+};
+
+async function dispatchRatingNotifications(
+  input: DispatchRatingNotificationsInput
+): Promise<void> {
+  const { rateeId, raterId, contractId, reviewId, rating, projectTitle } = input;
+
+  await notifyRatingReceived({
+    userId: rateeId,
+    rating,
+    contractId,
+    projectTitle,
+  });
+
+  try {
+    const reviewerDoc = await databases
+      .getDocument(DATABASE_ID, COLLECTIONS.USERS, raterId)
+      .catch(() => null);
+    await sendGatedEmail(rateeId, 'review_received', (recipient) =>
+      sendReviewReceivedEmail(recipient.email, {
+        recipientName: recipient.name,
+        reviewerName: reviewerDoc?.name || 'A user',
+        rating,
+        projectTitle,
+        reviewUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/reviews/${reviewId}`,
+      })
+    );
+  } catch (error) {
+    logger.error('Failed to send review-received email', { error, rateeId, raterId });
+  }
+}
+
 /**
  * Submit a rating/review for a completed contract
  * Stores in Appwrite reviews table, syncs to blockchain best-effort
@@ -316,31 +355,14 @@ export async function submitRating(
   const projectEntity = await projectRepository.getProjectById(contract.projectId);
   const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-  await notifyRatingReceived({
-    userId: rateeId,
-    rating: input.rating,
+  await dispatchRatingNotifications({
+    rateeId,
+    raterId: input.raterId,
     contractId: input.contractId,
+    reviewId: review.id,
+    rating: input.rating,
     projectTitle,
   });
-
-  // Transactional email gated by the ratee's email preferences. Best-effort:
-  // a lookup/send failure must never break the rating submission.
-  try {
-    const reviewerDoc = await databases
-      .getDocument(DATABASE_ID, COLLECTIONS.USERS, input.raterId)
-      .catch(() => null);
-    await sendGatedEmail(rateeId, 'review_received', (recipient) =>
-      sendReviewReceivedEmail(recipient.email, {
-        recipientName: recipient.name,
-        reviewerName: reviewerDoc?.name || 'A user',
-        rating: input.rating,
-        projectTitle,
-        reviewUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/reviews/${review.id}`,
-      })
-    );
-  } catch (error) {
-    logger.error('Failed to send review-received email', { error, rateeId, raterId: input.raterId });
-  }
 
     // Invalidate cached reputation for ratee and platform leaderboard
     reputationCache.deleteMatching((k: string) => k.startsWith(`rep:${rateeId}:`));

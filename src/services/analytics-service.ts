@@ -78,6 +78,23 @@ async function fetchAllCollection(collectionId: string, baseQueries: string[], p
   return allDocs;
 }
 
+function filterDocumentsByDateRange<T extends { created_at?: string; [key: string]: unknown }>(
+  documents: T[],
+  startDate?: string,
+  endDate?: string
+): T[] {
+  let filtered = documents;
+  if (startDate) {
+    const start = new Date(startDate);
+    filtered = filtered.filter((doc) => doc.created_at && new Date(doc.created_at) >= start);
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    filtered = filtered.filter((doc) => doc.created_at && new Date(doc.created_at) <= end);
+  }
+  return filtered;
+}
+
 interface DateRangeOptions {
   startDate?: string;
   endDate?: string;
@@ -253,16 +270,11 @@ export async function getFreelancerAnalytics(
   try {
     const { startDate, endDate } = options;
 
-    let contracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+    const rawContracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
       Query.equal('freelancer_id', userId),
       Query.equal('status', 'completed'),
     ]);
-    if (startDate) {
-      contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
-    }
-    if (endDate) {
-      contracts = contracts.filter(c => new Date(c.created_at) <= new Date(endDate));
-    }
+    const contracts = filterDocumentsByDateRange(rawContracts, startDate, endDate);
 
     const totalEarnings = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
@@ -325,30 +337,18 @@ export async function getEmployerAnalytics(
     const posted = await fetchAllCollection(COLLECTIONS.PROJECTS, [
       Query.equal('employer_id', userId),
     ]);
-
-    let projectsPostedData = posted;
-    if (startDate) {
-      projectsPostedData = projectsPostedData.filter(p => new Date(p.created_at) >= new Date(startDate));
-    }
-    if (endDate) {
-      projectsPostedData = projectsPostedData.filter(p => new Date(p.created_at) <= new Date(endDate));
-    }
+    const projectsPostedData = filterDocumentsByDateRange(posted, startDate, endDate);
 
     const projectsPosted = projectsPostedData.length;
     const totalBudget = projectsPostedData.reduce((sum, p) => sum + Number(p.budget || 0), 0);
     /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects */
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
-    let contracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
+    const rawContracts = await fetchAllCollection(COLLECTIONS.CONTRACTS, [
       Query.equal('employer_id', userId),
       Query.equal('status', 'completed'),
     ]);
-    if (startDate) {
-      contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
-    }
-    if (endDate) {
-      contracts = contracts.filter(c => new Date(c.created_at) <= new Date(endDate));
-    }
+    const contracts = filterDocumentsByDateRange(rawContracts, startDate, endDate);
 
     const totalSpent = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
