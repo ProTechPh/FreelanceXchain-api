@@ -52,6 +52,11 @@ const MATCHING_CACHE_TTL_SECONDS = 300; // 5 minutes
  * boost to appear. Accepted over key-scanning invalidation.
  */
 const PRO_RANKING_BOOST = 5;
+/**
+ * Projects below this skill-match score are not recommended to a freelancer:
+ * fewer than 40% of the required skills is not a fit worth surfacing.
+ */
+export const MIN_PROJECT_MATCH_SCORE = 40;
 const SKILL_GAPS_CACHE_TTL_SECONDS = 600; // 10 minutes
 const EXTRACT_SKILLS_CACHE_TTL_SECONDS = 3600; // 1 hour
 
@@ -161,11 +166,13 @@ export async function getProjectRecommendations(
 
   preMatched.sort((a, b) => rankOf(b) - rankOf(a));
 
-  // 2. Take top items up to limit
-  const topCandidates = preMatched.slice(0, limit);
+  // 2. Take top items up to limit, skipping projects the freelancer barely fits
+  const topCandidates = preMatched
+    .filter(entry => entry.keywordResult.matchScore >= MIN_PROJECT_MATCH_SCORE)
+    .slice(0, limit);
 
   // 3. AI enhancement (if available) only for top candidates (capped at top 3 for optimal performance)
-  const recommendations: ProjectRecommendation[] = await Promise.all(
+  const scored: ProjectRecommendation[] = await Promise.all(
     topCandidates.map(async ({ projectEntity, projectRequirements, keywordResult }, index) => {
       let matchResult: SkillMatchResult = keywordResult;
 
@@ -195,6 +202,8 @@ export async function getProjectRecommendations(
       };
     })
   );
+  // The AI pass can confirm fewer matches than the keyword pass, so re-apply the floor
+  const recommendations = scored.filter(rec => rec.matchScore >= MIN_PROJECT_MATCH_SCORE);
 
   await setCached(cacheKey, recommendations, localProjectRecCache, MATCHING_CACHE_TTL_SECONDS);
   return successResult(recommendations);

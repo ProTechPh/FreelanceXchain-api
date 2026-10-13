@@ -115,6 +115,8 @@ Skill names are compared with `normalizeSkillKey`. Case, spacing and `.js` spell
 | Endpoint | Function | Fallback |
 | ---------- | ---------- | ---------- |
 | `GET /api/matching/projects`, `GET /api/matching/freelancers/:projectId` | `analyzeSkillMatch` (AI for the top candidates; scores of 0 or 100 are decided without a model call) | `keywordMatchSkills` |
+
+Project recommendations (`GET /api/matching/projects`) only include projects where the freelancer has at least 40% of the required skills (`MIN_PROJECT_MATCH_SCORE` in `matching-service.ts`). The floor is applied before the list is cut to the requested limit, and again after the AI pass.
 | `POST /api/matching/extract-skills` | `extractSkills` | `keywordExtractSkills` |
 | `GET /api/matching/skill-gaps` | `generateSkillGapAnalysis` | Empty recommendations with an explanation |
 | `POST /api/matching/generate-proposal/:projectId` | `generateAIProposal` | `fallbackGenerateProposal` (template) |

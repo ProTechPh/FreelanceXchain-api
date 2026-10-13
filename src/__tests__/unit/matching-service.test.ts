@@ -468,7 +468,8 @@ describe('matching-service – branch coverage', () => {
     const result = await getProjectRecommendations('u1');
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.length).toBe(1);
+      // The null name maps to '' and matches nothing; a 0% match is below the recommendation floor
+      expect(result.data.length).toBe(0);
     }
   });
 
@@ -489,7 +490,62 @@ describe('matching-service – branch coverage', () => {
     const result = await getProjectRecommendations('u1');
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.length).toBe(1);
+      // The null name maps to '' and matches nothing; a 0% match is below the recommendation floor
+      expect(result.data.length).toBe(0);
+    }
+  });
+
+  it('only recommends projects matching at least 40% of their required skills', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u-floor', skills: [{ name: 'React', years_of_experience: 3 }, { name: 'Solidity', years_of_experience: 1 }],
+    });
+    const skill = (id: string, name: string) => ({ skill_id: id, skill_name: name, category_id: 'c1' });
+    mockProjectRepository.getAllOpenProjects.mockResolvedValue({
+      items: [
+        { id: 'p-0', employer_id: 'e1', required_skills: [skill('s3', 'Rust'), skill('s4', 'Go')] },
+        { id: 'p-33', employer_id: 'e1', required_skills: [skill('s1', 'React'), skill('s4', 'Go'), skill('s5', 'Python')] },
+        { id: 'p-40', employer_id: 'e1', required_skills: [skill('s1', 'React'), skill('s2', 'Solidity'), skill('s4', 'Go'), skill('s5', 'Python'), skill('s6', 'Figma')] },
+        { id: 'p-50', employer_id: 'e1', required_skills: [skill('s1', 'React'), skill('s4', 'Go')] },
+        { id: 'p-100', employer_id: 'e1', required_skills: [skill('s2', 'Solidity')] },
+      ],
+      total: 5,
+    });
+    mockIsAIAvailable.mockReturnValue(false);
+
+    const { getProjectRecommendations, MIN_PROJECT_MATCH_SCORE } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await getProjectRecommendations('u-floor', 3);
+
+    expect(MIN_PROJECT_MATCH_SCORE).toBe(40);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // The limit is filled from qualifying projects only
+      expect(result.data.map((r: ProjectRecommendation) => [r.projectId, r.matchScore])).toEqual([
+        ['p-100', 100], ['p-50', 50], ['p-40', 40],
+      ]);
+    }
+  });
+
+  it('drops a project when the AI confirms fewer matches than the 40% floor', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u-ai-floor', skills: [{ name: 'React', years_of_experience: 3 }],
+    });
+    mockProjectRepository.getAllOpenProjects.mockResolvedValue({
+      items: [{ id: 'p-50', employer_id: 'e1', required_skills: [
+        { skill_id: 's1', skill_name: 'React', category_id: 'c1' },
+        { skill_id: 's4', skill_name: 'Go', category_id: 'c1' },
+      ] }],
+      total: 1,
+    });
+    mockIsAIAvailable.mockReturnValue(true);
+    mockIsAIError.mockReturnValue(false);
+    mockAnalyzeSkillMatch.mockResolvedValue({ matchScore: 0, matchedSkills: [], missingSkills: ['React', 'Go'], reasoning: 'x' });
+
+    const { getProjectRecommendations } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await getProjectRecommendations('u-ai-floor');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual([]);
     }
   });
 
