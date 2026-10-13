@@ -417,7 +417,7 @@ describe('ai-client output guards', () => {
       jest.useFakeTimers();
       const ai = await importClient();
       fetchMock.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
-        (init as RequestInit).signal!.addEventListener('abort', () => {
+        (init as NonNullable<Parameters<typeof fetch>[1]>).signal!.addEventListener('abort', () => {
           const err = new Error('aborted');
           err.name = 'AbortError';
           reject(err);
