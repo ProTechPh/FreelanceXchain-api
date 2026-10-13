@@ -5,9 +5,7 @@ import {
   keywordExtractSkills,
   isAIAvailable,
   isAIError,
-  generateContent,
-  parseJsonResponse,
-  SKILL_GAP_PROMPT,
+  generateSkillGapAnalysis,
   generateAIProposal,
   fallbackGenerateProposal,
 } from './ai-client.js';
@@ -488,24 +486,6 @@ export function isCachedGapsConsistent(currentSkills: string[], cached: SkillGap
   );
 }
 
-function sanitizeMarketDemand(
-  rawItems: SkillGapAnalysis['marketDemand']
-): Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }> {
-  const validLevels = ['high', 'medium', 'low'];
-  return (rawItems ?? [])
-    .map(item => {
-      if (!item || typeof item.skillName !== 'string' || !item.skillName.trim()) {
-        return null;
-      }
-      const demandLevel = validLevels.includes(item.demandLevel) ? item.demandLevel : 'medium';
-      return {
-        skillName: item.skillName.trim(),
-        demandLevel: demandLevel as 'high' | 'medium' | 'low',
-      };
-    })
-    .filter((item): item is { skillName: string; demandLevel: 'high' | 'medium' | 'low' } => item !== null);
-}
-
 function fallbackSkillGap(currentSkills: string[], reasoning: string): ServiceResult<SkillGapAnalysis> {
   return successResult({
     currentSkills,
@@ -557,33 +537,17 @@ export async function analyzeSkillGaps(
     return fallbackSkillGap(currentSkills, 'AI analysis unavailable; no skill gap insights generated.');
   }
 
-  const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
-  const response = await generateContent(prompt);
+  const activeSkills = await getActiveSkills();
+  const taxonomy: SkillInfo[] = activeSkills.map(skill => ({ skillId: skill.id, skillName: skill.name }));
 
-  if (typeof response !== 'string') {
-    logger.warn('[SkillGap] AI unavailable or rate-limited, using fallback', { response });
-    return fallbackSkillGap(currentSkills, 'AI analysis failed or returned non-text response.');
+  const result = await generateSkillGapAnalysis(currentSkills, taxonomy);
+  if (isAIError(result)) {
+    logger.warn('[SkillGap] AI analysis unavailable, using fallback', { code: result.code });
+    return fallbackSkillGap(currentSkills, 'AI analysis is temporarily unavailable. Please try again shortly.');
   }
 
-  try {
-    const parsedAnalysis = parseJsonResponse<SkillGapAnalysis>(response, 'SkillGap');
-    if (!parsedAnalysis) {
-      throw new Error('parseJsonResponse returned null');
-    }
-
-    const result: SkillGapAnalysis = {
-      currentSkills: parsedAnalysis.currentSkills ?? currentSkills,
-      recommendedSkills: parsedAnalysis.recommendedSkills ?? [],
-      marketDemand: sanitizeMarketDemand(parsedAnalysis.marketDemand),
-      reasoning: parsedAnalysis.reasoning ?? 'Analysis completed.',
-    };
-
-    await setCached(cacheKey, result, localSkillGapsCache, SKILL_GAPS_CACHE_TTL_SECONDS);
-    return successResult(result);
-  } catch (error) {
-    logger.warn('[SkillGap] Failed to parse AI response, using fallback', { error });
-    return fallbackSkillGap(currentSkills, 'Failed to parse AI response.');
-  }
+  await setCached(cacheKey, result, localSkillGapsCache, SKILL_GAPS_CACHE_TTL_SECONDS);
+  return successResult(result);
 }
 
 /**

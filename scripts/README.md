@@ -58,6 +58,12 @@ pnpm run deploy:contracts:prod
 - **[generate-openapi.ts](generate-openapi.ts)** - Generates OpenAPI schema documentation.
 - **[check-markdown-links.ts](check-markdown-links.ts)** - Checks internal links across project markdown documentation.
 
+### 🤖 AI Evaluation
+
+- **[ai-eval/run-eval.ts](ai-eval/run-eval.ts)** - Runs the labeled cases in [`ai-eval/dataset.json`](ai-eval/dataset.json) against the configured LLM and prints a scorecard (JSON validity, non-English and unknown-skill rates, extraction F1, match accuracy, gap validity, proposal structure, fallback rate, latency, tokens). Results are saved to `ai-eval/results/`.
+
+**Usage:** `pnpm eval:ai [--label <name>] [--only extraction|match|gap|proposal]`. Metric definitions are in [AI-Powered Matching](../docs/architecture/ai-matching.md#evaluation-pnpm-evalai).
+
 ## 🔧 Prerequisites
 
 Before running scripts, ensure you have:

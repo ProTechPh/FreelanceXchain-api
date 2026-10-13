@@ -57,7 +57,7 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   parseJsonResponse: jest.fn(),
   generateAIProposal: jest.fn(),
   fallbackGenerateProposal: jest.fn(),
-  SKILL_GAP_PROMPT: '',
+  generateSkillGapAnalysis: jest.fn(),
 }));
 
 const previousCacheFlag = process.env['ENABLE_MATCHING_CACHE_TEST'];

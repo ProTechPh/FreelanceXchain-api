@@ -571,8 +571,15 @@ ETHERSCAN_API_KEY=your-etherscan-key
 
 ```env
 LLM_API_KEY=your-llm-api-key
-LLM_API_URL=https://api.llm-provider.com
+LLM_API_URL=https://api.groq.com/openai/v1
+LLM_MODEL=qwen/qwen3.8-27b
+# Optional
+LLM_TIMEOUT_MS=6000
+LLM_REASONING_EFFORT=none
+LLM_REASONING_FORMAT=hidden
 ```
+
+See [AI-Powered Matching](docs/architecture/ai-matching.md) for output guards, the `[ai.call]` log and `pnpm eval:ai`.
 
 #### KYC Integration
 

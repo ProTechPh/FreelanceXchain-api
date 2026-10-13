@@ -16,6 +16,7 @@ const mockIsAIError = jest.fn((r: any) => false);
 const mockKeywordMatchSkills = jest.fn() as jest.Mock<any>;
 const mockKeywordExtractSkills = jest.fn() as jest.Mock<any>;
 const mockGenerateContent = jest.fn() as jest.Mock<any>;
+const mockGenerateSkillGapAnalysis = jest.fn() as jest.Mock<any>;
 const mockParseJsonResponse = jest.fn() as jest.Mock<any>;
 const mockLogger = { error: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn() };
 
@@ -54,7 +55,7 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   parseJsonResponse: mockParseJsonResponse,
   fallbackGenerateProposal: jest.fn(),
   generateAIProposal: jest.fn(),
-  SKILL_GAP_PROMPT: 'Analyze skill gaps for: {currentSkills}',
+  generateSkillGapAnalysis: mockGenerateSkillGapAnalysis,
 }));
 
 const {
@@ -290,68 +291,37 @@ describe('Matching Service - Async Functions', () => {
       }
     });
 
-    it('should return basic analysis when AI returns non-string', async () => {
+    it('should return basic analysis when the AI analysis fails', async () => {
       mockGetProfileByUserId.mockResolvedValue(makeFreelancerProfile());
       mockIsAIAvailable.mockReturnValue(true);
-      mockGenerateContent.mockResolvedValue({ error: 'not a string' });
+      mockGetActiveSkills.mockResolvedValue([]);
+      mockGenerateSkillGapAnalysis.mockResolvedValue({ code: 'AI_NON_ENGLISH', message: 'rejected', retryable: false });
+      mockIsAIError.mockImplementation((r: any) => Boolean(r && r.code));
 
       const result = await analyzeSkillGaps('freelancer-1');
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.reasoning).toContain('failed');
+        expect(result.data.recommendedSkills).toEqual([]);
+        expect(result.data.reasoning).toContain('unavailable');
       }
     });
 
-    it('should parse and return AI analysis on success', async () => {
+    it('should return the AI analysis on success', async () => {
       mockGetProfileByUserId.mockResolvedValue(makeFreelancerProfile());
       mockIsAIAvailable.mockReturnValue(true);
-      mockGenerateContent.mockResolvedValue('{"currentSkills":["React"],"recommendedSkills":["TypeScript"],"marketDemand":[{"skillName":"TypeScript","demandLevel":"high"}],"reasoning":"Good analysis"}');
-      mockParseJsonResponse.mockReturnValue({
+      mockGetActiveSkills.mockResolvedValue([{ id: 's2', name: 'TypeScript', categoryId: 'c1' }]);
+      mockGenerateSkillGapAnalysis.mockResolvedValue({
         currentSkills: ['React'],
         recommendedSkills: ['TypeScript'],
         marketDemand: [{ skillName: 'TypeScript', demandLevel: 'high' }],
         reasoning: 'Good analysis',
       });
+      mockIsAIError.mockImplementation((r: any) => Boolean(r && r.code));
 
       const result = await analyzeSkillGaps('freelancer-1');
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.recommendedSkills).toContain('TypeScript');
-      }
-    });
-
-    it('should sanitize marketDemand items with invalid demandLevel', async () => {
-      mockGetProfileByUserId.mockResolvedValue(makeFreelancerProfile());
-      mockIsAIAvailable.mockReturnValue(true);
-      mockGenerateContent.mockResolvedValue('{}');
-      mockParseJsonResponse.mockReturnValue({
-        currentSkills: ['React'],
-        recommendedSkills: [],
-        marketDemand: [
-          { skillName: 'TypeScript', demandLevel: 'extreme' },
-          { skillName: '', demandLevel: 'high' },
-        ],
-        reasoning: 'Test',
-      });
-
-      const result = await analyzeSkillGaps('freelancer-1');
-      expect(result.success).toBe(true);
-      if (result.success) {
-        const validItems = result.data.marketDemand.filter(m => m.skillName === 'TypeScript');
-        expect(validItems[0]?.demandLevel).toBe('medium');
-      }
-    });
-
-    it('should handle JSON parse failure gracefully', async () => {
-      mockGetProfileByUserId.mockResolvedValue(makeFreelancerProfile());
-      mockIsAIAvailable.mockReturnValue(true);
-      mockGenerateContent.mockResolvedValue('valid-string-but-parse-throws');
-      mockParseJsonResponse.mockImplementation(() => { throw new Error('parse error'); });
-
-      const result = await analyzeSkillGaps('freelancer-1');
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.reasoning).toContain('parse');
+        expect(result.data.recommendedSkills).toEqual(['TypeScript']);
       }
     });
   });

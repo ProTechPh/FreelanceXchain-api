@@ -134,16 +134,21 @@ describe('AI client production runtime paths', () => {
       freelancerSkills: [{ skillId: '1', skillName: 'React' }, { skillId: '2', skillName: 'Node.js' }],
       projectRequirements: [{ skillId: '3', skillName: 'React' }, { skillId: '4', skillName: 'Python' }],
     };
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'unavailable' });
+    // Both the first attempt and the single retry fail
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'unavailable' })
+      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'unavailable' });
 
     const transportResult = await ai.analyzeSkillMatch(transportRequest);
 
     expect(transportResult).toMatchObject({ code: 'AI_HTTP_503', retryable: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    fetchMock.mockResolvedValueOnce({
+    const notJson = {
       ok: true,
       json: async () => ({ candidates: [{ content: { parts: [{ text: 'not-json' }] } }] }),
-    });
+    };
+    fetchMock.mockResolvedValueOnce(notJson).mockResolvedValueOnce(notJson);
     const parseResult = await ai.analyzeSkillMatch({
       freelancerSkills: [{ skillId: '5', skillName: 'Vue' }, { skillId: '6', skillName: 'Go' }],
       projectRequirements: [{ skillId: '7', skillName: 'Vue' }, { skillId: '8', skillName: 'Rust' }],
@@ -195,8 +200,9 @@ describe('AI client production runtime paths', () => {
       }],
     });
 
+    // The project's milestone has no amount, so it is aligned to the proposed rate
     expect(result.proposedMilestones).toEqual([
-      { title: 'Delivery', description: '', amount: 0, durationDays: 7 },
+      { title: 'Delivery', description: '', amount: 2500, durationDays: 7 },
     ]);
   });
 });

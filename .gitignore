@@ -55,3 +55,6 @@ deployment.json
 .zcode/
 .claude/
 .freebuff/
+
+# AI evaluation run outputs (pnpm eval:ai)
+scripts/ai-eval/results/

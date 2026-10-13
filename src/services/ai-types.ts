@@ -8,13 +8,46 @@ type AIContent = {
 };
 
 export type AIRequest = {
+  /** Instructions sent as the system message (OpenAI-compatible) / systemInstruction (Gemini). */
+  systemPrompt?: string;
   contents: AIContent[];
   generationConfig?: {
     temperature?: number;
     topK?: number;
     topP?: number;
     maxOutputTokens?: number;
+    /** Ask the provider for a JSON object response (OpenAI-compatible json_object mode). */
+    jsonMode?: boolean;
   };
+};
+
+export type AIFeature = 'skill_match' | 'skill_extraction' | 'skill_gap' | 'proposal';
+
+/** Outcome of one provider attempt, as reported in the [ai.call] log line. */
+export type AICallOutcome =
+  | 'ok'
+  | 'parse_error'
+  | 'schema_error'
+  | 'non_english'
+  | 'truncated'
+  | 'empty'
+  | 'http_error'
+  | 'rate_limited'
+  | 'timeout'
+  | 'network_error'
+  | 'unavailable';
+
+export type AICallMetrics = {
+  feature: AIFeature;
+  model: string;
+  attempt: number;
+  outcome: AICallOutcome;
+  latencyMs: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  finishReason?: string;
+  httpStatus?: number;
+  nonEnglishFields?: string[];
 };
 
 // Response types
@@ -152,6 +185,10 @@ export type AIError = {
   code: string;
   message: string;
   retryable: boolean;
+  /** HTTP status from the provider, when the failure was an HTTP error. */
+  httpStatus?: number;
+  /** Provider-requested wait before retrying (429 retry-after), in ms. */
+  retryAfterMs?: number;
 };
 
 // Serialization types for round-trip testing

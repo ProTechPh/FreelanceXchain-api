@@ -9,6 +9,7 @@
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/check-openapi.ts",
     "docs:check": "tsx scripts/check-markdown-links.ts",
+    "eval:ai": "tsx scripts/ai-eval/run-eval.ts",
     "docs:lint": "markdownlint-cli2 \"**/*.md\"",
     "start": "node dist/index.js",
     "start:prod": "tsx src/index.ts",

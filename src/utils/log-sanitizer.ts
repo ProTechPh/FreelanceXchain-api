@@ -18,6 +18,9 @@ const SENSITIVE_PATTERNS = {
 
   // Provider-prefixed keys can appear after generic labels such as `key:`.
   providerApiKey: /\b(?:sk|pk)_(?:live|test)_[a-zA-Z0-9_-]{10,}\b/gi,
+
+  // LLM provider keys (Groq gsk_…, OpenAI/OpenRouter sk-…) can surface in provider error bodies.
+  llmApiKey: /\b(?:gsk_[A-Za-z0-9]{20,}|sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{20,})\b/g,
   
   // Passwords
   password: /(?:password|passwd|pwd)[\s:=]+['"]?([^'"\s]{6,})['"]?/gi,
@@ -105,6 +108,7 @@ export function sanitizeString(input: string): string {
     match.replace(group1, REDACTED)
   );
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.providerApiKey, '[REDACTED_API_KEY]');
+  sanitized = sanitized.replace(SENSITIVE_PATTERNS.llmApiKey, '[REDACTED_API_KEY]');
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.password, (match, group1) => 
     match.replace(group1, REDACTED)
   );
