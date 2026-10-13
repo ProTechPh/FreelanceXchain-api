@@ -464,11 +464,21 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asy
   }
 
   let chainId = '0x539';
+  let existingDeployment: { escrowAddress: string; transactionHash: string } | null = null;
   try {
     if (getBlockchainMode() === 'real') {
       const { getProvider } = await import('../services/web3-client.js');
-      const network = await getProvider().getNetwork();
+      const provider = getProvider();
+      const network = await provider.getNetwork();
       chainId = `0x${network.chainId.toString(16)}`;
+      if (contract.status === 'pending' && !contract.escrowAddress && walletResult.data.employerWallet) {
+        const { findExistingOnChainEscrowDeployment } = await import('../services/escrow-bytecode-validator.js');
+        existingDeployment = await findExistingOnChainEscrowDeployment(
+          provider,
+          contractId,
+          walletResult.data.employerWallet
+        );
+      }
     }
   } catch {
     // fallback
@@ -486,6 +496,7 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asy
     abi: FreelanceEscrowABI,
     bytecode: FreelanceEscrowBytecode,
     chainId,
+    ...(existingDeployment ? { existingDeployment } : {}),
   });
 }));
 

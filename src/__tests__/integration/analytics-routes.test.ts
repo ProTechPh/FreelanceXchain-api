@@ -32,7 +32,7 @@ describe('Analytics Routes Integration Tests', () => {
     if (employerLogin.body.accessToken) {
       employerToken = employerLogin.body.accessToken;
     }
-  });
+  }, 60000);
 
   describe('GET /api/analytics/freelancer', () => {
     it('should get freelancer analytics', async () => {

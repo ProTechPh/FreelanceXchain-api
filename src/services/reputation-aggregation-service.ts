@@ -216,6 +216,8 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
         }
 
         return {
+          id: r.id,
+          contractId: r.contract_id,
           rating: r.rating,
           comment: r.comment || '',
           reviewerName,
