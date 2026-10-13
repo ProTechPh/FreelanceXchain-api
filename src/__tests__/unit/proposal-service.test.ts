@@ -855,7 +855,7 @@ describe('Proposal Service - Coverage Tests', () => {
     }
   });
 
-  it('should return AMOUNT_MISMATCH when rate does not match milestone total (line 305)', async () => {
+  it('should automatically adjust project milestones and budget when proposed rate differs from milestone total', async () => {
     const employerId = 'employer-123';
     const milestones = [createTestMilestone({ amount: 500 })];
     const project = createTestProject({
@@ -874,9 +874,12 @@ describe('Proposal Service - Coverage Tests', () => {
 
     const result = await acceptProposal(proposal.id, employerId);
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('AMOUNT_MISMATCH');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contract.baseAmount).toBe(1000);
+      const updatedProject = projectStore.get(project.id);
+      expect(updatedProject?.budget).toBe(1000);
+      expect(updatedProject?.milestones[0]?.amount).toBe(1000);
     }
   });
 
