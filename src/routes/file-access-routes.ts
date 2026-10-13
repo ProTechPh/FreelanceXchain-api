@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -122,7 +122,7 @@ router.get(
   '/:bucket/:fileId',
   authMiddleware,
   apiRateLimiter,
-  validateUUID(['fileId']),
+  validateAppwriteDocumentId(['fileId']),
   asyncHandler(async (req: Request, res: Response) => {
     const { bucket, fileId } = req.params as { bucket: string; fileId: string };
     const userId = req.user?.userId;
@@ -189,7 +189,7 @@ router.get(
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
       }
 
-      res.send(fileContent);
+      res.send(Buffer.isBuffer(fileContent) ? fileContent : Buffer.from(fileContent as ArrayBuffer));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
@@ -219,7 +219,7 @@ router.get(
   '/:bucket/:fileId/info',
   authMiddleware,
   apiRateLimiter,
-  validateUUID(['fileId']),
+  validateAppwriteDocumentId(['fileId']),
   asyncHandler(async (req: Request, res: Response) => {
     const { bucket, fileId } = req.params as { bucket: string; fileId: string };
     const userId = req.user?.userId;

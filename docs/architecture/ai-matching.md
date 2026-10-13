@@ -3,295 +3,211 @@
 ## Table of Contents
 
 1. [Introduction](#introduction)
-2. [Project Structure](#project-structure)
-3. [Core Components](#core-components)
-4. [Architecture Overview](#architecture-overview)
-5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Appendices](#appendices)
+2. [Components](#components)
+3. [Provider Configuration](#provider-configuration)
+4. [Request Pipeline](#request-pipeline)
+5. [Output Guards](#output-guards)
+6. [Features](#features)
+7. [Observability: the `[ai.call]` Log](#observability-the-aicall-log)
+8. [Evaluation: `pnpm eval:ai`](#evaluation-pnpm-evalai)
+9. [Caching and Fallbacks](#caching-and-fallbacks)
+10. [Troubleshooting Guide](#troubleshooting-guide)
 
 ## Introduction
 
-FreelanceXchain uses OpenAI-compatible LLM APIs (Anthropic Claude by default, via `LLM_API_URL`/`LLM_MODEL`) to extract skills from project descriptions and freelancer profiles, compute compatibility scores, and generate candidate recommendations. It also provides helper prompts for drafting proposals, refining project scopes, and summarizing disputes. When LLM calls fail or timeout, the service falls back to keyword matching.
+FreelanceXchain uses an OpenAI-compatible LLM API (Groq serving `qwen/qwen3.8-27b` in the current deployment, set through `LLM_API_URL` / `LLM_MODEL`) for four features:
 
-## Project Structure
+- Skill matching between freelancers and projects
+- Skill extraction from free text against the platform skill taxonomy
+- Skill gap analysis (which taxonomy skills a freelancer should learn next)
+- Proposal drafting
 
-The AI matching system spans configuration, client, service, routes, and supporting utilities:
+Every AI answer passes through output guards before it reaches a user. Answers must be English, must be valid JSON in the expected shape, and may only name skills from the platform taxonomy. If an answer fails a guard, the client retries once and then uses the deterministic keyword or template fallback.
 
-- Configuration: LLM API keys and URLs are loaded from environment variables.
-- AI Client: Communicates with the external LLM API, manages retries, timeouts, and response parsing.
-- Matching Service: Orchestrates skill matching, skill extraction, and skill gap analysis with AI-backed and keyword-based fallbacks.
-- AI Assistant: Generates content and analyses for proposals, project descriptions, and disputes.
-- Routes: Exposes REST endpoints for recommendations, skill extraction, and gap analysis.
-- Supporting Services and Utilities: Skill taxonomy retrieval, entity mapping, and rate limiting.
+## Components
 
-```mermaid
-graph TB
-subgraph "API Layer"
-R["matching-routes.ts"]
-end
-subgraph "Services"
-MS["matching-service.ts"]
-AC["ai-client.ts"]
-AA["ai-assistant.ts"]
-SS["skill-service.ts"]
-end
-subgraph "Data Layer"
-EM["entity-mapper.ts"]
-end
-subgraph "External"
-CFG["env.ts (LLM config)"]
-LLM["LLM API (OpenAI-compatible)"]
-end
-R --> MS
-MS --> AC
-MS --> SS
-MS --> EM
-AA --> AC
-AC --> CFG
-AC --> LLM
-```
-
-## Core Components
-
-- AI Client: Sends prompts to the LLM API, parses JSON responses, and handles transient failures with exponential backoff and request timeouts.
-- Matching Service: Computes skill match scores, extracts skills from text, and performs skill gap analysis with AI-backed and keyword-based fallbacks.
-- AI Assistant: Generates tailored proposals, improves project descriptions, and analyzes disputes using AI.
-- Routes: Expose endpoints for project and freelancer recommendations, skill extraction, and skill gap analysis.
-- Configuration: Loads LLM API key and base URL from environment variables.
-
-## Architecture Overview
-
-The AI matching system integrates with external LLM APIs and internal services:
-
-```mermaid
-sequenceDiagram
-participant Client as "Client"
-participant Routes as "matching-routes.ts"
-participant Service as "matching-service.ts"
-participant ClientLLM as "ai-client.ts"
-participant LLM as "LLM API"
-participant Skills as "skill-service.ts"
-participant Mapper as "entity-mapper.ts"
-Client->>Routes : GET /api/matching/projects?limit=N
-Routes->>Service : getProjectRecommendations(userId, limit)
-Service->>Mapper : map freelancer skills
-Service->>Skills : getActiveSkills()
-loop For each project
-Service->>ClientLLM : analyzeSkillMatch(...)
-alt AI available
-ClientLLM->>LLM : POST /models/{model} : generateContent?key=...
-LLM-->>ClientLLM : JSON response
-ClientLLM-->>Service : SkillMatchResult or AIError
-alt AI error
-Service->>Service : keywordMatchSkills(...)
-end
-else AI unavailable
-Service->>Service : keywordMatchSkills(...)
-end
-end
-Service-->>Routes : ProjectRecommendation[]
-Routes-->>Client : 200 OK
-```
-
-## Detailed Component Analysis
-
-### AI Client: External LLM Communication
-
-Responsibilities:
-
-- Build and send LLM requests with generation configuration.
-- Manage retries with exponential backoff for transient errors and rate limits.
-- Enforce request timeouts and handle aborts.
-- Extract and parse JSON responses, tolerating markdown code blocks.
-- Provide fallbacks for skill extraction and matching when AI is unavailable.
-
-Key behaviors:
-
-- Availability check using configured LLM API key and base URL.
-- Retry logic for HTTP 5xx and 429, plus network/abort errors.
-- Timeout handling to prevent hanging requests.
-- JSON parsing with markdown fence stripping.
-- Fallback keyword-based matching and extraction when AI is unavailable.
-
-```mermaid
-flowchart TD
-Start(["Call generateContent"]) --> Build["Build AIRequest with prompt"]
-Build --> Send["POST to LLM API with timeout"]
-Send --> RespOK{"HTTP 2xx?"}
-RespOK --> |No| Retryable{"5xx or 429 or network/abort?"}
-Retryable --> |Yes| Backoff["Exponential backoff retry"]
-Backoff --> Send
-Retryable --> |No| ErrorResp["Return AIError"]
-RespOK --> |Yes| Parse["Extract text from response"]
-Parse --> HasText{"Text present?"}
-HasText --> |No| EmptyErr["Return AI_EMPTY_RESPONSE"]
-HasText --> |Yes| Done(["Return text"])
-```
-
-### Matching Service: Compatibility and Recommendations
-
-Responsibilities:
-
-- Compute AI-driven skill match scores between freelancers and projects.
-- Extract skills from raw text using AI or keyword fallback.
-- Analyze skill gaps for freelancers using AI when available.
-- Combine AI match scores with reputation weighting for freelancer recommendations.
-- Provide keyword-based fallbacks when AI is unavailable.
-
-Recommendation algorithms:
-
-- Project recommendations: Rank projects by AI match score; fallback to keyword matching if AI fails.
-- Freelancer recommendations: Rank by combined score (match × weight + reputation × weight).
-- Skill extraction: Map extracted skills to taxonomy; validate skill IDs.
-- Skill gap analysis: Generate recommendations and market demand signals when AI is available.
-
-```mermaid
-flowchart TD
-A["getProjectRecommendations(userId, limit)"] --> LoadProf["Load freelancer profile"]
-LoadProf --> LoadProj["Load open projects (top N)"]
-LoadProj --> ForEachProj{"For each project"}
-ForEachProj --> MapSkills["Map freelancer/project skills"]
-MapSkills --> AIEnabled{"AI available?"}
-AIEnabled --> |Yes| CallAI["analyzeSkillMatch(...)"]
-CallAI --> AIRes{"AI success?"}
-AIRes --> |Yes| UseAI["Use AI result"]
-AIRes --> |No| Keyword["keywordMatchSkills(...)"]
-AIEnabled --> |No| Keyword
-UseAI --> AddRec["Add recommendation"]
-Keyword --> AddRec
-AddRec --> Sort["Sort by matchScore desc"]
-Sort --> Slice["Slice to limit"]
-Slice --> Done(["Return recommendations"])
-```
-
-### AI Assistant: Natural Language Enhancements
-
-Responsibilities:
-
-- Generate compelling proposal cover letters with suggested rates and durations.
-- Improve project descriptions with suggested milestones and tips.
-- Analyze disputes and propose resolutions with confidence and fairness metrics.
-
-Implementation:
-
-- Uses prompt templates with dynamic variable substitution.
-- Parses AI JSON responses and validates ranges for numeric fields.
-- Falls back to structured errors when AI is unavailable.
-
-```mermaid
-sequenceDiagram
-participant Client as "Client"
-participant Routes as "matching-routes.ts"
-participant Assistant as "ai-assistant.ts"
-participant ClientLLM as "ai-client.ts"
-participant LLM as "LLM API"
-Client->>Routes : POST /api/matching/extract-skills
-Routes->>Assistant : extractSkillsFromText(text)
-Assistant->>ClientLLM : generateContent(prompt)
-alt AI available
-ClientLLM->>LLM : POST /models/{model} : generateContent?key=...
-LLM-->>ClientLLM : JSON response
-ClientLLM-->>Assistant : Parsed result
-else AI unavailable
-Assistant-->>Routes : Error (AI_UNAVAILABLE)
-end
-Routes-->>Client : 200 or error
-```
-
-### Routes: API Surface for AI Matching
-
-Endpoints:
-
-- GET /api/matching/projects: Returns project recommendations for a freelancer.
-- GET /api/matching/freelancers/{projectId}: Returns freelancer recommendations for a project.
-- POST /api/matching/extract-skills: Extracts skills from text using AI or keyword fallback.
-- GET /api/matching/skill-gaps: Analyzes skill gaps for a freelancer.
-
-Validation and error handling:
-
-- Parameter validation and rate-limiting middleware.
-- Structured error responses with codes and messages.
-- Request ID propagation for observability.
-
-## Dependency Analysis
-
-The AI matching system exhibits clear separation of concerns:
-
-- Routes depend on Matching Service for business logic.
-- Matching Service depends on AI Client for LLM interactions and Skill Service for taxonomy data.
-- AI Client depends on Configuration for LLM API credentials and on the LLM API itself.
-- Matching Service uses Entity Mapper for profile and project skill conversions.
+| File | Responsibility |
+| ------ | ---------------- |
+| `src/services/ai-client.ts` | Prompts, provider requests, `generateValidated` (guarded call + single retry), feature functions, keyword/template fallbacks |
+| `src/services/ai-guards.ts` | Pure helpers: non-English script detection, `<think>` stripping, skill-name normalization, taxonomy canonicalization |
+| `src/services/matching-service.ts` | Loads profiles, projects and the active taxonomy; caching; chooses AI or fallback |
+| `src/routes/matching-routes.ts` | REST endpoints (authenticated, rate-limited, Pro plan) |
+| `scripts/ai-eval/` | Offline evaluation harness and labeled dataset |
 
 ```mermaid
 graph LR
 Routes["routes/matching-routes.ts"] --> MS["services/matching-service.ts"]
 MS --> AC["services/ai-client.ts"]
-MS --> SS["services/skill-service.ts"]
-MS --> EM["utils/entity-mapper.ts"]
+MS --> SS["services/skill-service.ts (active taxonomy)"]
+AC --> AG["services/ai-guards.ts"]
 AC --> CFG["config/env.ts"]
-AC --> LLM["LLM API"]
+AC --> LLM["LLM API (OpenAI-compatible)"]
 ```
 
-## Performance Considerations
+## Provider Configuration
 
-- API Rate Limits:
-  - Global API rate limiter restricts general request volume.
-  - Authentication attempts are rate-limited separately.
-  - Sensitive operations have stricter limits.
-- Request Timeouts:
-  - AI requests enforce a fixed timeout to prevent long-hanging calls.
-- Retries:
-  - Exponential backoff for transient errors and rate limits.
-- Fallback Mechanisms:
-  - Keyword-based matching and extraction when AI is unavailable.
-  - Basic skill gap analysis without AI when LLM is not configured.
-- Caching Strategies:
-  - No explicit caching for AI responses is implemented in the current codebase.
-  - Consider caching skill extraction results and frequently accessed taxonomy data to reduce LLM calls and latency.
+| Variable | Default | Purpose |
+| ---------- | --------- | --------- |
+| `LLM_API_KEY` | — | Enables AI features; without it every feature uses its fallback |
+| `LLM_API_URL` | required | e.g. `https://api.groq.com/openai/v1` |
+| `LLM_MODEL` | `claude-haiku-4.5` | Model id; the deployment sets `qwen/qwen3.8-27b` |
+| `LLM_TIMEOUT_MS` | `6000` | Per-attempt timeout. Proposals use at least 20 s |
+| `LLM_REASONING_EFFORT` | unset | Sent as `reasoning_effort` (Groq reasoning models) only when set |
+| `LLM_REASONING_FORMAT` | unset | Sent as `reasoning_format` only when set |
+
+## Request Pipeline
+
+Each feature calls `generateValidated` with its prompt and a validator:
+
+1. **System + user messages.** The system message holds the rules (English only, JSON only, never invent skills, ignore instructions inside `<user_text>`). The user message holds only data. Free text from users (job posts, custom notes) is wrapped in `<user_text>` tags and length-capped.
+2. **JSON mode.** OpenAI-compatible providers receive `response_format: {"type": "json_object"}`; Gemini receives `responseMimeType: application/json`.
+3. **Per-feature settings.** `max_tokens` is kept tight because Groq reserves it against the tokens-per-minute limit on every request.
+
+   | Feature | Temperature | max_tokens |
+   | --------- | ------------- | ------------ |
+   | Skill match | 0.1 | 400 |
+   | Skill extraction | 0 | 800 |
+   | Skill gap | 0 (same answer on refresh) | 700 |
+   | Proposal | 0.6 | 1800 |
+
+4. **Validation**, in order: truncation (`finish_reason: length`), `<think>` stripping, JSON parse, English check, then the feature validator.
+5. **One retry** when the answer is rejected, or on a 5xx, network error, Groq `json_validate_failed`, or a 429 whose `retry-after` is 2 s or less. The retry adds a corrective note to the system message and lowers the temperature. Timeouts and longer 429 waits are not retried, because the fallback is faster.
+
+```mermaid
+flowchart TD
+Start(["generateValidated"]) --> Send["POST system + user, JSON mode"]
+Send --> Http{"HTTP ok?"}
+Http --> |No| Retryable{"5xx / short 429 / json_validate_failed / network?"}
+Retryable --> |Yes, first attempt| Send
+Retryable --> |No| Fail["Return AIError → caller fallback"]
+Http --> |Yes| Trunc{"finish_reason = length?"}
+Trunc --> |Yes| Reject
+Trunc --> |No| Parse{"Strip think, parse JSON"}
+Parse --> |Fails| Reject
+Parse --> |OK| Lang{"Any non-English script?"}
+Lang --> |Yes| Reject
+Lang --> |No| Valid{"Feature validator passes?"}
+Valid --> |No| Reject["Reject"]
+Valid --> |Yes| Done(["Return value"])
+Reject --> |First attempt| Note["Add corrective note"] --> Send
+Reject --> |Second attempt| Fail
+```
+
+## Output Guards
+
+### English only
+
+`containsNonEnglishScript` flags Han (Chinese), Hiragana, Katakana, Hangul, Thai, Cyrillic, Arabic, Hebrew, Devanagari, Bengali, Tamil and Greek characters. Latin text (English, Filipino/Taglish, accented words), digits, symbols and emoji pass. The check runs on every string in the parsed answer. Names that users supplied themselves (freelancer name, project and milestone titles, skill names) are excluded from the check, so a user-chosen name in another script does not reject an English proposal. The template proposal fallback also leaves out custom notes written in another script.
+
+### Taxonomy-only skills
+
+Skill names are compared with `normalizeSkillKey`. Case, spacing and `.js` spelling variants map to the same key ("React.js" = "ReactJS" = "React"), while distinct technologies stay distinct ("Java" ≠ "JavaScript", "C" ≠ "C++" ≠ "C#").
+
+| Feature | Rule |
+| --------- | ------ |
+| Skill extraction | Each skill is matched by taxonomy id, then by normalized name. The response always carries the taxonomy's own id and name; anything else is dropped |
+| Skill match | Exact matches (same id or normalized name) always count. The model may add a synonym match by pairing a required skill with one of the freelancer's own skills ("Tailwind" covers "Tailwind CSS", "UI/UX Design" covers "UI Design"); the pair is accepted only if both names exist in the input and share a meaningful word (`sharesSkillWord`), so "Java"/"JavaScript", "C"/"C++" and "CSS"/"Tailwind CSS" are always rejected. Matches are returned under the project's spelling, the score is computed from the validated set, and when any model claim is overruled its reasoning is replaced with a factual summary |
+| Skill gap | The prompt lists only active taxonomy skills the freelancer does not have. Recommendations and demand entries outside that list are dropped. If none remain, the answer is rejected and retried. `currentSkills` always comes from the profile |
+| Proposal | Prompt rules: claim only the title, skills, portfolio and experience the profile shows (the title is the most recent job title, or "Not provided"), and no tools outside the freelancer's and project's skills. Milestone amounts are rescaled to add up to the proposed rate, and a sign-off with the freelancer's name is appended if the model leaves it out |
+
+## Features
+
+| Endpoint | Function | Fallback |
+| ---------- | ---------- | ---------- |
+| `GET /api/matching/projects`, `GET /api/matching/freelancers/:projectId` | `analyzeSkillMatch` (AI for the top candidates; a 100% score, or a 0% score with no possible synonym, is decided without a model call) | `keywordMatchSkills` |
+
+Project recommendations (`GET /api/matching/projects`) only include projects where the freelancer has at least 40% of the required skills (`MIN_PROJECT_MATCH_SCORE` in `matching-service.ts`). The floor is applied before the list is cut to the requested limit, and again after the AI pass.
+| `POST /api/matching/extract-skills` | `extractSkills` | `keywordExtractSkills` |
+| `GET /api/matching/skill-gaps` | `generateSkillGapAnalysis` | Empty recommendations with an explanation |
+| `POST /api/matching/generate-proposal/:projectId` | `generateAIProposal` | `fallbackGenerateProposal` (template) |
+
+## Observability: the `[ai.call]` Log
+
+Every provider attempt writes one structured log line. A successful attempt logs at `info`; any other outcome logs at `warn`. Prompt text and user content are never logged.
+
+```json
+{
+  "message": "[ai.call]",
+  "meta": {
+    "feature": "skill_gap",
+    "model": "qwen/qwen3.8-27b",
+    "attempt": 1,
+    "outcome": "ok",
+    "latencyMs": 742,
+    "promptTokens": 310,
+    "completionTokens": 96,
+    "finishReason": "stop",
+    "unknownSkillsDropped": 2
+  }
+}
+```
+
+`outcome` is one of `ok`, `parse_error`, `schema_error`, `non_english`, `truncated`, `empty`, `http_error`, `rate_limited`, `timeout`, `network_error`, `unavailable`. Rejected answers also carry `nonEnglishFields` (JSON paths) or `httpStatus`. The default `LOG_LEVEL` is `error`; set `LOG_LEVEL=warn` to see rejected attempts or `LOG_LEVEL=info` to see every call.
+
+Useful rates from these lines:
+
+- **Rejection rate per outcome:** count of each non-`ok` outcome ÷ attempts, per feature
+- **Retry rate:** attempts with `attempt: 2` ÷ calls
+- **Unknown-skill rate:** sum of `unknownSkillsDropped` per feature
+- **Latency p50/p95 and tokens per call:** from `latencyMs`, `promptTokens` and `completionTokens`
+
+## Evaluation: `pnpm eval:ai`
+
+`scripts/ai-eval/run-eval.ts` runs the labeled cases in `scripts/ai-eval/dataset.json` against the configured provider. It calls the same exported functions the API uses, with the cache off. The dataset has 59 cases across the four features. They include adversarial and hard ones: Chinese, Korean and Taglish input, prompt injection and prompt-leak attempts, typos, negation, implied skills, long text, non-taxonomy skills, synonym pairs, look-alike technologies ("Java"/"JavaScript", "C"/"C++", "React Native"/"React", "CSS"/"Tailwind CSS"), and proposal notes that ask for another language or for skills the freelancer does not have.
+
+```bash
+pnpm eval:ai                       # full run
+pnpm eval:ai --label after-change  # name the saved result file
+pnpm eval:ai --only gap            # one feature (comma list allowed)
+pnpm eval:ai --runs 3              # repeat each case to measure consistency
+pnpm eval:ai --judge               # grade proposals, skill gaps and match reasoning with a second model
+pnpm eval:ai --real                # build cases from live Appwrite data (read-only, names anonymized)
+```
+
+`--judge` uses `EVAL_JUDGE_MODEL` (default `openai/gpt-oss-120b`), a different model family from the one being evaluated, so it does not grade its own writing. Proposals are scored for relevance, specificity, honesty and professionalism; skill gaps for relevance and reasoning; match reasoning for faithfulness to the matched and missing lists. `--real` labels extraction with the skills the employer selected for each project, which the description may not mention, so that F1 measures agreement rather than accuracy.
+
+The scorecard reports, per feature:
+
+| Metric | Definition | Target |
+| -------- | ------------ | -------- |
+| JSON valid (raw) | Provider answers that parse and are not truncated | ≥ 98% |
+| Non-English (raw) | Provider answers containing non-English script, before guards | tracked |
+| Unknown skills (raw) | Skill names outside the taxonomy ÷ skill names returned, before guards | tracked |
+| Leaked non-English | Final outputs containing non-English script | 0 |
+| Leaked unknown skills | Skill names in final outputs that are not exact taxonomy (or required-skill) names | 0 |
+| Fallback | Cases that ended in the keyword/template fallback | ≤ 5% |
+| p50 / p95 ms, avg tokens | Latency per case (including retries) and tokens per provider call | p95 < timeout |
+
+It also reports these quality metrics:
+
+| Metric | Definition | Target |
+| -------- | ------------ | -------- |
+| Extraction precision / recall / F1 | Against the labeled taxonomy ids | F1 ≥ 0.80 |
+| Match exact-set accuracy, score MAE | Matched skills vs labels; score vs matched ÷ required × 100 | MAE ≤ 10 |
+| Gap validity | Every recommendation is a taxonomy skill the freelancer lacks | 100% |
+| Proposal structure | Cover letter, valid milestones, 3–4 highlights; milestones sum to the rate; rate ≤ 1.5 × budget | ≥ 95% |
+| Proposal content checks | Names the project, signed by the freelancer, mentions escrow, 120–800 words, no placeholders, no prompt leak, no skills outside the profile and project, nothing the case forbids | ≥ 95% |
+| Consistency (`--runs`) | Cases that return the same skills on every run | extraction and match 100% |
+
+Groq free-tier keys are limited to 8,000 tokens per minute. The harness waits for the token window to refill and reruns a case that hit a 429, so rate limits are not counted against quality. The number of 429s is printed separately. Each run is saved to `scripts/ai-eval/results/<timestamp>-<label>.json` with every raw provider answer, so runs can be compared when prompts or models change.
+
+## Caching and Fallbacks
+
+- `ai-client.ts` caches skill-match and skill-extraction results for 1 hour (Redis, with an in-memory LRU fallback).
+- `matching-service.ts` caches recommendations (5 min), skill gaps (10 min) and extracted skills (1 h).
+- Caching is disabled when `NODE_ENV=test`.
+- Each feature has a deterministic fallback (see [Features](#features)), so an AI failure never fails the request.
 
 ## Troubleshooting Guide
 
-Common issues and resolutions:
-
-- AI Unavailable:
-  - Cause: Missing LLM API key or base URL.
-  - Resolution: Configure LLM_API_KEY and LLM_API_URL in environment variables.
-- AI HTTP Errors:
-  - Cause: External API errors or rate limits.
-  - Resolution: Inspect error code; AI client retries automatically for retryable conditions.
-- Network Errors:
-  - Cause: Timeouts or aborted requests.
-  - Resolution: Verify network connectivity and retry; adjust timeout if necessary.
-- Parsing Errors:
-  - Cause: Non-JSON or malformed AI responses.
-  - Resolution: AI client strips markdown fences; ensure prompts return valid JSON.
-- Keyword Fallback:
-  - Behavior: When AI fails, the system falls back to keyword-based matching/extraction.
-- Skill Gap Analysis:
-  - Behavior: Without AI, returns basic analysis with guidance to configure LLM.
-
-Operational checks:
-
-- Confirm environment variables for LLM configuration.
-- Validate that the LLM API accepts the configured model and key.
-- Monitor rate-limit responses and adjust client-side throttling.
-
-## Appendices
-
-### Prompt Templates Used
-
-- Skill Match Prompt Template: Guides the model to return a JSON object containing matchScore, matchedSkills, missingSkills, and reasoning.
-- Skill Extraction Prompt Template: Guides extraction of skills from text mapped to the platform's taxonomy with confidence scores.
-- Skill Gap Prompt Template: Requests recommendations and market demand signals for skill improvement.
-- AI Assistant Prompt Templates:
-  - Proposal Writer: Generates cover letters, suggested rates, estimated durations, and key points.
-  - Project Description Generator: Produces improved descriptions, suggested milestones, and tips.
-  - Dispute Analyzer: Summarizes disputes, lists supporting points, suggests resolution, and provides confidence and fairness metrics.
-
-These templates define the expected JSON schema for parsing and ensure consistent AI outputs across the system.
+| Symptom | Where to look | Resolution |
+| --------- | --------------- | ------------ |
+| Every call uses the fallback | Startup log `[llm] ready (model: …)` vs `(keyword fallback)` | Set `LLM_API_KEY` |
+| Many `rate_limited` outcomes | `[ai.call]` lines with `httpStatus: 429` | The provider's tokens-per-minute limit is exhausted; upgrade the key tier or lower traffic |
+| `timeout` outcomes on proposals | `latencyMs` near 20000 | Raise `LLM_TIMEOUT_MS` or use a faster model |
+| `non_english` outcomes | `nonEnglishFields` | The guard rejected the answer and retried; recurring cases point to the model, so compare models with `pnpm eval:ai` |
+| `schema_error` on skill gap | `unknownSkillsDropped` | The model kept proposing skills outside the taxonomy; add the missing skills to the taxonomy if they are legitimate |
+| `<think>` text in answers | `pnpm eval:ai` `<think> (raw)` column | Set `LLM_REASONING_EFFORT=none` or `LLM_REASONING_FORMAT=hidden` |
 
 ---
 

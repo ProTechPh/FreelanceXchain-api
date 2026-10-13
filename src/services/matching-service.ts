@@ -5,9 +5,7 @@ import {
   keywordExtractSkills,
   isAIAvailable,
   isAIError,
-  generateContent,
-  parseJsonResponse,
-  SKILL_GAP_PROMPT,
+  generateSkillGapAnalysis,
   generateAIProposal,
   fallbackGenerateProposal,
 } from './ai-client.js';
@@ -54,6 +52,11 @@ const MATCHING_CACHE_TTL_SECONDS = 300; // 5 minutes
  * boost to appear. Accepted over key-scanning invalidation.
  */
 const PRO_RANKING_BOOST = 5;
+/**
+ * Projects below this skill-match score are not recommended to a freelancer:
+ * fewer than 40% of the required skills is not a fit worth surfacing.
+ */
+export const MIN_PROJECT_MATCH_SCORE = 40;
 const SKILL_GAPS_CACHE_TTL_SECONDS = 600; // 10 minutes
 const EXTRACT_SKILLS_CACHE_TTL_SECONDS = 3600; // 1 hour
 
@@ -163,11 +166,13 @@ export async function getProjectRecommendations(
 
   preMatched.sort((a, b) => rankOf(b) - rankOf(a));
 
-  // 2. Take top items up to limit
-  const topCandidates = preMatched.slice(0, limit);
+  // 2. Take top items up to limit, skipping projects the freelancer barely fits
+  const topCandidates = preMatched
+    .filter(entry => entry.keywordResult.matchScore >= MIN_PROJECT_MATCH_SCORE)
+    .slice(0, limit);
 
   // 3. AI enhancement (if available) only for top candidates (capped at top 3 for optimal performance)
-  const recommendations: ProjectRecommendation[] = await Promise.all(
+  const scored: ProjectRecommendation[] = await Promise.all(
     topCandidates.map(async ({ projectEntity, projectRequirements, keywordResult }, index) => {
       let matchResult: SkillMatchResult = keywordResult;
 
@@ -197,6 +202,8 @@ export async function getProjectRecommendations(
       };
     })
   );
+  // The AI pass can confirm fewer matches than the keyword pass, so re-apply the floor
+  const recommendations = scored.filter(rec => rec.matchScore >= MIN_PROJECT_MATCH_SCORE);
 
   await setCached(cacheKey, recommendations, localProjectRecCache, MATCHING_CACHE_TTL_SECONDS);
   return successResult(recommendations);
@@ -488,24 +495,6 @@ export function isCachedGapsConsistent(currentSkills: string[], cached: SkillGap
   );
 }
 
-function sanitizeMarketDemand(
-  rawItems: SkillGapAnalysis['marketDemand']
-): Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }> {
-  const validLevels = ['high', 'medium', 'low'];
-  return (rawItems ?? [])
-    .map(item => {
-      if (!item || typeof item.skillName !== 'string' || !item.skillName.trim()) {
-        return null;
-      }
-      const demandLevel = validLevels.includes(item.demandLevel) ? item.demandLevel : 'medium';
-      return {
-        skillName: item.skillName.trim(),
-        demandLevel: demandLevel as 'high' | 'medium' | 'low',
-      };
-    })
-    .filter((item): item is { skillName: string; demandLevel: 'high' | 'medium' | 'low' } => item !== null);
-}
-
 function fallbackSkillGap(currentSkills: string[], reasoning: string): ServiceResult<SkillGapAnalysis> {
   return successResult({
     currentSkills,
@@ -557,33 +546,17 @@ export async function analyzeSkillGaps(
     return fallbackSkillGap(currentSkills, 'AI analysis unavailable; no skill gap insights generated.');
   }
 
-  const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
-  const response = await generateContent(prompt);
+  const activeSkills = await getActiveSkills();
+  const taxonomy: SkillInfo[] = activeSkills.map(skill => ({ skillId: skill.id, skillName: skill.name }));
 
-  if (typeof response !== 'string') {
-    logger.warn('[SkillGap] AI unavailable or rate-limited, using fallback', { response });
-    return fallbackSkillGap(currentSkills, 'AI analysis failed or returned non-text response.');
+  const result = await generateSkillGapAnalysis(currentSkills, taxonomy);
+  if (isAIError(result)) {
+    logger.warn('[SkillGap] AI analysis unavailable, using fallback', { code: result.code });
+    return fallbackSkillGap(currentSkills, 'AI analysis is temporarily unavailable. Please try again shortly.');
   }
 
-  try {
-    const parsedAnalysis = parseJsonResponse<SkillGapAnalysis>(response, 'SkillGap');
-    if (!parsedAnalysis) {
-      throw new Error('parseJsonResponse returned null');
-    }
-
-    const result: SkillGapAnalysis = {
-      currentSkills: parsedAnalysis.currentSkills ?? currentSkills,
-      recommendedSkills: parsedAnalysis.recommendedSkills ?? [],
-      marketDemand: sanitizeMarketDemand(parsedAnalysis.marketDemand),
-      reasoning: parsedAnalysis.reasoning ?? 'Analysis completed.',
-    };
-
-    await setCached(cacheKey, result, localSkillGapsCache, SKILL_GAPS_CACHE_TTL_SECONDS);
-    return successResult(result);
-  } catch (error) {
-    logger.warn('[SkillGap] Failed to parse AI response, using fallback', { error });
-    return fallbackSkillGap(currentSkills, 'Failed to parse AI response.');
-  }
+  await setCached(cacheKey, result, localSkillGapsCache, SKILL_GAPS_CACHE_TTL_SECONDS);
+  return successResult(result);
 }
 
 /**
@@ -636,7 +609,11 @@ export async function generateProposalForProject(
     }
 
     const freelancerName = (userDoc?.['name'] as string) || freelancerProfile?.name || 'Freelancer';
-    const freelancerTitle = freelancerProfile?.bio ? freelancerProfile.bio.slice(0, 60) : 'Full-Stack Web3 Developer';
+    // Profiles have no headline; the most recent job title is the closest honest one.
+    // Without it the prompt says "Not provided" rather than inventing a title.
+    const latestRole = [...(freelancerProfile?.experience ?? [])]
+      .sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''))[0];
+    const freelancerTitle = latestRole?.title?.trim() || undefined;
     const freelancerBio = freelancerProfile?.bio || '';
     const freelancerSkills = (freelancerProfile?.skills || []).map((s: { name: string }) => s.name);
 

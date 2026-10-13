@@ -71,8 +71,9 @@ describe('fallbackGenerateProposal', () => {
       projectBudget: 0,
     });
 
-    expect(result.coverLetter).toContain('Web3 Developer');
-    expect(result.coverLetter).toContain('Web3 Engineering');
+    // No title on the profile, so the template describes skills instead of inventing one
+    expect(result.coverLetter).toContain('With my background in Web3 Engineering');
+    expect(result.coverLetter).not.toContain('Web3 Developer');
     expect(result.coverLetter).toContain('verified technical credentials');
     expect(result.proposedRate).toBe(1_000);
     expect(result.proposedMilestones).toHaveLength(3);
@@ -872,7 +873,8 @@ describe('AI Client - Extended Tests', () => {
 
       expect(typeof result).toBe('object');
       if ('matchScore' in result) {
-        expect(result.matchScore).toBe(75);
+        // Score follows the validated matches (1 of 2), not the model's number
+        expect(result.matchScore).toBe(50);
         expect(result.matchedSkills).toContain('JavaScript');
         expect(result.missingSkills).toContain('Python');
       }
@@ -951,11 +953,8 @@ describe('AI Client - Extended Tests', () => {
         projectRequirements: [{ skillId: '2', skillName: 'Python' }, { skillId: '3', skillName: 'TypeScript' }],
       });
 
-      expect(typeof result).toBe('object');
-      if ('matchScore' in result) {
-        expect(result.matchScore).toBe(0);
-        expect(result.matchedSkills).toHaveLength(0);
-      }
+      // FakeSkill is rejected; Python is an exact match the model omitted, so it still counts
+      expect(result).toMatchObject({ matchScore: 50, matchedSkills: ['Python'], missingSkills: ['TypeScript'] });
     });
 
     it('should use calculated score when AI score differs by more than 40', async () => {
@@ -1075,10 +1074,10 @@ describe('AI Client - Extended Tests', () => {
       jest.useRealTimers();
     });
 
-    it('should return parse error for non-array JSON response', async () => {
+    it('should reject a response without a skills array after one retry', async () => {
       const { extractSkills } = await importModule();
 
-      mockFetchExtended.mockResolvedValueOnce({
+      mockFetchExtended.mockResolvedValue({
         ok: true,
         json: async () => ({
           choices: [{
@@ -1093,13 +1092,11 @@ describe('AI Client - Extended Tests', () => {
         availableSkills: [],
       });
 
-      expect(typeof result).toBe('object');
-      if ('code' in result) {
-        expect(result.code).toBe('AI_PARSE_ERROR');
-      }
+      expect(mockFetchExtended).toHaveBeenCalledTimes(2);
+      expect(result).toMatchObject({ code: 'AI_SCHEMA_ERROR', retryable: false });
     });
 
-    it('should filter out skills with missing fields', async () => {
+    it('should drop skills that are not in the taxonomy and use canonical names', async () => {
       const { extractSkills } = await importModule();
 
       mockFetchExtended.mockResolvedValueOnce({
@@ -1107,11 +1104,12 @@ describe('AI Client - Extended Tests', () => {
         json: async () => ({
           choices: [{
             message: {
-              content: JSON.stringify([
-                { skillId: '1', skillName: 'JavaScript', confidence: 0.9 },
+              content: JSON.stringify({ skills: [
+                { skillId: '1', skillName: 'javascript', confidence: 0.9 },
                 { skillId: '', skillName: '', confidence: 0.5 },
-                { skillId: '2', skillName: 'TypeScript' },
-              ]),
+                { skillId: '99', skillName: 'Quantum Blockchain Wizardry', confidence: 1 },
+                { skillName: 'TypeScript' },
+              ] }),
               role: 'assistant',
             },
             finish_reason: 'stop',
@@ -1121,13 +1119,16 @@ describe('AI Client - Extended Tests', () => {
 
       const result = await extractSkills({
         text: 'test',
-        availableSkills: [],
+        availableSkills: [
+          { skillId: '1', skillName: 'JavaScript' },
+          { skillId: '2', skillName: 'TypeScript' },
+        ],
       });
 
-      expect(Array.isArray(result)).toBe(true);
-      if (Array.isArray(result)) {
-        expect(result).toHaveLength(2);
-      }
+      expect(result).toEqual([
+        { skillId: '1', skillName: 'JavaScript', confidence: 0.9 },
+        { skillId: '2', skillName: 'TypeScript', confidence: 0 },
+      ]);
     });
 
     it('should clamp confidence values to [0, 1]', async () => {
@@ -1151,7 +1152,10 @@ describe('AI Client - Extended Tests', () => {
 
       const result = await extractSkills({
         text: 'test',
-        availableSkills: [],
+        availableSkills: [
+          { skillId: '1', skillName: 'JavaScript' },
+          { skillId: '2', skillName: 'TypeScript' },
+        ],
       });
 
       expect(Array.isArray(result)).toBe(true);

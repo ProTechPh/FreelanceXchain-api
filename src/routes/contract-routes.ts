@@ -397,6 +397,72 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
   });
 }));
 
+interface FundDeploymentContext {
+  platformWallet: string;
+  platformArbiterAddress: string;
+  FreelanceEscrowABI: any;
+  FreelanceEscrowBytecode: string;
+  chainId: string;
+  existingDeployment: { escrowAddress: string; transactionHash: string } | null;
+}
+
+async function resolveFundDeploymentContext(
+  contract: Contract,
+  contractId: string,
+  employerWallet?: string
+): Promise<FundDeploymentContext> {
+  let platformWallet = '';
+  let platformArbiterAddress = '';
+  try {
+    const { getWallet, getArbiterWallet } = await import('../services/web3-client.js');
+    platformWallet = getWallet()?.address || '';
+    platformArbiterAddress = getArbiterWallet()?.address || platformWallet;
+  } catch {
+    platformWallet = process.env['PLATFORM_WALLET_ADDRESS'] || config.blockchain.arbiterAddress || '';
+    platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress || platformWallet;
+  }
+
+  let FreelanceEscrowABI: any = [];
+  let FreelanceEscrowBytecode = '';
+  try {
+    const abis = await import('../services/contract-abis.js');
+    FreelanceEscrowABI = abis.FreelanceEscrowABI;
+    FreelanceEscrowBytecode = abis.FreelanceEscrowBytecode;
+  } catch {
+    // fallback
+  }
+
+  let chainId = '0x539';
+  let existingDeployment: { escrowAddress: string; transactionHash: string } | null = null;
+  try {
+    if (getBlockchainMode() === 'real') {
+      const { getProvider } = await import('../services/web3-client.js');
+      const provider = getProvider();
+      const network = await provider.getNetwork();
+      chainId = `0x${network.chainId.toString(16)}`;
+      if (contract.status === 'pending' && !contract.escrowAddress && employerWallet) {
+        const { findExistingOnChainEscrowDeployment } = await import('../services/escrow-bytecode-validator.js');
+        existingDeployment = await findExistingOnChainEscrowDeployment(
+          provider,
+          contractId,
+          employerWallet
+        );
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  return {
+    platformWallet,
+    platformArbiterAddress,
+    FreelanceEscrowABI,
+    FreelanceEscrowBytecode,
+    chainId,
+    existingDeployment,
+  };
+}
+
 // Get contract funding info (for frontend MetaMask deployment)
 router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
@@ -441,51 +507,25 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asy
   const milestoneDescriptions = milestones.map(m => m.title || `Milestone ${m.id}`);
   const totalAmount = ethers.parseEther(String(contract.totalAmount ?? 0)).toString();
 
-  // Server wallet address = platform that can approve milestones on employer's behalf
-  let platformWallet = '';
-  let platformArbiterAddress = '';
-  try {
-    const { getWallet, getArbiterWallet } = await import('../services/web3-client.js');
-    platformWallet = getWallet()?.address || '';
-    platformArbiterAddress = getArbiterWallet()?.address || platformWallet;
-  } catch {
-    platformWallet = process.env['PLATFORM_WALLET_ADDRESS'] || config.blockchain.arbiterAddress || '';
-    platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress || platformWallet;
-  }
-
-  let FreelanceEscrowABI: any = [];
-  let FreelanceEscrowBytecode = '';
-  try {
-    const abis = await import('../services/contract-abis.js');
-    FreelanceEscrowABI = abis.FreelanceEscrowABI;
-    FreelanceEscrowBytecode = abis.FreelanceEscrowBytecode;
-  } catch {
-    // fallback
-  }
-
-  let chainId = '0x539';
-  try {
-    if (getBlockchainMode() === 'real') {
-      const { getProvider } = await import('../services/web3-client.js');
-      const network = await getProvider().getNetwork();
-      chainId = `0x${network.chainId.toString(16)}`;
-    }
-  } catch {
-    // fallback
-  }
+  const deploymentContext = await resolveFundDeploymentContext(
+    contract,
+    contractId,
+    (walletResult.data as any)?.employerWallet
+  );
 
   res.json({
     contractId,
     employerWallet: (walletResult.data as any)?.employerWallet || '',
     freelancerWallet: walletResult.data.freelancerWallet,
-    arbiterWallet: platformArbiterAddress,
-    platformWallet,
+    arbiterWallet: deploymentContext.platformArbiterAddress,
+    platformWallet: deploymentContext.platformWallet,
     totalAmount,
     milestoneAmounts,
     milestoneDescriptions,
-    abi: FreelanceEscrowABI,
-    bytecode: FreelanceEscrowBytecode,
-    chainId,
+    abi: deploymentContext.FreelanceEscrowABI,
+    bytecode: deploymentContext.FreelanceEscrowBytecode,
+    chainId: deploymentContext.chainId,
+    ...(deploymentContext.existingDeployment ? { existingDeployment: deploymentContext.existingDeployment } : {}),
   });
 }));
 

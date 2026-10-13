@@ -1181,7 +1181,11 @@ describe('project-routes - additional line coverage', () => {
         deadline: '2026-12-31',
       });
       expect(res.status).toBe(201);
-      expect(mockUploadMultipleFiles).toHaveBeenCalled();
+      expect(mockUploadMultipleFiles).toHaveBeenCalledWith(
+        injectedFiles,
+        'project-attachments',
+        'user-1'
+      );
     });
 
     it('returns 500 when file upload has failures', async () => {

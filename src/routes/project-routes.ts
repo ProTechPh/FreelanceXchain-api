@@ -606,10 +606,11 @@ function validateProjectWithAttachments(body: Record<string, unknown>): WithAtta
 /**
  * Upload project attachments, throwing when any file fails to upload.
  */
-async function uploadProjectFiles(files: Express.Multer.File[]): Promise<FileMetadata[]> {
+async function uploadProjectFiles(files: Express.Multer.File[], userId: string): Promise<FileMetadata[]> {
   const uploadResults = await uploadMultipleFiles(
     files,
-    STORAGE_BUCKETS.PROJECT_ATTACHMENTS
+    STORAGE_BUCKETS.PROJECT_ATTACHMENTS,
+    userId
   );
 
   const failedUploads = uploadResults.filter(result => !result.success);
@@ -648,7 +649,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
 
   if (files && files.length > 0) {
     try {
-      attachments = await uploadProjectFiles(files);
+      attachments = await uploadProjectFiles(files, userId);
     } catch (uploadError) {
       // Clean up any partially uploaded files
       /* istanbul ignore next */

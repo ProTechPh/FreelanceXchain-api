@@ -29,6 +29,7 @@ import { completeAgreement } from './agreement-contract.js';
 import { approveMilestone as approveOnChainMilestone, getMilestoneStatus, submitMilestone as submitMilestoneOnChain, type OnChainMilestoneStatus } from './escrow-blockchain.js';
 import { getProvider, isWeb3Available } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowDeployedBytecode } from './contract-abis.js';
+import { isApprovedEscrowDeployedBytecode } from './escrow-bytecode-validator.js';
 import { getBlockchainMode } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { rescaleMilestoneAmounts } from '../utils/milestone-amounts.js';
@@ -1334,13 +1335,18 @@ export async function registerEmployerFundedEscrow(input: EmployerFundedEscrowIn
     if (transaction.value !== expectedTotal || code === '0x') {
       return errorResult('INVALID_FUNDING', 'Escrow deployment value or contract code is invalid');
     }
-    if (!FreelanceEscrowDeployedBytecode || code.toLowerCase() !== FreelanceEscrowDeployedBytecode.toLowerCase()) {
+    if (!FreelanceEscrowDeployedBytecode || !isApprovedEscrowDeployedBytecode(code, FreelanceEscrowDeployedBytecode)) {
       return errorResult('INVALID_ESCROW_CODE', 'Deployed contract bytecode does not match the approved escrow implementation');
     }
 
     const escrow = new EthersContract(escrowAddress, FreelanceEscrowABI, provider);
-    const expectedArbiter = process.env['PLATFORM_ARBITER_ADDRESS'] || config.blockchain.arbiterAddress;
-    const platformAddress = process.env['PLATFORM_WALLET_ADDRESS'] || (await import('./web3-client.js')).getWallet().address;
+    const web3Client = await import('./web3-client.js');
+    const platformAddress = process.env['PLATFORM_WALLET_ADDRESS'] || web3Client.getWallet().address;
+    const expectedArbiter =
+      process.env['PLATFORM_ARBITER_ADDRESS'] ||
+      config.blockchain.arbiterAddress ||
+      web3Client.getArbiterWallet?.()?.address ||
+      platformAddress;
     if (!expectedArbiter) return errorResult('MISSING_ARBITER', 'Platform arbiter is not configured');
 
     const [onChainEmployer, onChainFreelancer, onChainArbiter, onChainPlatform, onChainContractId, onChainTotal] = await Promise.all([

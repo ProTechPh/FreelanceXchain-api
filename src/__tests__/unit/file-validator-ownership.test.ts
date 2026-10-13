@@ -123,4 +123,22 @@ describe('file-validator - validateStoredAttachmentOwnership', () => {
     expect(errors).toEqual([]);
     expect(mockGetFile).not.toHaveBeenCalled();
   });
+
+  it('accepts markdown attachments when Appwrite stores mimeType as text/plain or application/octet-stream', async () => {
+    const { validateStoredAttachmentOwnership } = await importModule();
+    mockGetFile
+      .mockResolvedValueOnce({ name: `${USER}_brief.md`, sizeOriginal: 3884, mimeType: 'text/plain' })
+      .mockResolvedValueOnce({ name: `${USER}_brief2.md`, sizeOriginal: 3884, mimeType: 'application/octet-stream' });
+
+    const errors = await validateStoredAttachmentOwnership(
+      [
+        attachment({ filename: 'brief.md', size: 3884, mimeType: 'text/markdown' }),
+        attachment({ filename: 'brief2.md', size: 3884, mimeType: 'text/markdown' }),
+      ],
+      USER,
+      BUCKET,
+    );
+
+    expect(errors).toEqual([]);
+  });
 });

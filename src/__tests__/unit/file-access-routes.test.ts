@@ -53,6 +53,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: () => (_req: any, _res: any, next: any) => next(),
+  validateAppwriteDocumentId: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 const router = (await import('../../routes/file-access-routes.js')).default;

@@ -203,6 +203,7 @@ const mockKeywordMatchSkills = jest.fn();
 const mockParseJsonResponse = jest.fn();
 const mockIsAIError = jest.fn();
 const mockGenerateContent = jest.fn();
+const mockGenerateSkillGapAnalysis = jest.fn();
 jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   isAIAvailable: mockIsAIAvailable,
   analyzeSkillMatch: mockAnalyzeSkillMatch,
@@ -220,7 +221,7 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
     highlights: [],
   }),
   generateAIProposal: jest.fn(),
-  SKILL_GAP_PROMPT: 'Test prompt {currentSkills}',
+  generateSkillGapAnalysis: mockGenerateSkillGapAnalysis,
 }));
 
 // Reputation service
@@ -524,25 +525,26 @@ describe('matching-service: keywordMatchSkills fallback (line 193)', () => {
   });
 });
 
-describe('matching-service: parseJsonResponse null guard (line 331)', () => {
+describe('matching-service: skill gap AI failure', () => {
   beforeEach(() => resetAllMocks());
 
-  it('should return fallback analysis when parseJsonResponse returns null', async () => {
+  it('should return fallback analysis when the AI analysis is rejected', async () => {
     mockFreelancerProfileRepo.getProfileByUserId.mockResolvedValueOnce({
       user_id: 'fl-1',
       skills: [{ name: 'React', years_of_experience: 3 }],
     });
 
     mockIsAIAvailable.mockReturnValue(true);
-    mockGenerateContent.mockResolvedValueOnce('invalid json response');
-    mockParseJsonResponse.mockReturnValueOnce(null);
+    mockSkillRepo.getActiveSkills.mockResolvedValueOnce([]);
+    (mockGenerateSkillGapAnalysis as jest.Mock<any>).mockResolvedValueOnce({ code: 'AI_PARSE_ERROR', message: 'bad', retryable: false });
+    (mockIsAIError as jest.Mock<any>).mockReturnValueOnce(true);
 
     const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
     const result = await analyzeSkillGaps('fl-1');
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.reasoning).toContain('Failed to parse');
+      expect(result.data.reasoning).toContain('temporarily unavailable');
       expect(result.data.recommendedSkills).toEqual([]);
     }
   });

@@ -11,6 +11,7 @@ import { COLLECTIONS } from '../config/collections.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { reviewRepository, type ReviewEntity } from '../repositories/review-repository.js';
+import { blockchainRatingRepository } from '../repositories/blockchain-rating-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
@@ -257,16 +258,32 @@ async function syncRatingToBlockchain(
       web3Available: true,
     });
 
+    const raterDoc = await userRepository.getUserById(input.raterId);
+    const raterWallet = raterDoc?.wallet_address;
+
     const { submitRatingToBlockchain: submitToChain } = await import('./reputation-blockchain.js');
     const result = await submitToChain({
       contractId: input.contractId,
       rateeAddress: rateeWallet,
+      raterAddress: raterWallet,
       rating: input.rating,
       comment: input.comment || '',
     });
     if (result?.transactionHash) {
       transactionHash = result.transactionHash;
       logger.info('Rating synced to blockchain', { reviewId, transactionHash });
+
+      // Update the DB record with the confirmed on-chain hash
+      try {
+        const existingRating = await blockchainRatingRepository.findByContractAndRater(input.contractId, input.raterId);
+        if (existingRating?.id) {
+          await blockchainRatingRepository.updateRating(existingRating.id, {
+            transaction_hash: transactionHash,
+          });
+        }
+      } catch {
+        // Non-blocking
+      }
     }
   } catch (blockchainError: unknown) {
     logger.warn('Direct on-chain rating sync skipped or reverted (best-effort)', {
@@ -395,6 +412,24 @@ export async function getReputation(
   try {
     const reviews = await reviewRepository.findAllByRevieweeId(userId);
 
+    const txHashMap = new Map<string, string>();
+    try {
+      const bcRatings = await blockchainRatingRepository.findByRatee(userId);
+      for (const bcr of bcRatings.items) {
+        if (bcr.transaction_hash) {
+          if (bcr.contract_id && bcr.rater_id) {
+            txHashMap.set(`${bcr.contract_id}:${bcr.rater_id}`, bcr.transaction_hash);
+          }
+          if (bcr.contract_id) {
+            txHashMap.set(bcr.contract_id, bcr.transaction_hash);
+          }
+          txHashMap.set(bcr.id, bcr.transaction_hash);
+        }
+      }
+    } catch {
+      // Ignore if blockchain rating lookup fails
+    }
+
     const ratings: RatingData[] = reviews.map((r) => ({
       id: r.id,
       contractId: r.contract_id,
@@ -403,7 +438,11 @@ export async function getReputation(
       rating: r.rating,
       comment: r.comment || undefined,
       timestamp: Math.floor(new Date(r.created_at).getTime() / 1000),
-      transactionHash: '',
+      transactionHash:
+        txHashMap.get(`${r.contract_id}:${r.reviewer_id}`) ||
+        txHashMap.get(r.contract_id) ||
+        txHashMap.get(r.id) ||
+        '',
     }));
 
     const score = computeAggregateScore(ratings, decayLambda);

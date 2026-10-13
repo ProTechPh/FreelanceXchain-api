@@ -267,6 +267,29 @@ export function isFileProxyPath(url: string): boolean {
   return FILE_PROXY_PATH.test(url);
 }
 
+function normalizeMimeType(mime: string | undefined): string {
+  return (mime ?? '').split(';')[0]!.trim().toLowerCase();
+}
+
+function isCompatibleStoredMimeType(storedMime: string | undefined, expectedMime: string | undefined): boolean {
+  const stored = normalizeMimeType(storedMime);
+  const expected = normalizeMimeType(expectedMime);
+  if (stored === expected) return true;
+  // Appwrite Storage determines file.mimeType from the filename extension rather than
+  // the upload Content-Type, and falls back to 'text/plain' or 'application/octet-stream'
+  // for formats like '.md' ('text/markdown') or '.jpg' ('image/jpeg' vs 'image/jpg').
+  if (!stored || stored === 'application/octet-stream') return true;
+  if ((stored === 'text/plain' || stored === 'text/markdown' || stored === 'text/x-markdown') &&
+      (expected === 'text/plain' || expected === 'text/markdown' || expected === 'text/csv')) {
+    return true;
+  }
+  if ((stored === 'image/jpeg' || stored === 'image/jpg') &&
+      (expected === 'image/jpeg' || expected === 'image/jpg')) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Verify that client-supplied attachment metadata references a real file in
  * the expected bucket and that the authenticated user uploaded it. Resource
@@ -291,7 +314,7 @@ export async function validateStoredAttachmentOwnership(
       if (!file.name.startsWith(`${userId}_`)) {
         return { field: `attachments[${index}].url`, message: 'Attachment is not owned by the authenticated user' };
       }
-      if (file.sizeOriginal !== attachment.size || file.mimeType !== attachment.mimeType) {
+      if (file.sizeOriginal !== attachment.size || !isCompatibleStoredMimeType(file.mimeType, attachment.mimeType)) {
         return { field: `attachments[${index}]`, message: 'Attachment metadata does not match the stored file' };
       }
       return null;

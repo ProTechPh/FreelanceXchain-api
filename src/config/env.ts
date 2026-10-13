@@ -102,6 +102,10 @@ export const config = {
     apiUrl: getEnvVar('LLM_API_URL'),
     model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
     timeoutMs: getEnvVarNumber('LLM_TIMEOUT_MS', 6000),
+    // Reasoning-model controls (Groq Qwen3 / gpt-oss). Sent only when set, so
+    // providers that reject unknown params are unaffected.
+    reasoningEffort: getEnvVarOptional('LLM_REASONING_EFFORT'),
+    reasoningFormat: getEnvVarOptional('LLM_REASONING_FORMAT'),
   },
   // NOTE: No JWT signing config here. Auth tokens are issued and validated by
   // Appwrite (session JWTs via account.get/createSession) — the app never signs
