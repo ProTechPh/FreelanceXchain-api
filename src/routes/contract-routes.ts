@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, validateAppwriteDocumentId, validate, emptyBodySchema, fundContractSchema } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId, validate, emptyBodySchema, fundContractSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';

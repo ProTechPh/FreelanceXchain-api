@@ -14,7 +14,7 @@ import {
 } from '../services/payment-service.js';
 import { createDispute } from '../services/dispute-service.js';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, validateAppwriteDocumentId, isValidAppwriteDocumentId } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId, isValidAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { idempotencyMiddleware } from '../middleware/idempotency-middleware.js';
 import { getRequestId } from '../utils/route-helpers.js';
