@@ -283,11 +283,6 @@ async function validateProposalAcceptance(
     return { error: errorResult('INVALID_PROPOSAL_RATE', 'Accepted proposal must have a valid positive rate') };
   }
 
-  const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
-  if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
-    return { error: errorResult('AMOUNT_MISMATCH', 'The proposal rate must match the total of all project milestones before the contract can be created.') };
-  }
-
   /* istanbul ignore next -- mapProjectFromEntity always defaults isRush=false, rushFeePercentage=25 */
   const isRush = project.isRush != null ? project.isRush : false;
   /* istanbul ignore next */
@@ -514,18 +509,28 @@ type InitializeEscrowForContractInput = {
   rushFeePercentage: number;
 };
 
-async function applyRushMilestoneScaling(
+async function applyProposalMilestoneScaling(
   project: Project,
   proposalRate: number,
   rushFee: number
 ): Promise<Project> {
   /* istanbul ignore next -- validateProposalAcceptance rejects empty-milestone projects first */
   if (project.milestones.length === 0) return project;
-  const scaledAmounts = rescaleMilestoneAmounts(
-    project.milestones.map(m => m.amount),
-    proposalRate,
-    rushFee,
-  );
+
+  const currentTotal = project.milestones.reduce((sum, m) => sum + m.amount, 0);
+  const targetTotal = proposalRate + rushFee;
+
+  let scaledAmounts: number[];
+  if (project.milestones.length === 1) {
+    scaledAmounts = [Math.round(targetTotal * 100) / 100];
+  } else {
+    scaledAmounts = rescaleMilestoneAmounts(
+      project.milestones.map(m => m.amount),
+      currentTotal,
+      targetTotal - currentTotal,
+    );
+  }
+
   /* istanbul ignore next -- rescaleMilestoneAmounts returns one scaled amount per milestone */
   const scaledMilestones = project.milestones.map((m, i) => ({
     ...m,
@@ -539,9 +544,12 @@ async function applyRushMilestoneScaling(
   }));
   /* istanbul ignore next -- mapProjectFromEntity always yields a numeric freelancerLimit */
   if ((project.freelancerLimit ?? 1) <= 1) {
-    await projectRepository.updateProject(project.id, { milestones: scaledEntityMilestones });
+    await projectRepository.updateProject(project.id, {
+      budget: proposalRate,
+      milestones: scaledEntityMilestones,
+    });
   }
-  return { ...project, milestones: scaledMilestones };
+  return { ...project, budget: proposalRate, milestones: scaledMilestones };
 }
 
 async function initializeEscrowForContract(
@@ -604,17 +612,18 @@ export async function acceptProposal(
 
     const { proposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
 
-    // Rush proposals carry a fee on top of the proposal rate. Fold that fee into
-    // the project milestone amounts BEFORE the contract is created, so the escrow
-    // (deployed from project milestones) is funded with base + fee and the DB read
-    // model matches the on-chain ledger. Without this, validateEscrowAmounts fails
-    // with AMOUNT_MISMATCH and a rush contract can never be activated.
-    const rushProject = (isRush && rushFee > 0) ? await applyRushMilestoneScaling(project, proposalRate, rushFee) : project;
+    // Fold negotiated rates and rush fees into project milestones before contract creation so
+    // that the contract escrow and smart contract agree on milestone totals.
+    const milestoneTotal = project.milestones.reduce((sum, m) => sum + m.amount, 0);
+    const needsScaling = Math.abs(milestoneTotal - proposalRate) > 0.01 || (isRush && rushFee > 0);
+    const activeProject = needsScaling
+      ? await applyProposalMilestoneScaling(project, proposalRate, isRush ? rushFee : 0)
+      : project;
 
     const contractResult = await createContractFromAcceptedProposal({
       proposalId,
       proposalEntity: proposal,
-      project: rushProject,
+      project: activeProject,
       employerId,
       proposalRate,
       rushFee,
@@ -634,7 +643,7 @@ export async function acceptProposal(
     try {
       await initializeEscrowForContract({
         contract: contract,
-        project: rushProject,
+        project: activeProject,
         proposalEntity: proposal,
         totalAmount,
         rushFee,
