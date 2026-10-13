@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -71,7 +71,7 @@ function hasMoreThanTwoDecimals(value: number): boolean {
  *       409:
  *         description: Pending request already exists or contract already rush
  */
-router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -154,7 +154,7 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -235,7 +235,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -296,7 +296,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/pay', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/pay', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -357,7 +357,7 @@ router.post('/rush-upgrade-requests/:id/pay', authMiddleware, requireRole('emplo
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -409,7 +409,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
  *       200:
  *         description: Rush upgrade request withdrawn
  */
-router.post('/rush-upgrade-requests/:id/withdraw', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/withdraw', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -460,7 +460,7 @@ router.post('/rush-upgrade-requests/:id/withdraw', authMiddleware, requireRole('
  *       404:
  *         description: Contract not found
  */
-router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['id'] ?? '';
     const userId = req.user?.userId;

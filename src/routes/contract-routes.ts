@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, validate, emptyBodySchema, fundContractSchema } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId, validate, emptyBodySchema, fundContractSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
@@ -161,7 +161,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
  *       404:
  *         description: Contract not found
  */
-router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
   const userId = req.user?.userId;
@@ -290,7 +290,7 @@ async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowRes
 }
 
 // eslint-disable-next-line max-lines-per-function -- funding verifies ownership, deployment proof, and activation as one locked state transition
-router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(fundContractSchema), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(fundContractSchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -464,7 +464,7 @@ async function resolveFundDeploymentContext(
 }
 
 // Get contract funding info (for frontend MetaMask deployment)
-router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -556,7 +556,7 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateUUID(), asy
  *       422:
  *         description: Only available in real blockchain mode
  */
-router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -656,7 +656,7 @@ router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateU
  *       422:
  *         description: Only available in real blockchain mode
  */
-router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -745,7 +745,7 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -795,7 +795,7 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
  *       404:
  *         description: Contract not found
  */
-router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID(['contractId']), asyncHandler(async (req: Request, res: Response) => {
+router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['contractId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
   const requestId = getRequestId(req);

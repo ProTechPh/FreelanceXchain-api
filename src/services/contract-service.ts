@@ -28,36 +28,65 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
 async function withProjectMilestones(entities: ContractEntity[]): Promise<ContractEntity[]> {
   if (entities.length === 0) return entities;
   const { projectRepository } = await import('../repositories/project-repository.js');
+  const { userRepository } = await import('../repositories/user-repository.js');
   const uniqueProjectIds = [...new Set(entities.map(e => e.project_id).filter(Boolean))];
-  const projectMap = new Map<string, any>();
+  const uniqueUserIds = [...new Set([
+    ...entities.map(e => e.freelancer_id).filter(Boolean),
+    ...entities.map(e => e.employer_id).filter(Boolean),
+  ])];
 
-  await Promise.all(
-    uniqueProjectIds.map(async (projectId) => {
+  const projectMap = new Map<string, any>();
+  const userMap = new Map<string, any>();
+
+  await Promise.all([
+    Promise.all(
+      uniqueProjectIds.map(async (projectId) => {
+        try {
+          const project = await projectRepository.findProjectById(projectId);
+          if (project) {
+            projectMap.set(projectId, project);
+          }
+        } catch { /* ignore — leave entity unchanged */ }
+      })
+    ),
+    (async () => {
       try {
-        const project = await projectRepository.findProjectById(projectId);
-        if (project) {
-          projectMap.set(projectId, project);
+        const users = await userRepository.getUsersByIds(uniqueUserIds);
+        for (const u of users) {
+          userMap.set(u.id, u);
         }
-      } catch { /* ignore — leave entity unchanged */ }
-    })
-  );
+      } catch { /* ignore */ }
+    })(),
+  ]);
 
   return entities.map((entity) => {
     const project = projectMap.get(entity.project_id);
-    if (project) {
-      return {
-        ...entity,
-        project: {
-          ...(entity as any).project,
-          id: project.id,
-          title: project.title,
-          description: project.description,
-          deadline: project.deadline,
-          milestones: project.milestones,
-        },
-      } as ContractEntity;
-    }
-    return entity;
+    const freelancerUser = userMap.get(entity.freelancer_id);
+    const employerUser = userMap.get(entity.employer_id);
+
+    return {
+      ...entity,
+      project: project ? {
+        ...(entity as any).project,
+        id: project.id,
+        title: project.title,
+        description: project.description,
+        deadline: project.deadline,
+        milestones: (project.milestones || []).map((m: any) => entity.status === 'completed' && ['pending', 'submitted', 'in_progress'].includes(m.status) ? { ...m, status: 'completed' } : m),
+      } : (entity as any).project,
+      freelancer: (entity as any).freelancer || (freelancerUser ? {
+        id: freelancerUser.id,
+        name: freelancerUser.name || freelancerUser.full_name || 'Contractor',
+        email: freelancerUser.email,
+        wallet_address: freelancerUser.wallet_address,
+      } : undefined),
+      employer: (entity as any).employer || (employerUser ? {
+        id: employerUser.id,
+        name: employerUser.name || employerUser.full_name || 'Client',
+        email: employerUser.email,
+        wallet_address: employerUser.wallet_address,
+      } : undefined),
+    } as unknown as ContractEntity;
   });
 }
 

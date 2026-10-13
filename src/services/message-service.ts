@@ -106,7 +106,10 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
       if (attachmentErrors.length > 0) {
         return errorResult('VALIDATION_ERROR', 'Invalid message attachments', attachmentErrors.map(error => error.message));
       }
-      const ownershipErrors = await validateStoredAttachmentOwnership(attachments, senderId, BUCKETS.PROJECT_ATTACHMENTS);
+      const ownershipErrors = await validateStoredAttachmentOwnership(attachments, senderId, [
+        BUCKETS.CONTRACT_DOCUMENTS,
+        BUCKETS.PROJECT_ATTACHMENTS,
+      ]);
       if (ownershipErrors.length > 0) {
         return errorResult('VALIDATION_ERROR', 'Message attachments must be files uploaded by the sender', ownershipErrors.map(error => error.message));
       }

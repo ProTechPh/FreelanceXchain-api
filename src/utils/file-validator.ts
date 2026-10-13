@@ -298,11 +298,12 @@ function isCompatibleStoredMimeType(storedMime: string | undefined, expectedMime
 export async function validateStoredAttachmentOwnership(
   attachments: readonly FileAttachment[],
   userId: string,
-  expectedBucket: BucketId,
+  expectedBucket: BucketId | readonly string[] | string[],
 ): Promise<FileValidationError[]> {
   const results = await Promise.all(attachments.map(async (attachment, index) => {
     const match = FILE_PROXY_PARTS.exec(attachment.url);
-    if (!match || match[1] !== expectedBucket || !match[2]) {
+    const bucketAllowed = Array.isArray(expectedBucket) ? expectedBucket.includes(match?.[1] ?? '') : match?.[1] === expectedBucket;
+    if (!match || !bucketAllowed || !match[2]) {
       return {
         field: `attachments[${index}].url`,
         message: 'Attachment must be an uploaded file from the expected storage bucket',
@@ -310,7 +311,8 @@ export async function validateStoredAttachmentOwnership(
     }
 
     try {
-      const file = await storage.getFile(expectedBucket, match[2]);
+      const actualBucket = match[1] as BucketId;
+      const file = await storage.getFile(actualBucket, match[2]);
       if (!file.name.startsWith(`${userId}_`)) {
         return { field: `attachments[${index}].url`, message: 'Attachment is not owned by the authenticated user' };
       }

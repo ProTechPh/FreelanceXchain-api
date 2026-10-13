@@ -14,7 +14,7 @@ import {
 } from '../services/payment-service.js';
 import { createDispute } from '../services/dispute-service.js';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validateAppwriteDocumentId, isValidAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { idempotencyMiddleware } from '../middleware/idempotency-middleware.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -219,7 +219,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   idempotencyMiddleware(),
-  validateUUID(['milestoneId']),
+  validateAppwriteDocumentId(['milestoneId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -308,7 +308,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   idempotencyMiddleware(),
-  validateUUID(['milestoneId']),
+  validateAppwriteDocumentId(['milestoneId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -403,7 +403,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   idempotencyMiddleware(),
-  validateUUID(['milestoneId']),
+  validateAppwriteDocumentId(['milestoneId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -422,9 +422,8 @@ router.post(
         return;
       }
 
-      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!UUID_RE.test(contractId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', { requestId: getRequestId(req) });
+      if (!isValidAppwriteDocumentId(contractId)) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid ID', { requestId: getRequestId(req) });
         return;
       }
 
@@ -498,7 +497,7 @@ router.get(
   '/contracts/:contractId/status',
   authMiddleware,
   apiRateLimiter,
-  validateUUID(['contractId']),
+  validateAppwriteDocumentId(['contractId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -564,7 +563,7 @@ router.get(
   '/contracts/:contractId/history',
   authMiddleware,
   apiRateLimiter,
-  validateUUID(['contractId']),
+  validateAppwriteDocumentId(['contractId']),
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;

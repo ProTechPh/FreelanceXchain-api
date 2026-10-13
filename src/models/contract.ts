@@ -13,6 +13,7 @@ export type Contract = {
   baseAmount: number;
   rushFee: number;
   totalAmount: number;
+  currency?: string;
   status: ContractStatus;
   title?: string;
   description?: string;
