@@ -346,6 +346,7 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
     DISPUTE_EVIDENCE: 'dispute-evidence',
     PORTFOLIO_IMAGES: 'portfolio-images',
     MILESTONE_DELIVERABLES: 'milestone-deliverables',
+    CONTRACT_DOCUMENTS: 'contract-documents',
   },
   createUserClient: jest.fn().mockReturnValue({
     setEndpoint: jest.fn().mockReturnThis(),

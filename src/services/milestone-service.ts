@@ -456,7 +456,14 @@ export async function getContractMilestones(
       return successResult([]);
     }
 
-    return successResult(project.milestones.map((m) => enrichMilestone(m, contract.id, project)));
+    const milestones = (project.milestones || []).map((m) => {
+      const enriched = enrichMilestone(m, contract.id, project);
+      if (contract.status === 'completed' && ['pending', 'submitted', 'in_progress'].includes(enriched.status)) {
+        return { ...enriched, status: 'completed' as const };
+      }
+      return enriched;
+    });
+    return successResult(milestones);
   } catch (error) {
     logger.error('Failed to get contract milestones:', error);
     return errorResult('DATABASE_ERROR', error instanceof Error ? error.message : 'Failed to get milestones');

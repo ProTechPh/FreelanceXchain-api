@@ -286,6 +286,7 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
     baseAmount: entity.base_amount,
     rushFee: entity.rush_fee,
     totalAmount: entity.total_amount,
+    currency: entity.currency || 'ETH',
     status: entity.status,
     ...(entity.project?.title !== undefined ? { title: entity.project.title } : {}),
     ...(entity.project?.description !== undefined ? { description: entity.project.description } : {}),

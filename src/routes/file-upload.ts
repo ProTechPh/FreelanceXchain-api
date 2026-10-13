@@ -22,6 +22,9 @@ const ALLOWED_BUCKETS = [
   'profile-images',
   'proposal-attachments',
   'project-attachments',
+  'contract-documents',
+  'milestone-deliverables',
+  'dispute-evidence',
 ];
 
 function isValidBucket(bucket: string): boolean {

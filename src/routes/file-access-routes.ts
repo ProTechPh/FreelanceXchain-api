@@ -49,7 +49,7 @@ function valueReferencesFile(value: unknown, fileId: string): boolean {
 }
 
 async function hasResourceFileAccess(bucket: BucketId, fileId: string, userId: string): Promise<boolean> {
-  if (bucket === BUCKETS.PROJECT_ATTACHMENTS) return true;
+  if (bucket === BUCKETS.PROJECT_ATTACHMENTS || bucket === BUCKETS.CONTRACT_DOCUMENTS) return true;
 
   if (bucket === BUCKETS.PROPOSAL_ATTACHMENTS) {
     const proposals = await proposalRepository.queryAll();

@@ -650,6 +650,44 @@ describe('Message Service - Attachments Branch Coverage', () => {
     expect(callArgs).toHaveProperty('attachments');
   });
 
+  it('sendMessage allows attachments stored in contract-documents bucket', async () => {
+    const { sendMessage } = await importModule();
+
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
+    const conversation = { id: 'conv-3', participant1_id: 'sender-1', participant2_id: 'receiver-1', unread_count_2: 0 };
+    mockFindConversation.mockResolvedValueOnce(conversation);
+    const message = { id: 'msg-3', conversation_id: 'conv-3', sender_id: 'sender-1', receiver_id: 'receiver-1', content: 'Here is the document' };
+    mockCreateMessage.mockResolvedValueOnce(message);
+    mockUpdateConversation.mockResolvedValueOnce(undefined);
+    mockStorageGetFile.mockImplementation(async (bucket: string, fileId: string) => {
+      expect(bucket).toBe('contract-documents');
+      return {
+        name: `sender-1_${fileId}_FreelanceXchain-Technical-Proposal-Script.pdf`,
+        sizeOriginal: 191713,
+        mimeType: 'application/pdf',
+      };
+    });
+
+    const result = await sendMessage({
+      senderId: 'sender-1',
+      receiverId: 'receiver-1',
+      content: 'Here is the document',
+      attachments: [{
+        url: '/api/files/access/contract-documents/6ace28d500398d67db29',
+        filename: 'FreelanceXchain-Technical-Proposal-Script.pdf',
+        name: 'FreelanceXchain-Technical-Proposal-Script.pdf',
+        type: 'application/pdf',
+        size: 191713,
+        mimeType: 'application/pdf',
+      }],
+    });
+
+    expect(result.success).toBe(true);
+    const callArgs = mockCreateMessage.mock.calls[0][0];
+    expect(callArgs).toHaveProperty('attachments');
+    expect(callArgs.attachments[0].url).toBe('/api/files/access/contract-documents/6ace28d500398d67db29');
+  });
+
   describe('Message Service - Additional Edge Cases', () => {
     it('should resolve receiver from employer profile when user and freelancer profile not found', async () => {
       const { sendMessage } = await importModule();
