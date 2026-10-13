@@ -71,8 +71,9 @@ describe('fallbackGenerateProposal', () => {
       projectBudget: 0,
     });
 
-    expect(result.coverLetter).toContain('Web3 Developer');
-    expect(result.coverLetter).toContain('Web3 Engineering');
+    // No title on the profile, so the template describes skills instead of inventing one
+    expect(result.coverLetter).toContain('With my background in Web3 Engineering');
+    expect(result.coverLetter).not.toContain('Web3 Developer');
     expect(result.coverLetter).toContain('verified technical credentials');
     expect(result.proposedRate).toBe(1_000);
     expect(result.proposedMilestones).toHaveLength(3);
@@ -952,11 +953,8 @@ describe('AI Client - Extended Tests', () => {
         projectRequirements: [{ skillId: '2', skillName: 'Python' }, { skillId: '3', skillName: 'TypeScript' }],
       });
 
-      expect(typeof result).toBe('object');
-      if ('matchScore' in result) {
-        expect(result.matchScore).toBe(0);
-        expect(result.matchedSkills).toHaveLength(0);
-      }
+      // FakeSkill is rejected; Python is an exact match the model omitted, so it still counts
+      expect(result).toMatchObject({ matchScore: 50, matchedSkills: ['Python'], missingSkills: ['TypeScript'] });
     });
 
     it('should use calculated score when AI score differs by more than 40', async () => {

@@ -60,6 +60,36 @@ export function normalizeSkillKey(name: string): string {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+// Words that appear across many unrelated skill names and so say nothing about
+// whether two names are the same skill ("Node.js"/"React.js", "UI Design"/"Graphic Design").
+const GENERIC_SKILL_WORDS = new Set([
+  'js', 'css', 'design', 'development', 'developer', 'dev', 'engineering', 'engineer',
+  'framework', 'programming', 'language', 'library', 'api', 'apis', 'web', 'app', 'apps',
+  'and', 'of', 'the', 'for', 'with', 'tool', 'tools', 'basics', 'advanced', 'expert',
+]);
+
+function skillWords(name: string): Set<string> {
+  return new Set(
+    name.toLowerCase().normalize('NFKC')
+      .split(/[\s/\\\-_.,:;()&]+/)
+      .filter(word => word && !GENERIC_SKILL_WORDS.has(word))
+  );
+}
+
+/**
+ * Lexical sanity check for a model-proposed synonym pair: the two names must
+ * share a meaningful word ("Tailwind" ~ "Tailwind CSS", "UI/UX Design" ~
+ * "UI Design"). Symbols stay part of the word, so "C" and "C++" share nothing,
+ * and "Java" / "JavaScript" are different words.
+ */
+export function sharesSkillWord(a: string, b: string): boolean {
+  const wordsA = skillWords(a);
+  for (const word of skillWords(b)) {
+    if (wordsA.has(word)) return true;
+  }
+  return false;
+}
+
 export type CanonicalSkills = {
   known: SkillInfo[];
   unknown: string[];

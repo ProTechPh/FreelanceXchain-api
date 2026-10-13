@@ -346,8 +346,105 @@ describe('ai-client output guards', () => {
         matchScore: 33,
         matchedSkills: ['Python'],
         missingSkills: ['JavaScript', 'Go'],
-        reasoning: 'ok',
+        // The model's JavaScript claim was overruled, so its reasoning is replaced
+        reasoning: 'Matches 1 of 3 required skills (Python). Missing: JavaScript, Go.',
       });
+    });
+
+    it('accepts a model-paired synonym and keeps the model reasoning when it agrees', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValueOnce(completion({
+        matches: [
+          { required: 'React', freelancerSkill: 'React' },
+          { required: 'Tailwind CSS', freelancerSkill: 'Tailwind' },
+        ],
+        reasoning: 'Has React and Tailwind; lacks TypeScript.',
+      }));
+
+      const result = await ai.analyzeSkillMatch({
+        freelancerSkills: [{ skillId: '', skillName: 'React' }, { skillId: '', skillName: 'Tailwind' }],
+        projectRequirements: [
+          { skillId: 'p1', skillName: 'React' },
+          { skillId: 'p2', skillName: 'Tailwind CSS' },
+          { skillId: 'p3', skillName: 'TypeScript' },
+        ],
+      });
+
+      expect(result).toEqual({
+        matchScore: 67,
+        matchedSkills: ['React', 'Tailwind CSS'],
+        missingSkills: ['TypeScript'],
+        reasoning: 'Has React and Tailwind; lacks TypeScript.',
+      });
+    });
+
+    it('rejects pairs between different technologies or skills the freelancer does not list', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValueOnce(completion({
+        matches: [
+          { required: 'JavaScript', freelancerSkill: 'Java' },
+          { required: 'C++', freelancerSkill: 'C' },
+          { required: 'React', freelancerSkill: 'Kubernetes' },
+          { required: 'Go' },
+          { required: 'Rust', freelancerSkill: 'Rust' },
+          { required: 'Python', freelancerSkill: 'Python' },
+        ],
+        reasoning: 'Strong fit.',
+      }));
+
+      const result = await ai.analyzeSkillMatch({
+        freelancerSkills: [{ skillId: '', skillName: 'Java' }, { skillId: '', skillName: 'C' }, { skillId: '', skillName: 'Python' }],
+        projectRequirements: ['JavaScript', 'C++', 'React', 'Go', 'Python'].map((skillName, i) => ({ skillId: `p${i}`, skillName })),
+      });
+
+      expect(result).toMatchObject({
+        matchScore: 20,
+        matchedSkills: ['Python'],
+        missingSkills: ['JavaScript', 'C++', 'React', 'Go'],
+        reasoning: 'Matches 1 of 5 required skills (Python). Missing: JavaScript, C++, React, Go.',
+      });
+    });
+
+    it('replaces the reasoning when the model leaves out an exact match', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValueOnce(completion({ matches: [], reasoning: 'No overlap at all.' }));
+
+      const result = await ai.analyzeSkillMatch({
+        freelancerSkills: [{ skillId: '', skillName: 'React' }],
+        projectRequirements: [{ skillId: 'p1', skillName: 'React' }, { skillId: 'p2', skillName: 'Go' }],
+      });
+
+      expect(result).toMatchObject({ matchedSkills: ['React'], reasoning: 'Matches 1 of 2 required skills (React). Missing: Go.' });
+    });
+
+    it('asks the model about a 0% match only when a synonym is possible', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValueOnce(completion({ matches: [{ required: 'UI Design', freelancerSkill: 'UI/UX Design' }], reasoning: 'Covered.' }));
+
+      const synonym = await ai.analyzeSkillMatch({
+        freelancerSkills: [{ skillId: '', skillName: 'UI/UX Design' }],
+        projectRequirements: [{ skillId: 'p1', skillName: 'UI Design' }],
+      });
+      const unrelated = await ai.analyzeSkillMatch({
+        freelancerSkills: [{ skillId: '', skillName: 'Java' }],
+        projectRequirements: [{ skillId: 'p1', skillName: 'JavaScript' }],
+      });
+
+      expect(synonym).toMatchObject({ matchScore: 100, matchedSkills: ['UI Design'], reasoning: 'Covered.' });
+      expect(unrelated).toMatchObject({ matchScore: 0, matchedSkills: [] });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a match answer with neither matches nor matchedSkills', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValue(completion({ reasoning: 'Looks good.' }));
+
+      const result = await ai.analyzeSkillMatch({
+        freelancerSkills: [{ skillId: '', skillName: 'React' }],
+        projectRequirements: [{ skillId: 'p1', skillName: 'React' }, { skillId: 'p2', skillName: 'Go' }],
+      });
+
+      expect(result).toMatchObject({ code: 'AI_SCHEMA_ERROR' });
     });
 
     it('keyword match treats spelling variants as the same skill', async () => {
@@ -398,6 +495,31 @@ describe('ai-client output guards', () => {
         { title: 'Phase 2', description: 'b', amount: 2250, durationDays: 10 },
       ]);
       expect(result.highlights).toEqual(['One', 'Two', 'Three', 'Four']);
+    });
+
+    it('appends a sign-off when the model forgets the freelancer name', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValueOnce(completion({
+        coverLetter: 'Hello,\n\nI can build this dashboard.',
+        proposedRate: 3000, estimatedDuration: 10,
+        proposedMilestones: [{ title: 'All', description: 'x', amount: 3000, durationDays: 10 }],
+        highlights: ['A', 'B', 'C'],
+      }));
+
+      const result = await ai.generateAIProposal(proposalRequest) as AIProposalResult;
+
+      expect(result.coverLetter).toBe('Hello,\n\nI can build this dashboard.\n\nBest regards,  \n**Ana Cruz**');
+    });
+
+    it('sends "Not provided" instead of inventing a title', async () => {
+      const ai = await importClient();
+      fetchMock.mockResolvedValueOnce(completion({ coverLetter: 'Hi from Ana Cruz', proposedRate: 3000, estimatedDuration: 5, proposedMilestones: [], highlights: [] }));
+
+      await ai.generateAIProposal(proposalRequest);
+
+      const user = sentBody().messages[1].content as string;
+      expect(user).toContain('- Title: Not provided');
+      expect(sentBody().messages[0].content).toContain('do not invent one');
     });
 
     it('splits evenly when the model leaves milestone amounts out', async () => {

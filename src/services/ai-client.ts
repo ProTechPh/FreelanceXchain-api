@@ -35,6 +35,7 @@ import {
   escapeRegExp,
   findNonEnglishFields,
   normalizeSkillKey,
+  sharesSkillWord,
   stripReasoning,
 } from './ai-guards.js';
 
@@ -85,21 +86,23 @@ Rules that always apply:
 export const SKILL_MATCH_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
 Task: decide which of a project's required skills a freelancer has.
-- matchedSkills: required skills the freelancer also has, copied exactly from the project's required skills list.
-- Spelling variants of the same skill match ("ReactJS" = "React", "nodejs" = "Node.js"). Different technologies never match ("Java" is not "JavaScript", "C" is not "C++").
-- reasoning: one or two short English sentences on how well the freelancer fits.`;
+- matches: one entry per required skill the freelancer has. "required" is copied exactly from the project's required skills; "freelancerSkill" is copied exactly from the freelancer's skills and is the skill that covers it.
+- The same skill under another name counts: spelling variants ("ReactJS" = "React", "nodejs" = "Node.js"), a shortened name ("Tailwind" = "Tailwind CSS"), or a broader version of the same skill ("UI/UX Design" covers "UI Design").
+- Different technologies never match, even when the names look alike: "Java" is not "JavaScript", "C" is not "C++", "React Native" is not "React", "Next.js" is not "React". A related tool is not the skill itself ("Figma" is not "UI/UX Design").
+- reasoning: one or two short English sentences on how well the freelancer fits, consistent with matches.`;
 
 export const SKILL_MATCH_PROMPT = `Freelancer skills: {freelancerSkills}
 Project required skills: {projectRequirements}
 
 Return JSON:
-{"matchedSkills": string[], "reasoning": string}`;
+{"matches": [{"required": string, "freelancerSkill": string}], "reasoning": string}`;
 
 export const SKILL_EXTRACTION_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
 Task: find which skills from the skill taxonomy a piece of text asks for or mentions.
 - Only return skills that are in the taxonomy. Copy skillId and skillName exactly from the matching taxonomy entry.
 - Skip anything the taxonomy does not contain, even if the text names it.
+- Include a skill only when the text names it or the described work cannot be done without it. Do not add optional tools, libraries or frameworks the text does not name (Solidity work does not imply Hardhat; React does not imply TypeScript).
 - confidence: 0 to 1; use 0.9 or higher only when the skill is named explicitly.
 - If no taxonomy skill applies, return {"skills": []}.`;
 
@@ -116,7 +119,7 @@ export const SKILL_GAP_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
 Task: recommend skills a freelancer should learn next to win more work on a Web3 and software freelance marketplace.
 - Choose 3 to 5 recommendedSkills, only from the candidate skills list. The freelancer already has their current skills, so never recommend those.
-- Prefer skills that pair naturally with the current skills.
+- Prefer skills that pair naturally with the current skills. If the current skills are outside software, recommend beginner-friendly foundations and say so in the reasoning.
 - marketDemand: one entry per recommended skill with demandLevel "high", "medium" or "low".
 - reasoning: two or three English sentences explaining the recommendations.`;
 
@@ -134,15 +137,15 @@ Your goal is to craft a winning, highly professional, compelling, and persuasive
 Winning Proposal Strategy Guidelines:
 1. Tone & Positioning:
    - Confident, articulate, solution-oriented, and client-centric.
-   - Position the freelancer as a top-tier engineer who deeply understands the technical stack, product requirements, and Web3 best practices.
+   - Position the freelancer as a strong fit for this project's stack and requirements.
    - Regardless of past platform rating history or project count, NEVER apologize or focus on low numbers. Emphasize verified technical competence, portfolio proof, clean architecture, and 100% commitment to milestone delivery.
-   - Only claim skills from the freelancer's verified skills or the project's required skills.
+   - Be truthful. Claim only the title, skills, portfolio work and experience shown in the profile. If the title is "Not provided", do not invent one. Do not claim Web3, blockchain or other domain experience the profile does not show, and do not name tools or technologies outside the freelancer's verified skills and the project's required skills.
 2. Structure of the Cover Letter (in clean, readable GitHub-flavored Markdown):
    - **Executive Summary / Greeting**: Acknowledge the client's project vision, technical stack, and core objectives with energy and precision.
    - **Technical Fit & Proven Experience**: Connect the required skills directly to the freelancer's portfolio work or domain experience. Mention specific technical components (e.g. state management, wallet connection, responsive UX, smart contract security).
    - **Strategic 3-Phase Execution Plan**: Provide an actionable, transparent delivery roadmap (Phase 1: Architecture & UX, Phase 2: Core Feature Implementation & Integrations, Phase 3: Testing, Gas/Performance Optimization & Launch).
    - **Client Assurance & Escrow De-risking**: Reassure the client that all funds remain securely protected in smart contract escrow and are only released upon their explicit review and approval of each completed milestone.
-   - **Clear Call to Action**: Professional sign-off welcoming a conversation to align on technical details.
+   - **Clear Call to Action**: Welcome a conversation to align on technical details, then end with "Best regards," and the freelancer's name on its own line.
 3. Pricing & Timeline:
    - Recommend a realistic proposed rate (numeric USD) aligned with the project budget; do not exceed the budget.
    - Recommend a realistic estimated delivery duration (numeric whole days).
@@ -185,7 +188,8 @@ Return JSON:
 const FEATURE_SETTINGS: Record<AIFeature, { system: string; temperature: number; maxTokens: number; minTimeoutMs?: number }> = {
   skill_match: { system: SKILL_MATCH_SYSTEM_PROMPT, temperature: 0.1, maxTokens: 400 },
   skill_extraction: { system: SKILL_EXTRACTION_SYSTEM_PROMPT, temperature: 0, maxTokens: 800 },
-  skill_gap: { system: SKILL_GAP_SYSTEM_PROMPT, temperature: 0.2, maxTokens: 700 },
+  // Temperature 0 so a refresh gives the same recommendations for the same profile
+  skill_gap: { system: SKILL_GAP_SYSTEM_PROMPT, temperature: 0, maxTokens: 700 },
   // A full cover letter is ~900 completion tokens; the default 6s timeout cut it off.
   proposal: { system: PROPOSAL_SYSTEM_PROMPT, temperature: 0.6, maxTokens: 1800, minTimeoutMs: 20000 },
 };
@@ -762,9 +766,18 @@ export async function analyzeSkillMatch(
     return cached;
   }
 
-  // Instant deterministic check for 100% or 0% matches to avoid unnecessary LLM latency
+  // Skip the model when it cannot change the answer: everything already matches,
+  // or nothing matches and no unmatched requirement even shares a word with a
+  // freelancer skill (so there is no synonym for the model to find).
   const quickResult = keywordMatchSkills(request.freelancerSkills, request.projectRequirements);
-  if (quickResult.matchScore === 100 || quickResult.matchScore === 0 || request.projectRequirements.length === 0) {
+  const synonymCandidate = request.projectRequirements.some(req =>
+    !holdsSkill(request.freelancerSkills, req)
+    && request.freelancerSkills.some(f => sharesSkillWord(f.skillName, req.skillName)));
+  if (
+    request.projectRequirements.length === 0
+    || quickResult.matchScore === 100
+    || (quickResult.matchScore === 0 && !synonymCandidate)
+  ) {
     await setAICached(cacheKey, quickResult, localSkillMatchCache, 3600);
     return quickResult;
   }
@@ -774,18 +787,26 @@ export async function analyzeSkillMatch(
     projectRequirements: JSON.stringify(request.projectRequirements.map(s => s.skillName)),
   });
 
-  const result = await generateValidated({
+  const result = await generateValidated<{ matches: ModelMatch[]; reasoning: string }>({
     feature: 'skill_match',
     prompt,
     validate: (parsed) => {
-      const obj = parsed as Partial<Record<keyof SkillMatchResult, unknown>>;
-      if (!Array.isArray(obj.matchedSkills)) return null;
-      return {
-        value: {
-          matchedSkills: obj.matchedSkills.filter((m): m is string => typeof m === 'string'),
-          reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : '',
-        },
-      };
+      const obj = parsed as { matches?: unknown; matchedSkills?: unknown; reasoning?: unknown };
+      let matches: ModelMatch[];
+      if (Array.isArray(obj.matches)) {
+        matches = obj.matches.flatMap((m: unknown) => {
+          const pair = (m ?? {}) as { required?: unknown; freelancerSkill?: unknown };
+          return typeof pair.required === 'string'
+            ? [{ required: pair.required, ...(typeof pair.freelancerSkill === 'string' && { freelancerSkill: pair.freelancerSkill }) }]
+            : [];
+        });
+      } else if (Array.isArray(obj.matchedSkills)) {
+        // Older answer shape: required names only, so only exact matches can be confirmed
+        matches = obj.matchedSkills.filter((m): m is string => typeof m === 'string').map(required => ({ required }));
+      } else {
+        return null;
+      }
+      return { value: { matches, reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : '' } };
     },
     allowedText: [...request.freelancerSkills, ...request.projectRequirements].map(s => s.skillName),
   });
@@ -794,36 +815,56 @@ export async function analyzeSkillMatch(
     return result;
   }
 
-  // The model may only confirm matches the data supports: a required skill the
-  // freelancer holds (same id or same normalized name). Reported back under the
-  // project's own spelling, so "React.js" never leaks out in place of "React".
-  const eligible = new Map<string, string>();
-  for (const req of request.projectRequirements) {
-    if (holdsSkill(request.freelancerSkills, req)) {
-      eligible.set(normalizeSkillKey(req.skillName), req.skillName);
-    }
-  }
-  const validatedMatchedSkills = [...new Set(
-    result.matchedSkills
-      .map(skill => eligible.get(normalizeSkillKey(skill)))
-      .filter((name): name is string => name !== undefined)
-  )];
-  const computedMissingSkills = request.projectRequirements
-    .filter(req => !validatedMatchedSkills.includes(req.skillName))
-    .map(req => req.skillName);
-
-  // The score follows the validated set, so a rejected match cannot inflate it
-  const matchScore = Math.round((validatedMatchedSkills.length / request.projectRequirements.length) * 100);
-
-  const finalMatchResult: SkillMatchResult = {
-    matchScore,
-    matchedSkills: validatedMatchedSkills,
-    missingSkills: computedMissingSkills,
-    reasoning: result.reasoning,
-  };
-
+  const finalMatchResult = resolveModelMatches(request, result.matches, result.reasoning);
   await setAICached(cacheKey, finalMatchResult, localSkillMatchCache, 3600);
   return finalMatchResult;
+}
+
+type ModelMatch = { required: string; freelancerSkill?: string };
+
+/**
+ * A required skill counts when the freelancer holds it exactly (same id or
+ * normalized name), or when the model pairs it with a real freelancer skill
+ * that shares a meaningful word with it. Matches are always reported under the
+ * project's own spelling, so "React.js" never leaks out in place of "React".
+ */
+function resolveModelMatches(request: SkillMatchRequest, claims: ModelMatch[], reasoning: string): SkillMatchResult {
+  const findByKey = (skills: SkillInfo[], name: string) =>
+    skills.find(s => normalizeSkillKey(s.skillName) === normalizeSkillKey(name));
+  const matched = new Set(
+    request.projectRequirements.filter(req => holdsSkill(request.freelancerSkills, req)).map(req => req.skillName)
+  );
+  let modelClaimRejected = false;
+  for (const claim of claims) {
+    const req = findByKey(request.projectRequirements, claim.required);
+    const own = claim.freelancerSkill ? findByKey(request.freelancerSkills, claim.freelancerSkill) : undefined;
+    if (req && (holdsSkill(request.freelancerSkills, req) || (own && sharesSkillWord(own.skillName, req.skillName)))) {
+      matched.add(req.skillName);
+    } else {
+      modelClaimRejected = true;
+    }
+  }
+  const matchedSkills = request.projectRequirements.map(r => r.skillName).filter(name => matched.has(name));
+  const missingSkills = request.projectRequirements.map(r => r.skillName).filter(name => !matched.has(name));
+  const modelAgrees = !modelClaimRejected && matchedSkills.length === new Set(
+    claims.map(m => findByKey(request.projectRequirements, m.required)?.skillName).filter(Boolean)
+  ).size;
+
+  return {
+    // The score follows the validated set, so a rejected match cannot inflate it
+    matchScore: Math.round((matchedSkills.length / request.projectRequirements.length) * 100),
+    matchedSkills,
+    missingSkills,
+    // The model's own reasoning would contradict the list shown when we
+    // overruled it, so describe the validated result instead
+    reasoning: modelAgrees && reasoning.trim() ? reasoning : describeMatch(matchedSkills, missingSkills),
+  };
+}
+
+function describeMatch(matched: string[], missing: string[]): string {
+  const total = matched.length + missing.length;
+  const has = matched.length ? `Matches ${matched.length} of ${total} required skills (${matched.join(', ')}).` : `Matches none of the ${total} required skills.`;
+  return missing.length ? `${has} Missing: ${missing.join(', ')}.` : has;
 }
 
 function holdsSkill(skills: SkillInfo[], required: SkillInfo): boolean {
@@ -1082,7 +1123,7 @@ export function fallbackGenerateProposal(
 
   const coverLetter = `### Dear Employer,
 
-I am excited to submit my proposal for **${request.projectTitle}**. With my background as a ${request.freelancerTitle || 'Web3 Developer'} ${reputationIntro}, I have the exact technical foundation and reliability required for this project.
+I am excited to submit my proposal for **${request.projectTitle}**. With my background ${request.freelancerTitle ? `as a ${request.freelancerTitle}` : `in ${skillsMention}`} ${reputationIntro}, I have the exact technical foundation and reliability required for this project.
 
 #### Why I'm the Right Fit:
 - **Core Skills & Domain Expertise**: Extensive practical experience in **${skillsMention}**.
@@ -1171,7 +1212,7 @@ export async function generateAIProposal(
 
   const prompt = buildPrompt(PROPOSAL_GENERATION_PROMPT, {
     freelancerName: request.freelancerName || 'Freelancer',
-    freelancerTitle: request.freelancerTitle || 'Full-Stack Web3 Developer',
+    freelancerTitle: request.freelancerTitle || 'Not provided',
     freelancerBio: capText(request.freelancerBio || '', MAX_PROPOSAL_FIELD_CHARS),
     freelancerSkills: JSON.stringify(request.freelancerSkills),
     reputationSummary,
@@ -1228,7 +1269,7 @@ export async function generateAIProposal(
       }));
 
   return {
-    coverLetter: result.coverLetter,
+    coverLetter: withSignOff(result.coverLetter, request.freelancerName),
     proposedRate,
     estimatedDuration: toSubmittableDuration(result.estimatedDuration, 14),
     proposedMilestones: alignMilestonesToRate(proposedMilestones, proposedRate),
@@ -1244,6 +1285,12 @@ export async function generateAIProposal(
           `Expert in ${request.freelancerSkills.slice(0, 3).join(', ')}`,
         ],
   };
+}
+
+/** The client should always see who wrote the proposal; the model sometimes stops before signing. */
+function withSignOff(coverLetter: string, freelancerName: string): string {
+  if (!freelancerName || coverLetter.includes(freelancerName)) return coverLetter;
+  return `${coverLetter.trimEnd()}\n\nBest regards,  \n**${freelancerName}**`;
 }
 
 function toMilestonePlans(value: unknown): ProposalMilestonePlan[] {

@@ -609,7 +609,11 @@ export async function generateProposalForProject(
     }
 
     const freelancerName = (userDoc?.['name'] as string) || freelancerProfile?.name || 'Freelancer';
-    const freelancerTitle = freelancerProfile?.bio ? freelancerProfile.bio.slice(0, 60) : 'Full-Stack Web3 Developer';
+    // Profiles have no headline; the most recent job title is the closest honest one.
+    // Without it the prompt says "Not provided" rather than inventing a title.
+    const latestRole = [...(freelancerProfile?.experience ?? [])]
+      .sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''))[0];
+    const freelancerTitle = latestRole?.title?.trim() || undefined;
     const freelancerBio = freelancerProfile?.bio || '';
     const freelancerSkills = (freelancerProfile?.skills || []).map((s: { name: string }) => s.name);
 

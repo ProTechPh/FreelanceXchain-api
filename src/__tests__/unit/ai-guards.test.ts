@@ -6,6 +6,7 @@ import {
   escapeRegExp,
   findNonEnglishFields,
   normalizeSkillKey,
+  sharesSkillWord,
   stripReasoning,
 } from '../../services/ai-guards.js';
 
@@ -74,6 +75,29 @@ describe('ai-guards', () => {
       expect(normalizeSkillKey('C')).not.toBe(normalizeSkillKey('C++'));
       expect(normalizeSkillKey('C++')).not.toBe(normalizeSkillKey('C#'));
       expect(normalizeSkillKey('Go')).not.toBe(normalizeSkillKey('Google Cloud'));
+    });
+  });
+
+  describe('sharesSkillWord', () => {
+    it.each([
+      ['Tailwind', 'Tailwind CSS'],
+      ['UI/UX Design', 'UI Design'],
+      ['Smart Contract Auditing', 'Smart Contract Security'],
+      ['React Native', 'React'],
+    ])('links %s and %s', (a, b) => {
+      expect(sharesSkillWord(a, b)).toBe(true);
+    });
+
+    it.each([
+      ['Java', 'JavaScript'],
+      ['C', 'C++'],
+      ['C++', 'C#'],
+      ['Node.js', 'React.js'],
+      ['CSS', 'Tailwind CSS'],
+      ['UI Design', 'Graphic Design'],
+      ['Next.js', 'React'],
+    ])('does not link %s and %s', (a, b) => {
+      expect(sharesSkillWord(a, b)).toBe(false);
     });
   });
 

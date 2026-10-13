@@ -101,6 +101,11 @@ describe('generateProposalForProject', () => {
       name: 'Profile Name',
       bio: 'Security-focused smart contract engineer with extensive marketplace experience.',
       skills: [{ name: 'Solidity' }, { name: 'React' }],
+      experience: [
+        { title: 'Junior Developer', start_date: '2019-01-01' },
+        { title: 'Smart Contract Engineer', start_date: '2023-05-01' },
+        { title: '', start_date: undefined },
+      ],
     });
     mockFindPortfolioByFreelancer.mockResolvedValue([
       { title: 'Escrow', description: 'Milestone payments', skills: '["Solidity"]', project_url: 'https://example.com/escrow' },
@@ -120,7 +125,8 @@ describe('generateProposalForProject', () => {
     expect(result).toEqual({ success: true, data: generated });
     expect(mockGenerateAIProposal).toHaveBeenCalledWith(expect.objectContaining({
       freelancerName: 'Ada Lovelace',
-      freelancerTitle: 'Security-focused smart contract engineer with extensive mark',
+      // The most recent job title, never a bio fragment or an invented headline
+      freelancerTitle: 'Smart Contract Engineer',
       freelancerSkills: ['Solidity', 'React'],
       reputationScore: 90,
       completedProjectsCount: 10,
@@ -153,7 +159,7 @@ describe('generateProposalForProject', () => {
     expect(result).toEqual({ success: true, data: fallback });
     expect(mockFallbackGenerateProposal).toHaveBeenCalledWith(expect.objectContaining({
       freelancerName: 'Freelancer',
-      freelancerTitle: 'Full-Stack Web3 Developer',
+      freelancerTitle: undefined,
       freelancerBio: '',
       freelancerSkills: [],
       reputationScore: 0,

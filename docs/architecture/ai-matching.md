@@ -67,7 +67,7 @@ Each feature calls `generateValidated` with its prompt and a validator:
    | --------- | ------------- | ------------ |
    | Skill match | 0.1 | 400 |
    | Skill extraction | 0 | 800 |
-   | Skill gap | 0.2 | 700 |
+   | Skill gap | 0 (same answer on refresh) | 700 |
    | Proposal | 0.6 | 1800 |
 
 4. **Validation**, in order: truncation (`finish_reason: length`), `<think>` stripping, JSON parse, English check, then the feature validator.
@@ -106,15 +106,15 @@ Skill names are compared with `normalizeSkillKey`. Case, spacing and `.js` spell
 | Feature | Rule |
 | --------- | ------ |
 | Skill extraction | Each skill is matched by taxonomy id, then by normalized name. The response always carries the taxonomy's own id and name; anything else is dropped |
-| Skill match | A model-reported match counts only if it is a required skill the freelancer holds (same id or normalized name). It is returned under the project's spelling, and the score is computed from the validated matches |
+| Skill match | Exact matches (same id or normalized name) always count. The model may add a synonym match by pairing a required skill with one of the freelancer's own skills ("Tailwind" covers "Tailwind CSS", "UI/UX Design" covers "UI Design"); the pair is accepted only if both names exist in the input and share a meaningful word (`sharesSkillWord`), so "Java"/"JavaScript", "C"/"C++" and "CSS"/"Tailwind CSS" are always rejected. Matches are returned under the project's spelling, the score is computed from the validated set, and when any model claim is overruled its reasoning is replaced with a factual summary |
 | Skill gap | The prompt lists only active taxonomy skills the freelancer does not have. Recommendations and demand entries outside that list are dropped. If none remain, the answer is rejected and retried. `currentSkills` always comes from the profile |
-| Proposal | Prompt rule: claim only the freelancer's verified skills or the project's required skills. Milestone amounts are rescaled to add up to the proposed rate |
+| Proposal | Prompt rules: claim only the title, skills, portfolio and experience the profile shows (the title is the most recent job title, or "Not provided"), and no tools outside the freelancer's and project's skills. Milestone amounts are rescaled to add up to the proposed rate, and a sign-off with the freelancer's name is appended if the model leaves it out |
 
 ## Features
 
 | Endpoint | Function | Fallback |
 | ---------- | ---------- | ---------- |
-| `GET /api/matching/projects`, `GET /api/matching/freelancers/:projectId` | `analyzeSkillMatch` (AI for the top candidates; scores of 0 or 100 are decided without a model call) | `keywordMatchSkills` |
+| `GET /api/matching/projects`, `GET /api/matching/freelancers/:projectId` | `analyzeSkillMatch` (AI for the top candidates; a 100% score, or a 0% score with no possible synonym, is decided without a model call) | `keywordMatchSkills` |
 
 Project recommendations (`GET /api/matching/projects`) only include projects where the freelancer has at least 40% of the required skills (`MIN_PROJECT_MATCH_SCORE` in `matching-service.ts`). The floor is applied before the list is cut to the requested limit, and again after the AI pass.
 | `POST /api/matching/extract-skills` | `extractSkills` | `keywordExtractSkills` |
@@ -153,13 +153,18 @@ Useful rates from these lines:
 
 ## Evaluation: `pnpm eval:ai`
 
-`scripts/ai-eval/run-eval.ts` runs the labeled cases in `scripts/ai-eval/dataset.json` against the configured provider. It calls the same exported functions the API uses, with the cache off. The dataset has 29 cases across the four features, including adversarial ones: Chinese input, Taglish input, prompt injection, non-taxonomy skills, "Java" vs "JavaScript", "C" vs "C++", and a custom note asking for a Chinese proposal.
+`scripts/ai-eval/run-eval.ts` runs the labeled cases in `scripts/ai-eval/dataset.json` against the configured provider. It calls the same exported functions the API uses, with the cache off. The dataset has 59 cases across the four features. They include adversarial and hard ones: Chinese, Korean and Taglish input, prompt injection and prompt-leak attempts, typos, negation, implied skills, long text, non-taxonomy skills, synonym pairs, look-alike technologies ("Java"/"JavaScript", "C"/"C++", "React Native"/"React", "CSS"/"Tailwind CSS"), and proposal notes that ask for another language or for skills the freelancer does not have.
 
 ```bash
 pnpm eval:ai                       # full run
 pnpm eval:ai --label after-change  # name the saved result file
-pnpm eval:ai --only gap            # one feature
+pnpm eval:ai --only gap            # one feature (comma list allowed)
+pnpm eval:ai --runs 3              # repeat each case to measure consistency
+pnpm eval:ai --judge               # grade proposals, skill gaps and match reasoning with a second model
+pnpm eval:ai --real                # build cases from live Appwrite data (read-only, names anonymized)
 ```
+
+`--judge` uses `EVAL_JUDGE_MODEL` (default `openai/gpt-oss-120b`), a different model family from the one being evaluated, so it does not grade its own writing. Proposals are scored for relevance, specificity, honesty and professionalism; skill gaps for relevance and reasoning; match reasoning for faithfulness to the matched and missing lists. `--real` labels extraction with the skills the employer selected for each project, which the description may not mention, so that F1 measures agreement rather than accuracy.
 
 The scorecard reports, per feature:
 
@@ -181,6 +186,8 @@ It also reports these quality metrics:
 | Match exact-set accuracy, score MAE | Matched skills vs labels; score vs matched ÷ required × 100 | MAE ≤ 10 |
 | Gap validity | Every recommendation is a taxonomy skill the freelancer lacks | 100% |
 | Proposal structure | Cover letter, valid milestones, 3–4 highlights; milestones sum to the rate; rate ≤ 1.5 × budget | ≥ 95% |
+| Proposal content checks | Names the project, signed by the freelancer, mentions escrow, 120–800 words, no placeholders, no prompt leak, no skills outside the profile and project, nothing the case forbids | ≥ 95% |
+| Consistency (`--runs`) | Cases that return the same skills on every run | extraction and match 100% |
 
 Groq free-tier keys are limited to 8,000 tokens per minute. The harness waits for the token window to refill and reruns a case that hit a 429, so rate limits are not counted against quality. The number of 429s is printed separately. Each run is saved to `scripts/ai-eval/results/<timestamp>-<label>.json` with every raw provider answer, so runs can be compared when prompts or models change.
 

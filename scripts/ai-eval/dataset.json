@@ -586,6 +586,96 @@
         "Docker",
         "Python"
       ]
+    },
+    {
+      "id": "match-tailwind-short",
+      "tags": [
+        "hard",
+        "synonym"
+      ],
+      "freelancer": [
+        "Tailwind",
+        "React"
+      ],
+      "required": [
+        "Tailwind CSS",
+        "React",
+        "TypeScript"
+      ],
+      "expected": [
+        "Tailwind CSS",
+        "React"
+      ]
+    },
+    {
+      "id": "match-synonym-only",
+      "tags": [
+        "hard",
+        "synonym"
+      ],
+      "freelancer": [
+        "UI/UX Design"
+      ],
+      "required": [
+        "UI Design"
+      ],
+      "expected": [
+        "UI Design"
+      ]
+    },
+    {
+      "id": "match-react-native",
+      "tags": [
+        "hard",
+        "adversarial"
+      ],
+      "freelancer": [
+        "React Native",
+        "TypeScript"
+      ],
+      "required": [
+        "React",
+        "TypeScript"
+      ],
+      "expected": [
+        "TypeScript"
+      ]
+    },
+    {
+      "id": "match-figma-not-uiux",
+      "tags": [
+        "hard",
+        "adversarial"
+      ],
+      "freelancer": [
+        "Figma",
+        "React"
+      ],
+      "required": [
+        "UI/UX Design",
+        "React"
+      ],
+      "expected": [
+        "React"
+      ]
+    },
+    {
+      "id": "match-css-not-tailwind",
+      "tags": [
+        "hard",
+        "adversarial"
+      ],
+      "freelancer": [
+        "CSS",
+        "React"
+      ],
+      "required": [
+        "Tailwind CSS",
+        "React"
+      ],
+      "expected": [
+        "React"
+      ]
     }
   ],
   "gap": [
