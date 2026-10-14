@@ -661,7 +661,7 @@ async function updateDisputeStatuses(
       (m) => m.status === 'approved' || m.status === 'refunded'
     );
     if (allMilestonesDone) {
-      await contractRepository.updateContract(disputeEntity.contract_id, { status: 'completed' });
+      await contractRepository.updateContract(disputeEntity.contract_id, { status: 'resolved' });
       // Mirror the approval path (payment-service.completeContractIfAllMilestonesDone):
       // complete the on-chain agreement registry best-effort so it matches the DB
       // contract completion. A failed agreement write never fails the resolution.

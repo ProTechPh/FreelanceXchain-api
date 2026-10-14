@@ -125,7 +125,8 @@ router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateA
     const result = await getDisputeEvidence(disputeId, userId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_FETCH_FAILED', result.error.message, { requestId });
+      const statusCode = result.error.code === 'DISPUTE_NOT_FOUND' ? 404 : result.error.code === 'UNAUTHORIZED' ? 403 : 400;
+      return sendErrorResponse(res, statusCode, result.error.code ?? 'EVIDENCE_FETCH_FAILED', result.error.message, { requestId });
     }
 
     return res.json(result.data);

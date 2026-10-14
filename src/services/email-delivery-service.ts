@@ -39,30 +39,19 @@ async function getEmailClient() {
   }
 
   const resendApiKey = process.env['RESEND_API_KEY'];
-  const cfApiToken = process.env['CLOUDFLARE_API_TOKEN'];
-  const cfAccountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
+
+  if (!resendApiKey) {
+    logger.warn('Email configuration not found, email sending disabled');
+    throw new Error('Resend email configuration not found');
+  }
 
   const { createEmailClient } = await import('@opencoredev/email-sdk');
-  const adapters: any[] = [];
+  const { resend } = await import('@opencoredev/email-sdk/resend');
 
-  if (resendApiKey) {
-    const { resend } = await import('@opencoredev/email-sdk/resend');
-    adapters.push(resend({ apiKey: resendApiKey }));
-    logger.info('Resend email adapter initialized');
-  }
-
-  if (cfApiToken && cfAccountId) {
-    const { cloudflare } = await import('@opencoredev/email-sdk/cloudflare');
-    adapters.push(cloudflare({ apiToken: cfApiToken, accountId: cfAccountId }));
-  }
-
-  if (adapters.length === 0) {
-    logger.warn('Cloudflare email configuration not found, email sending disabled');
-    throw new Error('Cloudflare email configuration not found');
-  }
+  logger.info('Resend email adapter initialized');
 
   emailClient = createEmailClient({
-    adapters,
+    adapters: [resend({ apiKey: resendApiKey })],
     retry: { retries: 1 },
   });
 
@@ -547,14 +536,12 @@ export async function sendGatedEmail(
 export async function testEmailConfiguration(): Promise<ServiceResult<{ verified: boolean; provider?: string }>> {
   try {
     const resendApiKey = process.env['RESEND_API_KEY'];
-    const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
-    const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
 
-    if (!resendApiKey && (!apiToken || !accountId)) {
-      throw new Error('Cloudflare email configuration not found');
+    if (!resendApiKey) {
+      throw new Error('Resend email configuration not found');
     }
 
-    const provider = resendApiKey ? 'resend' : 'cloudflare';
+    const provider = 'resend';
     logger.info('Email configuration verified successfully', { provider });
 
     return successResult({ verified: true, provider });

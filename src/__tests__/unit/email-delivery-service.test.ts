@@ -14,10 +14,6 @@ jest.unstable_mockModule('@opencoredev/email-sdk', () => ({
   })),
 }));
 
-jest.unstable_mockModule('@opencoredev/email-sdk/cloudflare', () => ({
-  cloudflare: jest.fn<any>(() => ({})),
-}));
-
 jest.unstable_mockModule('@opencoredev/email-sdk/resend', () => ({
   resend: jest.fn<any>(() => ({})),
 }));
@@ -47,9 +43,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: { getUserById: mockGetUserById },
 }));
 
-const CF_ENV = {
-  CLOUDFLARE_API_TOKEN: 'test-api-token',
-  CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
+const TEST_ENV = {
+  RESEND_API_KEY: 'test-resend-key',
   EMAIL_FROM: 'test@freelancexchain.com',
 };
 
@@ -65,13 +60,13 @@ describe('Email Delivery Service', () => {
     jest.resetModules();
     setupMocks();
 
-    Object.entries(CF_ENV).forEach(([key, value]) => {
+    Object.entries(TEST_ENV).forEach(([key, value]) => {
       process.env[key] = value;
     });
   });
 
   afterEach(() => {
-    Object.keys(CF_ENV).forEach((key) => {
+    Object.keys(TEST_ENV).forEach((key) => {
       delete process.env[key];
     });
   });
@@ -82,7 +77,7 @@ describe('Email Delivery Service', () => {
   }
 
   describe('getEmailClient', () => {
-    it('should create email client when Cloudflare config is present', async () => {
+    it('should create email client when Resend config is present', async () => {
       mockReadFile.mockResolvedValue('<html>Body</html>');
       mockSend.mockResolvedValue({ id: 'msg-1' });
 
@@ -95,23 +90,6 @@ describe('Email Delivery Service', () => {
       });
 
       expect(mockSend).toHaveBeenCalled();
-    });
-
-    it('should initialize Resend adapter when RESEND_API_KEY is present (lines 49-51)', async () => {
-      process.env['RESEND_API_KEY'] = 'test-resend-key';
-      mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSend.mockResolvedValue({ id: 'msg-resend' });
-
-      await importService();
-      const result = await emailService.sendEmail({
-        to: 'user@test.com',
-        subject: 'Test',
-        template: 'proposal_accepted',
-        data: { name: 'test' },
-      });
-
-      expect(result.success).toBe(true);
-      delete process.env['RESEND_API_KEY'];
     });
 
     it('should reuse existing email client on subsequent calls', async () => {
@@ -135,8 +113,8 @@ describe('Email Delivery Service', () => {
       expect(mockSend).toHaveBeenCalledTimes(2);
     });
 
-    it('should throw when CLOUDFLARE_API_TOKEN is missing', async () => {
-      delete process.env.CLOUDFLARE_API_TOKEN;
+    it('should throw when RESEND_API_KEY is missing', async () => {
+      delete process.env.RESEND_API_KEY;
 
       await importService();
       const result = await emailService.sendEmail({
@@ -149,24 +127,7 @@ describe('Email Delivery Service', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('EMAIL_SEND_FAILED');
-        expect(result.error.message).toBe('Cloudflare email configuration not found');
-      }
-    });
-
-    it('should throw when CLOUDFLARE_ACCOUNT_ID is missing', async () => {
-      delete process.env.CLOUDFLARE_ACCOUNT_ID;
-
-      await importService();
-      const result = await emailService.sendEmail({
-        to: 'user@test.com',
-        subject: 'Test',
-        template: 'proposal_accepted',
-        data: { name: 'test' },
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.message).toBe('Cloudflare email configuration not found');
+        expect(result.error.message).toBe('Resend email configuration not found');
       }
     });
   });
@@ -383,9 +344,8 @@ describe('Email Delivery Service', () => {
       );
     });
 
-    it('should return error when Cloudflare config is missing', async () => {
-      delete process.env.CLOUDFLARE_API_TOKEN;
-      delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    it('should return error when Resend config is missing', async () => {
+      delete process.env.RESEND_API_KEY;
 
       await importService();
       const result = await emailService.sendEmail({
@@ -835,19 +795,19 @@ describe('Email Delivery Service', () => {
   });
 
   describe('testEmailConfiguration', () => {
-    it('should return success when Cloudflare config is present', async () => {
+    it('should return success when Resend config is present', async () => {
       await importService();
       const result = await emailService.testEmailConfiguration();
 
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.verified).toBe(true);
+        expect(result.data.provider).toBe('resend');
       }
     });
 
-    it('should return failure when Cloudflare config is missing', async () => {
-      delete process.env.CLOUDFLARE_API_TOKEN;
-      delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    it('should return failure when RESEND_API_KEY is missing', async () => {
+      delete process.env.RESEND_API_KEY;
 
       await importService();
       const result = await emailService.testEmailConfiguration();
@@ -855,31 +815,7 @@ describe('Email Delivery Service', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
-        expect(result.error.message).toBe('Cloudflare email configuration not found');
-      }
-    });
-
-    it('should return failure when CLOUDFLARE_API_TOKEN is missing', async () => {
-      delete process.env.CLOUDFLARE_API_TOKEN;
-
-      await importService();
-      const result = await emailService.testEmailConfiguration();
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
-      }
-    });
-
-    it('should return failure when CLOUDFLARE_ACCOUNT_ID is missing', async () => {
-      delete process.env.CLOUDFLARE_ACCOUNT_ID;
-
-      await importService();
-      const result = await emailService.testEmailConfiguration();
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
+        expect(result.error.message).toBe('Resend email configuration not found');
       }
     });
   });
@@ -908,20 +844,17 @@ describe('email-delivery-service - Additional Branch Coverage', () => {
     jest.resetModules();
     mockSend.mockReset();
     mockReadFile.mockReset();
-    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
-    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['RESEND_API_KEY'] = 'test-resend-key';
     process.env['EMAIL_FROM'] = 'test@freelancexchain.com';
   });
 
   afterEach(() => {
-    delete process.env['CLOUDFLARE_API_TOKEN'];
-    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+    delete process.env['RESEND_API_KEY'];
     delete process.env['EMAIL_FROM'];
   });
 
   it('L306: non-Error throw in testEmailConfiguration returns config invalid error', async () => {
-    delete process.env['CLOUDFLARE_API_TOKEN'];
-    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+    delete process.env['RESEND_API_KEY'];
 
     const service = await import(resolveModule('src/services/email-delivery-service.ts'));
     const result = await service.testEmailConfiguration();
@@ -956,14 +889,12 @@ describe('email-delivery-service - result.id fallback (L111)', () => {
     jest.resetModules();
     mockSend.mockReset();
     mockReadFile.mockReset();
-    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
-    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['RESEND_API_KEY'] = 'test-resend-key';
     process.env['EMAIL_FROM'] = 'test@freelancexchain.com';
   });
 
   afterEach(() => {
-    delete process.env['CLOUDFLARE_API_TOKEN'];
-    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+    delete process.env['RESEND_API_KEY'];
     delete process.env['EMAIL_FROM'];
   });
 
@@ -1005,8 +936,7 @@ describe('email-delivery-service - result.id fallback (L111)', () => {
 
   it('L306: testEmailConfiguration with non-Error throw uses fallback message', async () => {
     // Set config so the if-check passes, then make logger.info throw a non-Error
-    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
-    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['RESEND_API_KEY'] = 'test-resend-key';
 
     const service = await import(resolveModule('src/services/email-delivery-service.ts'));
 
@@ -1034,16 +964,13 @@ describe('email-delivery-service - coverage gaps', () => {
     mockReadFile.mockReset();
     mockReadFile.mockResolvedValue('<html>Body</html>');
     mockSend.mockResolvedValue({ id: 'msg-gap' });
-    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
-    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['RESEND_API_KEY'] = 'test-resend-key';
     process.env['EMAIL_FROM'] = 'test@freelancexchain.com';
   });
 
   afterEach(() => {
-    delete process.env['CLOUDFLARE_API_TOKEN'];
-    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
-    delete process.env['EMAIL_FROM'];
     delete process.env['RESEND_API_KEY'];
+    delete process.env['EMAIL_FROM'];
   });
 
   const importService = async () => import(resolveModule('src/services/email-delivery-service.ts'));

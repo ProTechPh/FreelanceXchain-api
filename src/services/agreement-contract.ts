@@ -236,7 +236,9 @@ export async function completeAgreement(
 
   if (!entity) throw new Error('Agreement not found');
   const agreement = mapAgreementFromEntity(entity);
-  if (agreement.status !== 'signed') throw new Error('Agreement not active');
+  if (agreement.status !== 'signed' && agreement.status !== 'disputed') {
+    throw new Error('Agreement not active');
+  }
 
   if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
     throw new Error('Unauthorized: caller is not a party to this agreement');
