@@ -169,6 +169,15 @@ const PROMPT_LEAK_MARKERS = [
   'Return JSON',
 ];
 
+// "Tailwind CSS" → "tailwind", "UI/UX Design" → "design ui ux": a name's words
+// minus a trailing-technology suffix, sorted, for labelling real data.
+function coreSkillWords(name: string): string {
+  return name.toLowerCase().split(/[\s/\\\-_.,:;()&]+/)
+    .filter(word => word && word !== 'css' && word !== 'js')
+    .sort()
+    .join(' ');
+}
+
 async function loadRealSuite(normalizeSkillKey: (s: string) => string, keywordMatchSkills: (a: Skill[], b: Skill[]) => { matchScore: number; matchedSkills: string[] }): Promise<Suite> {
   const { getActiveSkills } = await import('../../src/services/skill-service.js');
   const { projectRepository } = await import('../../src/repositories/project-repository.js');
@@ -200,16 +209,18 @@ async function loadRealSuite(normalizeSkillKey: (s: string) => string, keywordMa
       expected: projectSkills(p).map(s => s.skillId).filter(id => taxonomyIds.has(id)),
       tags: ['real'],
     })).filter(c => c.expected.length > 0),
-    // Label = the deterministic rule (same skill by normalized name); only partial
-    // matches reach the model, so those are the ones sampled
+    // Label = same skill by normalized name, or the same name apart from a
+    // "CSS"/"JS" suffix ("Tailwind" = "Tailwind CSS"); only partial matches
+    // reach the model, so those are the ones sampled
     match: pairs.filter(p => p.score > 0 && p.score < 100).slice(0, 10).map(p => {
       const required = projectSkills(p.project).map(s => s.skillName);
       const have = new Set(p.f.map(s => normalizeSkillKey(s.skillName)));
+      const haveWords = new Set(p.f.map(s => coreSkillWords(s.skillName)).filter(Boolean));
       return {
         id: `real-match-f${p.fi + 1}-${p.project.id.slice(-6)}`,
         freelancer: p.f.map(s => s.skillName),
         required,
-        expected: required.filter(r => have.has(normalizeSkillKey(r))),
+        expected: required.filter(r => have.has(normalizeSkillKey(r)) || haveWords.has(coreSkillWords(r))),
         tags: ['real'],
       };
     }),
@@ -467,7 +478,9 @@ async function main() {
     const ask = async (rubric: string, input: unknown, output: unknown) => {
       for (let attempt = 1; attempt <= MAX_CASE_ATTEMPTS; attempt++) {
         await judgeWindow.waitIfLow();
-        const response = await realFetch(judgeUrl, {
+        let response: Response;
+        try {
+          response = await realFetch(judgeUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.llm.apiKey}` },
           body: JSON.stringify({
@@ -484,7 +497,13 @@ async function main() {
               { role: 'user', content: `INPUT:\n${JSON.stringify(input, null, 2)}\n\nOUTPUT TO EVALUATE:\n${JSON.stringify(output, null, 2)}` },
             ],
           }),
-        });
+          });
+        } catch (err) {
+          // A dropped connection costs one judge score, not the whole run.
+          process.stderr.write(`  judge request failed (${(err as Error).message}); retrying\n`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          continue;
+        }
         judgeWindow.observe(response.headers);
         if (response.status === 429) {
           judgeWindow.exhaust();
