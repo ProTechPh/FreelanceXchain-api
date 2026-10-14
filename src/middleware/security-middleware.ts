@@ -35,6 +35,7 @@ export const securityHeaders = helmetMiddleware({
         includeSubDomains: true,
         preload: true,
     },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });
 

@@ -75,6 +75,42 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 }
 
 /**
+ * Optional authentication middleware for public endpoints that can optionally
+ * benefit from knowing the authenticated user (e.g. public portfolio images).
+ */
+export async function optionalAuthMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const authHeader = req.headers.authorization;
+  let token: string | undefined;
+
+  if (authHeader) {
+    const parts = authHeader.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer') {
+      token = parts[1];
+    }
+  } else {
+    token = extractTokenFromRequest(req);
+  }
+
+  if (token) {
+    try {
+      const result = await validateToken(token);
+      if (!isTokenError(result)) {
+        req.user = {
+          userId: result.userId,
+          email: result.email,
+          role: result.role,
+          ...(result.permissions !== undefined ? { permissions: result.permissions } : {}),
+        };
+      }
+    } catch {
+      // Ignored for optional auth
+    }
+  }
+
+  next();
+}
+
+/**
  * Enforces authentication for sensitive operations. Must be used AFTER authMiddleware.
  *
  * MFA is verified at Appwrite session-creation time (login flow), not per-request.

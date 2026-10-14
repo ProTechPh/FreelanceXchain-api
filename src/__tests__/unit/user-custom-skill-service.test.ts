@@ -11,6 +11,7 @@ const mockUpdateUserCustomSkillRepo = jest.fn<any>();
 const mockDeleteUserCustomSkillRepo = jest.fn<any>();
 const mockSearchUserCustomSkillsRepo = jest.fn<any>();
 const mockGetSkillSuggestionByName = jest.fn<any>();
+const mockGetSkillSuggestionById = jest.fn<any>();
 const mockRecordSuggestionRequest = jest.fn<any>();
 const mockCreateSkillSuggestion = jest.fn<any>();
 const mockGetPendingSkillSuggestions = jest.fn<any>();
@@ -26,6 +27,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repos
     searchUserCustomSkills: mockSearchUserCustomSkillsRepo,
   },
   skillSuggestionRepository: {
+    getSkillSuggestionById: mockGetSkillSuggestionById,
+    getById: mockGetSkillSuggestionById,
     getSkillSuggestionByName: mockGetSkillSuggestionByName,
     recordSuggestionRequest: mockRecordSuggestionRequest,
     createSkillSuggestion: mockCreateSkillSuggestion,
@@ -37,9 +40,35 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repos
 }));
 
 const mockGetSkillByNameNormalized = jest.fn<any>();
+const mockCreateSkillRepo = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: {
     getSkillByNameNormalized: mockGetSkillByNameNormalized,
+    createSkill: mockCreateSkillRepo,
+  },
+}));
+
+const mockGetAllCategoriesRepo = jest.fn<any>().mockResolvedValue([]);
+const mockGetActiveCategoriesRepo = jest.fn<any>().mockResolvedValue([]);
+const mockGetCategoryByNameRepo = jest.fn<any>().mockResolvedValue(null);
+const mockCreateCategoryRepo = jest.fn<any>().mockResolvedValue({ id: 'cat-new', name: 'New Cat' });
+jest.unstable_mockModule(resolveModule('src/repositories/skill-category-repository.ts'), () => ({
+  skillCategoryRepository: {
+    getAllCategories: mockGetAllCategoriesRepo,
+    getActiveCategories: mockGetActiveCategoriesRepo,
+    getCategoryByName: mockGetCategoryByNameRepo,
+    createCategory: mockCreateCategoryRepo,
+  },
+}));
+
+const mockAddSkillsToProfile = jest.fn<any>().mockResolvedValue({ success: true });
+jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+  addSkillsToProfile: mockAddSkillsToProfile,
+}));
+
+jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
+  skillCache: {
+    clear: jest.fn(),
   },
 }));
 
@@ -708,11 +737,17 @@ describe('User Custom Skill Service', () => {
     it('should approve suggestion', async () => {
       const { updateSkillSuggestionStatus } = await importModule();
 
-      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce({
+      const sug = {
         id: 'sug-1', user_id: 'user-1', skill_name: 'Skill', skill_description: 'Desc',
-        suggested_by: 'User', times_requested: 1, status: 'approved',
+        category_name: 'Tech', suggested_by: 'User', times_requested: 1, status: 'approved',
         created_at: '2025-01-01', updated_at: '2025-01-02',
-      });
+      };
+      mockGetSkillSuggestionById.mockResolvedValueOnce(sug);
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(sug);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetAllCategoriesRepo.mockResolvedValueOnce([{ id: 'cat-1', name: 'Tech', is_active: true }]);
+      mockCreateSkillRepo.mockResolvedValueOnce({ id: 'skill-1', name: 'Skill' });
+      mockGetUserCustomSkills.mockResolvedValueOnce([]);
 
       const result = await updateSkillSuggestionStatus('sug-1', 'approved');
 
@@ -723,11 +758,13 @@ describe('User Custom Skill Service', () => {
     it('should reject suggestion', async () => {
       const { updateSkillSuggestionStatus } = await importModule();
 
-      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce({
+      const sug = {
         id: 'sug-1', user_id: 'user-1', skill_name: 'Skill', skill_description: 'Desc',
         suggested_by: 'User', times_requested: 1, status: 'rejected',
         created_at: '2025-01-01', updated_at: '2025-01-02',
-      });
+      };
+      mockGetSkillSuggestionById.mockResolvedValueOnce(sug);
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(sug);
 
       const result = await updateSkillSuggestionStatus('sug-1', 'rejected');
 
@@ -737,7 +774,7 @@ describe('User Custom Skill Service', () => {
     it('should fail when suggestion not found', async () => {
       const { updateSkillSuggestionStatus } = await importModule();
 
-      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(null);
+      mockGetSkillSuggestionById.mockResolvedValueOnce(null);
 
       const result = await updateSkillSuggestionStatus('nonexistent', 'approved');
 
@@ -748,7 +785,7 @@ describe('User Custom Skill Service', () => {
     it('should handle repository errors', async () => {
       const { updateSkillSuggestionStatus } = await importModule();
 
-      mockUpdateSkillSuggestionStatus.mockRejectedValueOnce(new Error('DB error'));
+      mockGetSkillSuggestionById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await updateSkillSuggestionStatus('sug-1', 'approved');
 

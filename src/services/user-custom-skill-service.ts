@@ -14,8 +14,17 @@ import { generateId } from '../utils/id.js';
 import { normalizeSkillName } from '../utils/skill-utils.js';
 import { logger } from '../config/logger.js';
 import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
+import { skillCategoryRepository } from '../repositories/skill-category-repository.js';
+import { addSkillsToProfile } from './freelancer-profile-service.js';
+import { skillCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+
+function clearSkillCache(): void {
+  if (typeof skillCache?.clear === 'function') {
+    skillCache.clear();
+  }
+}
 
 // Anti-spam: a user may hold at most this many custom skills, so the global
 // suggestion queue cannot be flooded by one account.
@@ -254,6 +263,13 @@ async function handleSkillSuggestion(
     // when this user hasn't already requested it, so deleting and re-creating
     // the same skill cannot inflate the suggestion's popularity.
     await skillSuggestionRepository.recordSuggestionRequest(existingSuggestion.id, userId);
+
+    // If the suggestion is not currently pending (e.g. was previously approved/rejected,
+    // but the skill is still missing from the global taxonomy), re-open it as 'pending'
+    // so administrators can review and approve it into the taxonomy.
+    if (existingSuggestion.status !== 'pending') {
+      await skillSuggestionRepository.updateSkillSuggestionStatus(existingSuggestion.id, 'pending');
+    }
   } else {
     const suggestionEntity: Omit<SkillSuggestionEntity, 'created_at' | 'updated_at'> = {
       id: generateId(),
@@ -276,18 +292,156 @@ async function handleSkillSuggestion(
 
 export async function getPendingSkillSuggestions(): Promise<SkillSuggestion[]> {
   const entities = await skillSuggestionRepository.getPendingSkillSuggestions();
+
+  // Self-healing: if any suggestion was previously marked 'approved' but never made
+  // it into the global skill taxonomy (e.g. from prior versions before taxonomy persistence),
+  // re-open it as 'pending' so administrators can review and approve it into the taxonomy.
+  try {
+    if (typeof (skillSuggestionRepository as any).fetchAll === 'function') {
+      const allSuggestions = await (skillSuggestionRepository as any).fetchAll([]);
+      for (const sug of allSuggestions) {
+        if (sug && sug.status === 'approved') {
+          const globalMatch = await skillRepository.getSkillByNameNormalized(sug.skill_name);
+          if (!globalMatch) {
+            await skillSuggestionRepository.updateSkillSuggestionStatus(sug.id, 'pending');
+            if (!entities.some((e) => e.id === sug.id)) {
+              entities.push({ ...sug, status: 'pending' });
+            }
+          }
+        }
+      }
+    }
+  } catch (healError) {
+    logger.debug('Suggestion self-healing check skipped', { error: healError });
+  }
+
   return entities.map(mapSkillSuggestionFromEntity);
 }
 
 export async function updateSkillSuggestionStatus(
   id: string,
-  status: 'approved' | 'rejected'
+  status: 'approved' | 'rejected',
+  categoryId?: string
 ): Promise<ServiceResult<SkillSuggestion>> {
   try {
+    const existing = await (typeof skillSuggestionRepository.getSkillSuggestionById === 'function'
+      ? skillSuggestionRepository.getSkillSuggestionById(id)
+      : (skillSuggestionRepository as any).getById(id));
+
+    if (!existing) {
+      return errorResult('SUGGESTION_NOT_FOUND', 'Skill suggestion not found');
+    }
+
     const updatedEntity = await skillSuggestionRepository.updateSkillSuggestionStatus(id, status);
     if (!updatedEntity) {
       return errorResult('SUGGESTION_NOT_FOUND', 'Skill suggestion not found');
     }
+
+    if (status === 'approved') {
+      const skillName = existing.skill_name.trim();
+      const skillDesc = existing.skill_description?.trim() || `Skill for ${skillName}`;
+
+      // 1. Add to global skill taxonomy if it does not already exist
+      try {
+        const globalMatch = await skillRepository.getSkillByNameNormalized(skillName);
+        if (!globalMatch) {
+          let targetCategoryId = categoryId;
+          const allCategories = await skillCategoryRepository.getAllCategories();
+
+          if (targetCategoryId) {
+            const exists = allCategories.some((c) => c.id === targetCategoryId);
+            if (!exists) targetCategoryId = undefined;
+          }
+
+          if (!targetCategoryId && existing.category_name?.trim()) {
+            const matchedCategory = await skillCategoryRepository.getCategoryByName(existing.category_name.trim());
+            if (matchedCategory) {
+              targetCategoryId = matchedCategory.id;
+            } else {
+              const newCategory = await skillCategoryRepository.createCategory({
+                id: generateId(),
+                name: existing.category_name.trim(),
+                description: `Skills related to ${existing.category_name.trim()}`,
+                is_active: true,
+              });
+              targetCategoryId = newCategory.id;
+            }
+          }
+
+          if (!targetCategoryId) {
+            const fallbackCategory =
+              allCategories.find((c) => c.is_active && (c.name.toLowerCase() === 'general' || c.name.toLowerCase() === 'other')) ||
+              allCategories.find((c) => c.is_active);
+
+            if (fallbackCategory) {
+              targetCategoryId = fallbackCategory.id;
+            } else {
+              const generalCategory = await skillCategoryRepository.createCategory({
+                id: generateId(),
+                name: 'General',
+                description: 'General skills',
+                is_active: true,
+              });
+              targetCategoryId = generalCategory.id;
+            }
+          }
+
+          await skillRepository.createSkill({
+            id: generateId(),
+            category_id: targetCategoryId,
+            name: skillName,
+            description: skillDesc,
+            is_active: true,
+          });
+
+          clearSkillCache();
+        }
+      } catch (taxError) {
+        logger.error('Failed to add approved suggestion to global skill taxonomy', taxError, {
+          suggestionId: id,
+          skillName,
+        });
+      }
+
+      // 2. Mark custom skills approved and add to freelancer profile for all requesters
+      const requesterIds = new Set<string>();
+      if (existing.user_id) requesterIds.add(existing.user_id);
+      if (Array.isArray(existing.requester_ids)) {
+        for (const reqId of existing.requester_ids) {
+          if (reqId) requesterIds.add(reqId);
+        }
+      }
+
+      for (const reqId of requesterIds) {
+        // Update user custom skills
+        try {
+          const userSkills = await userCustomSkillRepository.getUserCustomSkills(reqId);
+          const matchingSkills = userSkills.filter(
+            (s) => normalizeSkillName(s.name) === normalizeSkillName(skillName)
+          );
+          for (const s of matchingSkills) {
+            await userCustomSkillRepository.updateUserCustomSkill(s.id, reqId, { is_approved: true });
+          }
+        } catch (customError) {
+          logger.warn('Failed to update custom skill approval status for requester', {
+            reqId,
+            skillName,
+            error: customError,
+          });
+        }
+
+        // Add to freelancer profile
+        try {
+          await addSkillsToProfile(reqId, [{
+            name: skillName,
+            yearsOfExperience: 1,
+          }]);
+        } catch {
+          // Expected to fail or skip if requester is an employer or does not have a freelancer profile
+        }
+      }
+    }
+
     return successResult(mapSkillSuggestionFromEntity(updatedEntity));
   } catch (error) {
     /* istanbul ignore next */
@@ -298,10 +452,11 @@ export async function updateSkillSuggestionStatus(
 export async function suggestSkill(
   userId: string,
   userName: string,
-  input: { name: string; description: string; categoryName?: string }
+  input: { name: string; description: string; categoryName?: string; yearsOfExperience?: number }
 ): Promise<ServiceResult<{ message: string }>> {
   const trimmedName = input.name.trim();
   const trimmedDesc = input.description.trim();
+  const years = input.yearsOfExperience ?? 1;
 
   let globalMatch: SkillEntity | null = null;
   try {
@@ -318,9 +473,47 @@ export async function suggestSkill(
     await handleSkillSuggestion(userId, userName, {
       name: trimmedName,
       description: trimmedDesc,
-      yearsOfExperience: 0,
+      yearsOfExperience: years,
       categoryName: input.categoryName,
     });
+
+    // Also auto-add custom skill for the requesting user so they have it right away
+    try {
+      const existingUserSkills = await userCustomSkillRepository.getUserCustomSkills(userId);
+      const duplicateSkill = existingUserSkills.find(
+        (s) => normalizeSkillName(s.name) === normalizeSkillName(trimmedName)
+      );
+
+      if (!duplicateSkill && existingUserSkills.length < MAX_USER_CUSTOM_SKILLS) {
+        await userCustomSkillRepository.createUserCustomSkill({
+          id: generateId(),
+          user_id: userId,
+          name: trimmedName,
+          description: trimmedDesc,
+          years_of_experience: years,
+          category_name: input.categoryName?.trim(),
+          is_approved: false,
+          suggested_for_global: true,
+        });
+      }
+    } catch (customSkillError) {
+      logger.warn('Failed to auto-create user custom skill on suggestion', {
+        userId,
+        skillName: trimmedName,
+        error: customSkillError,
+      });
+    }
+
+    // Also add to freelancer profile if the user has a freelancer profile
+    try {
+      await addSkillsToProfile(userId, [{
+        name: trimmedName,
+        yearsOfExperience: years,
+      }]);
+    } catch {
+      // Ignored if requester is an employer or has no freelancer profile
+    }
+
     return successResult({ message: 'Skill suggestion submitted for administrator review.' });
   } catch (error) {
     return errorResult('SUGGESTION_FAILED', 'Failed to submit skill suggestion', [error instanceof Error ? error.message : 'Unknown error']);

@@ -175,6 +175,100 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(as
 }));
 
 router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+  const contentType = req.headers['content-type'] || '';
+  if (contentType.includes('multipart/form-data')) {
+    return handleMultipartPortfolioUpdate(req, res);
+  } else {
+    return handleJsonPortfolioUpdate(req, res);
+  }
+}));
+
+async function handleMultipartPortfolioUpdate(req: Request, res: Response) {
+  const middleware = uploadPortfolioImages;
+  let index = 0;
+  const executeMiddleware = async (): Promise<void> => {
+    if (index >= middleware.length) {
+      await processMultipartPortfolioUpdate(req, res);
+      return;
+    }
+    const currentMiddleware = middleware[index++];
+    if (!currentMiddleware) return;
+    await new Promise<void>((resolve, reject) => {
+      currentMiddleware(req, res, (err: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    await executeMiddleware();
+  };
+
+  try {
+    await executeMiddleware();
+  } catch (error: any) {
+    const requestId = getRequestId(req);
+    sendErrorResponse(res, 400, 'FILE_UPLOAD_ERROR', error.message || 'File upload failed', { requestId });
+  }
+}
+
+async function processMultipartPortfolioUpdate(req: Request, res: Response) {
+  const userId = req.user?.userId;
+  const portfolioId = req.params['id'] ?? '';
+  const requestId = getRequestId(req);
+  const files = (req.files as Express.Multer.File[]) || [];
+  const { title, description, projectUrl, skills, completedAt, existingImages } = req.body;
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  let finalImages: any[] = [];
+  if (existingImages) {
+    try {
+      finalImages = typeof existingImages === 'string' ? JSON.parse(existingImages) : existingImages;
+      if (!Array.isArray(finalImages)) finalImages = [];
+    } catch {
+      finalImages = [];
+    }
+  }
+
+  if (files.length > 0) {
+    const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PORTFOLIO_IMAGES, userId);
+    const failedUploads = uploadResults.filter(r => !r.success);
+    if (failedUploads.length > 0) {
+      const successfulUploads = uploadResults.filter(r => r.success && r.metadata).map(r => r.metadata!);
+      if (successfulUploads.length > 0) {
+        await cleanupUploadedFiles(successfulUploads, STORAGE_BUCKETS.PORTFOLIO_IMAGES);
+      }
+      sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
+      return;
+    }
+    finalImages = [...finalImages, ...uploadResults.map(r => r.metadata!)];
+  }
+
+  const updates: Record<string, any> = {};
+  if (title) updates.title = title;
+  if (description) updates.description = description;
+  if (projectUrl !== undefined) updates.projectUrl = projectUrl;
+  if (skills !== undefined) {
+    updates.skills = typeof skills === 'string' ? skills.split(',').map((s: string) => s.trim()).filter(Boolean) : skills;
+  }
+  if (completedAt !== undefined) updates.completedAt = completedAt;
+  if (req.body.existingImages !== undefined || files.length > 0) {
+    updates.images = finalImages;
+  }
+
+  const result = await updatePortfolioItem(portfolioId, userId, updates);
+  if (!result.success) {
+    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}
+
+async function handleJsonPortfolioUpdate(req: Request, res: Response) {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -194,7 +288,7 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
   }
 
   res.status(200).json(result.data);
-}));
+}
 
 router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
