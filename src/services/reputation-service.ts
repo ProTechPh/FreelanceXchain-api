@@ -64,6 +64,7 @@ export type WorkHistoryEntry = {
   completedAt: string;
   rating?: number;
   ratingComment?: string;
+  transactionHash?: string;
 };
 
 type RatingResult = {
@@ -506,6 +507,24 @@ export async function getWorkHistory(
     const reviews = await reviewRepository.findAllByRevieweeId(userId);
     const reviewsByContractId = new Map(reviews.map((r) => [r.contract_id, r]));
 
+    const txHashMap = new Map<string, string>();
+    try {
+      const bcRatings = await blockchainRatingRepository.findByRatee(userId);
+      for (const bcr of bcRatings.items) {
+        if (bcr.transaction_hash) {
+          if (bcr.contract_id && bcr.rater_id) {
+            txHashMap.set(`${bcr.contract_id}:${bcr.rater_id}`, bcr.transaction_hash);
+          }
+          if (bcr.contract_id) {
+            txHashMap.set(bcr.contract_id, bcr.transaction_hash);
+          }
+          txHashMap.set(bcr.id, bcr.transaction_hash);
+        }
+      }
+    } catch {
+      // Ignore if blockchain rating lookup fails
+    }
+
     const uniqueProjectIds = [...new Set(completedContracts.map(c => c.project_id).filter(Boolean))];
     const projectTitleMap = new Map<string, string>();
 
@@ -538,6 +557,13 @@ export async function getWorkHistory(
       const projectTitle = projectTitleMap.get(contract.projectId) ?? 'Unknown Project';
 
       const receivedRating = reviewsByContractId.get(contract.id);
+      const txHash =
+        (receivedRating &&
+          (txHashMap.get(`${receivedRating.contract_id}:${receivedRating.reviewer_id}`) ||
+            txHashMap.get(receivedRating.contract_id) ||
+            txHashMap.get(receivedRating.id))) ||
+        txHashMap.get(contract.id);
+
       const workEntry: WorkHistoryEntry = {
         contractId: contract.id,
         projectId: contract.projectId,
@@ -550,6 +576,9 @@ export async function getWorkHistory(
         if (receivedRating.comment) {
           workEntry.ratingComment = receivedRating.comment;
         }
+      }
+      if (txHash) {
+        workEntry.transactionHash = txHash;
       }
       return workEntry;
     });
