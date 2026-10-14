@@ -318,6 +318,116 @@ export async function getPendingSkillSuggestions(): Promise<SkillSuggestion[]> {
   return entities.map(mapSkillSuggestionFromEntity);
 }
 
+async function resolveTargetCategoryId(
+  preferredCategoryId: string | undefined,
+  suggestedCategoryName: string | undefined
+): Promise<string> {
+  const allCategories = await skillCategoryRepository.getAllCategories();
+
+  if (preferredCategoryId && allCategories.some((c) => c.id === preferredCategoryId)) {
+    return preferredCategoryId;
+  }
+
+  const categoryName = suggestedCategoryName?.trim();
+  if (categoryName) {
+    const matchedCategory = await skillCategoryRepository.getCategoryByName(categoryName);
+    if (matchedCategory) {
+      return matchedCategory.id;
+    }
+    const newCategory = await skillCategoryRepository.createCategory({
+      id: generateId(),
+      name: categoryName,
+      description: `Skills related to ${categoryName}`,
+      is_active: true,
+    });
+    return newCategory.id;
+  }
+
+  const fallbackCategory =
+    allCategories.find((c) => c.is_active && (c.name.toLowerCase() === 'general' || c.name.toLowerCase() === 'other')) ||
+    allCategories.find((c) => c.is_active);
+
+  if (fallbackCategory) {
+    return fallbackCategory.id;
+  }
+
+  const generalCategory = await skillCategoryRepository.createCategory({
+    id: generateId(),
+    name: 'General',
+    description: 'General skills',
+    is_active: true,
+  });
+  return generalCategory.id;
+}
+
+async function promoteToGlobalTaxonomy(
+  suggestionId: string,
+  existing: SkillSuggestionEntity,
+  categoryId?: string
+): Promise<void> {
+  const skillName = existing.skill_name.trim();
+  const skillDesc = existing.skill_description?.trim() || `Skill for ${skillName}`;
+  try {
+    const globalMatch = await skillRepository.getSkillByNameNormalized(skillName);
+    if (!globalMatch) {
+      const targetCategoryId = await resolveTargetCategoryId(categoryId, existing.category_name);
+      await skillRepository.createSkill({
+        id: generateId(),
+        category_id: targetCategoryId,
+        name: skillName,
+        description: skillDesc,
+        is_active: true,
+      });
+      clearSkillCache();
+    }
+  } catch (taxError) {
+    logger.error('Failed to add approved suggestion to global skill taxonomy', taxError, {
+      suggestionId,
+      skillName,
+    });
+  }
+}
+
+async function syncApprovedSkillToRequesters(
+  existing: SkillSuggestionEntity,
+  skillName: string
+): Promise<void> {
+  const requesterIds = new Set<string>();
+  if (existing.user_id) requesterIds.add(existing.user_id);
+  if (Array.isArray(existing.requester_ids)) {
+    for (const reqId of existing.requester_ids) {
+      if (reqId) requesterIds.add(reqId);
+    }
+  }
+
+  for (const reqId of requesterIds) {
+    try {
+      const userSkills = await userCustomSkillRepository.getUserCustomSkills(reqId);
+      const matchingSkills = userSkills.filter(
+        (s) => normalizeSkillName(s.name) === normalizeSkillName(skillName)
+      );
+      for (const s of matchingSkills) {
+        await userCustomSkillRepository.updateUserCustomSkill(s.id, reqId, { is_approved: true });
+      }
+    } catch (customError) {
+      logger.warn('Failed to update custom skill approval status for requester', {
+        reqId,
+        skillName,
+        error: customError,
+      });
+    }
+
+    try {
+      await addSkillsToProfile(reqId, [{
+        name: skillName,
+        yearsOfExperience: 1,
+      }]);
+    } catch {
+      // Expected to fail or skip if requester is an employer or does not have a freelancer profile
+    }
+  }
+}
+
 export async function updateSkillSuggestionStatus(
   id: string,
   status: 'approved' | 'rejected',
@@ -339,107 +449,9 @@ export async function updateSkillSuggestionStatus(
 
     if (status === 'approved') {
       const skillName = existing.skill_name.trim();
-      const skillDesc = existing.skill_description?.trim() || `Skill for ${skillName}`;
 
-      // 1. Add to global skill taxonomy if it does not already exist
-      try {
-        const globalMatch = await skillRepository.getSkillByNameNormalized(skillName);
-        if (!globalMatch) {
-          let targetCategoryId = categoryId;
-          const allCategories = await skillCategoryRepository.getAllCategories();
-
-          if (targetCategoryId) {
-            const exists = allCategories.some((c) => c.id === targetCategoryId);
-            if (!exists) targetCategoryId = undefined;
-          }
-
-          if (!targetCategoryId && existing.category_name?.trim()) {
-            const matchedCategory = await skillCategoryRepository.getCategoryByName(existing.category_name.trim());
-            if (matchedCategory) {
-              targetCategoryId = matchedCategory.id;
-            } else {
-              const newCategory = await skillCategoryRepository.createCategory({
-                id: generateId(),
-                name: existing.category_name.trim(),
-                description: `Skills related to ${existing.category_name.trim()}`,
-                is_active: true,
-              });
-              targetCategoryId = newCategory.id;
-            }
-          }
-
-          if (!targetCategoryId) {
-            const fallbackCategory =
-              allCategories.find((c) => c.is_active && (c.name.toLowerCase() === 'general' || c.name.toLowerCase() === 'other')) ||
-              allCategories.find((c) => c.is_active);
-
-            if (fallbackCategory) {
-              targetCategoryId = fallbackCategory.id;
-            } else {
-              const generalCategory = await skillCategoryRepository.createCategory({
-                id: generateId(),
-                name: 'General',
-                description: 'General skills',
-                is_active: true,
-              });
-              targetCategoryId = generalCategory.id;
-            }
-          }
-
-          await skillRepository.createSkill({
-            id: generateId(),
-            category_id: targetCategoryId,
-            name: skillName,
-            description: skillDesc,
-            is_active: true,
-          });
-
-          clearSkillCache();
-        }
-      } catch (taxError) {
-        logger.error('Failed to add approved suggestion to global skill taxonomy', taxError, {
-          suggestionId: id,
-          skillName,
-        });
-      }
-
-      // 2. Mark custom skills approved and add to freelancer profile for all requesters
-      const requesterIds = new Set<string>();
-      if (existing.user_id) requesterIds.add(existing.user_id);
-      if (Array.isArray(existing.requester_ids)) {
-        for (const reqId of existing.requester_ids) {
-          if (reqId) requesterIds.add(reqId);
-        }
-      }
-
-      for (const reqId of requesterIds) {
-        // Update user custom skills
-        try {
-          const userSkills = await userCustomSkillRepository.getUserCustomSkills(reqId);
-          const matchingSkills = userSkills.filter(
-            (s) => normalizeSkillName(s.name) === normalizeSkillName(skillName)
-          );
-          for (const s of matchingSkills) {
-            await userCustomSkillRepository.updateUserCustomSkill(s.id, reqId, { is_approved: true });
-          }
-        } catch (customError) {
-          logger.warn('Failed to update custom skill approval status for requester', {
-            reqId,
-            skillName,
-            error: customError,
-          });
-        }
-
-        // Add to freelancer profile
-        try {
-          await addSkillsToProfile(reqId, [{
-            name: skillName,
-            yearsOfExperience: 1,
-          }]);
-        } catch {
-          // Expected to fail or skip if requester is an employer or does not have a freelancer profile
-        }
-      }
+      await promoteToGlobalTaxonomy(id, existing, categoryId);
+      await syncApprovedSkillToRequesters(existing, skillName);
     }
 
     return successResult(mapSkillSuggestionFromEntity(updatedEntity));
