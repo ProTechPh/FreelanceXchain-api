@@ -273,34 +273,35 @@ export async function createProject(
 
 async function notifyMatchedFreelancers(project: ProjectEntity): Promise<void> {
   try {
-    // No Pro gate here, and that is deliberate rather than an oversight.
-    // The priority-matching boost lives inside getFreelancerRecommendations,
-    // not in route middleware, so this internal caller inherits it: Pro
-    // freelancers are likelier to make this top-5 and so get told about a new
-    // matching project first. That IS the priority-matching perk. The gate on
-    // /api/matching/* controls who can PULL recommendations on demand; the
-    // boost is a ranking property of the data and applies on every path.
+    // Priority matching ("matched to new projects first"): every qualifying
+    // freelancer in the top 5 is notified as before, plus any qualifying Pro
+    // freelancer further down the top 10, and Pro freelancers are notified
+    // first. Scores are untouched, so no Free freelancer loses a notification
+    // and the employer's ranking is unaffected.
     // Fan-out itself is free — the posting employer is not checked for Pro.
-    const recResult = await getFreelancerRecommendations(project.id, 5);
+    const recResult = await getFreelancerRecommendations(project.id, 10);
     if (!recResult.success || recResult.data.length === 0) return;
 
-    for (const rec of recResult.data) {
-      if (rec.combinedScore >= 50 && rec.freelancerId) {
-        await notificationRepository.createNotification({
-          id: generateId(),
-          user_id: rec.freelancerId,
-          type: 'project_match',
-          title: 'New Matching Project Posted!',
-          message: `A new project matching your skills was posted: "${project.title}" (${project.budget} ETH)`,
-          data: {
-            projectId: project.id,
-            matchScore: rec.matchScore,
-            combinedScore: rec.combinedScore,
-            matchedSkills: rec.matchedSkills,
-          },
-          is_read: false,
-        });
-      }
+    const qualifying = recResult.data.filter((rec) => rec.combinedScore >= 50 && rec.freelancerId);
+    const recipients = qualifying
+      .filter((rec, index) => index < 5 || rec.isPro)
+      .sort((a, b) => Number(Boolean(b.isPro)) - Number(Boolean(a.isPro)));
+
+    for (const rec of recipients) {
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: rec.freelancerId,
+        type: 'project_match',
+        title: 'New Matching Project Posted!',
+        message: `A new project matching your skills was posted: "${project.title}" (${project.budget} ETH)`,
+        data: {
+          projectId: project.id,
+          matchScore: rec.matchScore,
+          combinedScore: rec.combinedScore,
+          matchedSkills: rec.matchedSkills,
+        },
+        is_read: false,
+      });
     }
   } catch (err) {
     logger.warn('Error in notifyMatchedFreelancers', {
