@@ -43,6 +43,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: jest.fn((id: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/.test(id) && !id.startsWith('-')),
 }));
 
 const router = (await import('../../routes/payment-routes.js')).default;
@@ -546,11 +548,11 @@ describe('payment-routes - UUID validation for contractId query param', () => {
     expect(res.body.error.message).toContain('valid UUID');
   });
 
-  it('L360-363: POST dispute rejects invalid contractId UUID', async () => {
+  it('L360-363: POST dispute rejects invalid contractId ID', async () => {
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=not-a-uuid').send({ reason: 'test' });
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=-invalid-id').send({ reason: 'test' });
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain('valid UUID');
+    expect(res.body.error.message).toContain('valid ID');
   });
 
   it('L186: POST complete catch block delegates to next(error)', async () => {

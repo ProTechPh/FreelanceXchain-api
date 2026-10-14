@@ -95,6 +95,7 @@ export const config = {
       disputeEvidence: getEnvVar('APPWRITE_DISPUTE_EVIDENCE_BUCKET', 'dispute-evidence'),
       portfolioImages: getEnvVar('APPWRITE_PORTFOLIO_IMAGES_BUCKET', 'portfolio-images'),
       milestoneDeliverables: getEnvVar('APPWRITE_MILESTONE_DELIVERABLES_BUCKET', 'milestone-deliverables'),
+      contractDocuments: getEnvVar('APPWRITE_CONTRACT_DOCUMENTS_BUCKET', 'contract-documents'),
     },
   },
   llm: {

@@ -21,6 +21,7 @@ export const BUCKETS = {
   DISPUTE_EVIDENCE: config.appwrite.buckets.disputeEvidence,
   PORTFOLIO_IMAGES: config.appwrite.buckets.portfolioImages,
   MILESTONE_DELIVERABLES: config.appwrite.buckets.milestoneDeliverables,
+  CONTRACT_DOCUMENTS: config.appwrite.buckets.contractDocuments,
 } as const;
 
 export type BucketId = typeof BUCKETS[keyof typeof BUCKETS];

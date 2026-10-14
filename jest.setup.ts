@@ -14,6 +14,7 @@ dotenv.config({ path: '.env.test' });
 
 // Ensure test environment is set
 process.env.NODE_ENV = 'test';
+process.env.BLOCKCHAIN_MODE = 'simulated';
 delete process.env.TURNSTILE_SECRET;
 delete process.env.REDIS_URL;
 process.env.REDIS_HOST = '127.0.0.1';
@@ -345,6 +346,7 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
     DISPUTE_EVIDENCE: 'dispute-evidence',
     PORTFOLIO_IMAGES: 'portfolio-images',
     MILESTONE_DELIVERABLES: 'milestone-deliverables',
+    CONTRACT_DOCUMENTS: 'contract-documents',
   },
   createUserClient: jest.fn().mockReturnValue({
     setEndpoint: jest.fn().mockReturnThis(),

@@ -39,6 +39,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
 const mockGetContractById = jest.fn<any>();
@@ -455,6 +456,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -541,6 +543,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -626,6 +629,7 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({

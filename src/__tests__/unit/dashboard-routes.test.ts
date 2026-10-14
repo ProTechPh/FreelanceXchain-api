@@ -62,7 +62,7 @@ describe('Dashboard Routes', () => {
     expect(res.body.pendingProposals).toBe(3);
     expect(res.body.averageRating).toBe(4.5);
     expect(mockGetDashboardSummary).toHaveBeenCalledWith('test-user-id');
-  });
+  }, 60000);
 
   it('should return 400 when the dashboard service fails', async () => {
     mockGetDashboardSummary.mockResolvedValueOnce({

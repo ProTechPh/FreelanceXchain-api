@@ -929,7 +929,7 @@ describe('Storage Uploader - getFileQuota', () => {
     mockListFiles.mockReset();
   });
 
-  it('should sum usage across both personal buckets', async () => {
+  it('should sum usage across all managed user buckets', async () => {
     mockListFiles
       .mockResolvedValueOnce({
         files: [
@@ -939,7 +939,8 @@ describe('Storage Uploader - getFileQuota', () => {
       })
       .mockResolvedValueOnce({
         files: [{ name: 'user-1_c.pdf', $id: 'f3', sizeOriginal: 7000 }],
-      });
+      })
+      .mockResolvedValue({ files: [] });
 
     const result = await getFileQuota('user-1');
 
@@ -950,14 +951,14 @@ describe('Storage Uploader - getFileQuota', () => {
       expect(result.limit).toBe(100 * 1024 * 1024);
       expect(result.percentage).toBeCloseTo((10000 / (100 * 1024 * 1024)) * 100, 5);
     }
-    // One listFiles call per personal bucket
-    expect(mockListFiles).toHaveBeenCalledTimes(2);
+    // One listFiles call per managed bucket
+    expect(mockListFiles).toHaveBeenCalledTimes(5);
   });
 
   it('should fall back to the generic message when the failure carries an empty error', async () => {
     mockListFiles
       .mockRejectedValueOnce('')
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         files: [],
       });
 
@@ -974,7 +975,7 @@ describe('Storage Uploader - getFileQuota', () => {
       .mockResolvedValueOnce({
         files: [{ name: 'user-2_other.png', $id: 'f1', sizeOriginal: 999999 }],
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         files: [],
       });
 
@@ -992,7 +993,7 @@ describe('Storage Uploader - getFileQuota', () => {
       .mockResolvedValueOnce({
         files: [{ name: 'user-1_big.bin', $id: 'f1', sizeOriginal: 200 * 1024 * 1024 }],
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         files: [],
       });
 
@@ -1007,7 +1008,7 @@ describe('Storage Uploader - getFileQuota', () => {
   it('should return a failure when a bucket listing fails', async () => {
     mockListFiles
       .mockRejectedValueOnce(new Error('storage down'))
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         files: [],
       });
 
@@ -1025,7 +1026,7 @@ describe('Storage Uploader - getFileQuota', () => {
       .mockResolvedValueOnce({
         files: [{ name: 'user-1_a.png', $id: 'f1' }],
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         files: [],
       });
 

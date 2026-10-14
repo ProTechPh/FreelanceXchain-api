@@ -96,9 +96,9 @@ describe('Transaction Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .get('/api/transactions/invalid-uuid')
+        .get('/api/transactions/-invalid-id')
         .set('Authorization', 'Bearer mock-token');
 
       expect(response.status).toBe(400);
@@ -120,9 +120,9 @@ describe('Transaction Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .get('/api/transactions/contract/invalid-uuid')
+        .get('/api/transactions/contract/-invalid-id')
         .set('Authorization', 'Bearer mock-token');
 
       expect(response.status).toBe(400);

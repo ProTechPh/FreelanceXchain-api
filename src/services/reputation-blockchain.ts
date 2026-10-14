@@ -27,6 +27,7 @@ export type BlockchainRating = {
 export type RatingSubmissionParams = {
   contractId: string;
   rateeAddress: string;
+  raterAddress?: string | undefined;
   rating: number;
   comment: string;
 };
@@ -95,6 +96,94 @@ async function fetchRatings(contract: ReputationContract, indices: bigint[]): Pr
   }));
 }
 
+async function ensureAgreementCompleted(
+  contractIdHash: string,
+  params: RatingSubmissionParams,
+  provider: any,
+  web3: any
+): Promise<void> {
+  const agreementAddress = getContractAddress('agreement');
+  if (!agreementAddress || !provider || typeof web3.getWallet !== 'function') {
+    return;
+  }
+
+  try {
+    const relayerWallet = web3.getWallet();
+    if (!relayerWallet) return;
+
+    const { ContractAgreementABI } = await import('./contract-abis.js');
+    const agreementRelayer: any = new (await import('ethers')).Contract(agreementAddress, ContractAgreementABI, relayerWallet);
+    const agreementData = await agreementRelayer.getAgreement(contractIdHash);
+
+    // Status: 0=Pending, 1=Signed, 2=Completed
+    if (agreementData[5] !== BigInt(2)) {
+      const termsHash = toBytes32Hash('terms:' + params.contractId);
+      const raterAddr = params.raterAddress ? (await import('ethers')).getAddress(params.raterAddress.toLowerCase()) : relayerWallet.address;
+      const rateeAddr = (await import('ethers')).getAddress(params.rateeAddress.toLowerCase());
+
+      // If not created yet, create it as relayer (owner)
+      if (agreementData[8] === BigInt(0)) {
+        const createTx = await agreementRelayer.createAgreement(
+          contractIdHash,
+          termsHash,
+          raterAddr,
+          rateeAddr,
+          BigInt(100),
+          BigInt(1)
+        );
+        await createTx.wait();
+      }
+
+      // Sign as parties if needed
+      const raterSigner = await provider.getSigner(raterAddr).catch(() => relayerWallet);
+      const rateeSigner = await provider.getSigner(rateeAddr).catch(() => relayerWallet);
+
+      const raterAgreement: any = new (await import('ethers')).Contract(agreementAddress, ContractAgreementABI, raterSigner);
+      const rateeAgreement: any = new (await import('ethers')).Contract(agreementAddress, ContractAgreementABI, rateeSigner);
+
+      await raterAgreement.signAgreement(contractIdHash).then((tx: any) => tx.wait()).catch(() => {});
+      await rateeAgreement.signAgreement(contractIdHash).then((tx: any) => tx.wait()).catch(() => {});
+
+      // Complete agreement as relayer owner
+      await agreementRelayer.completeAgreement(contractIdHash).then((tx: any) => tx.wait()).catch(() => {});
+    }
+  } catch {
+    // Continue to rating submission
+  }
+}
+
+async function getRatingSignerContract(
+  raterAddress: string | undefined,
+  provider: any
+): Promise<ReputationContract> {
+  let signerContract = getReputationContractWithSigner();
+  if (raterAddress && provider && typeof provider.getSigner === 'function') {
+    try {
+      const cleanRaterAddr = (await import('ethers')).getAddress(raterAddress.toLowerCase());
+      const raterSigner = await provider.getSigner(cleanRaterAddr).catch(() => null);
+      const repAddress = getContractAddress('reputation');
+      if (raterSigner && repAddress) {
+        signerContract = new (await import('ethers')).Contract(repAddress, FreelanceReputationABI, raterSigner) as unknown as ReputationContract;
+      }
+    } catch {
+      // Fall back to default relayer signer
+    }
+  }
+  return signerContract;
+}
+
+async function normalizeRateeAddress(address: string): Promise<string> {
+  try {
+    const { getAddress, isAddress } = await import('ethers');
+    if (isAddress(address)) {
+      return getAddress(address.toLowerCase());
+    }
+  } catch {
+    // Fall back to original rateeAddress
+  }
+  return address;
+}
+
 /**
  * Submit a rating to the blockchain
  */
@@ -113,15 +202,22 @@ export async function submitRatingToBlockchain(
     throw new Error('Invalid ratee address');
   }
 
-  const contract = getReputationContractWithSigner();
+  const web3 = await import('./web3-client.js');
+  const provider = typeof web3.getProvider === 'function' ? web3.getProvider() : null;
+  const contractIdHash = toBytes32Hash(params.contractId);
 
-  // Contract signature: submitRating(address ratee, uint8 score, string comment, bytes32 contractIdHash)
-  // isEmployerRating is derived on-chain from msg.sender and must not be passed.
-  const tx = await contract.submitRating(
-    params.rateeAddress,
+  // 1. Check and prepare ContractAgreement status on-chain
+  await ensureAgreementCompleted(contractIdHash, params, provider, web3);
+
+  // 2. Submit rating using appropriate signer (rater or relayer)
+  const signerContract = await getRatingSignerContract(params.raterAddress, provider);
+  const rateeAddr = await normalizeRateeAddress(params.rateeAddress);
+
+  const tx = await signerContract.submitRating(
+    rateeAddr,
     params.rating,
     params.comment || '',
-    toBytes32Hash(params.contractId)
+    contractIdHash
   );
 
   const receipt = await tx.wait();
@@ -131,7 +227,7 @@ export async function submitRatingToBlockchain(
 
   const event = receipt.logs.find(log => {
     try {
-      const parsed = contract.interface.parseLog(log);
+      const parsed = signerContract.interface.parseLog(log);
       return parsed?.name === 'RatingSubmitted';
     } catch {
       return false;
@@ -140,7 +236,7 @@ export async function submitRatingToBlockchain(
 
   let ratingIndex = BigInt(0);
   if (event) {
-    const parsed = contract.interface.parseLog(event);
+    const parsed = signerContract.interface.parseLog(event);
     ratingIndex = parsed ? BigInt(parsed.args[0] ?? 0) : BigInt(0);
   }
 

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
 import { uploadFile } from '../utils/storage-uploader.js';
@@ -123,7 +123,7 @@ function validateDeliverablesList(deliverables: unknown): { valid: boolean; erro
  *       404:
  *         description: Milestone not found
  */
-router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, validateAppwriteDocumentId(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -159,7 +159,7 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, asyncHandler(
  *       200:
  *         description: List of milestones
  */
-router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/contract/:contractId', authMiddleware, validateAppwriteDocumentId(['contractId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
     // BLF-9.1: Pass userId and userRole to enforce ownership check
@@ -219,7 +219,7 @@ const milestoneFileUpload = createFileUploadMiddleware('files', {
 router.post('/:id/upload-deliverables', 
   authMiddleware, 
   requireRole('freelancer'), 
-  validateUUID(), 
+  validateAppwriteDocumentId(), 
   fileUploadRateLimiter, 
   ...milestoneFileUpload, 
   asyncHandler(async (req: Request, res: Response) => {
@@ -292,7 +292,7 @@ router.post('/:id/upload-deliverables',
  *       200:
  *         description: Milestone submitted successfully
  */
-router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateAppwriteDocumentId(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -365,7 +365,7 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
 router.post('/:id/submit-with-files', 
   authMiddleware, 
   requireRole('freelancer'), 
-  validateUUID(), 
+  validateAppwriteDocumentId(), 
   fileUploadRateLimiter, 
   ...milestoneFileUpload, 
   asyncHandler(async (req: Request, res: Response) => {
@@ -460,7 +460,7 @@ router.post('/:id/submit-with-files',
  *       200:
  *         description: Milestone approved successfully
  */
-router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/approve', authMiddleware, requireRole('employer'), validateAppwriteDocumentId(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -520,7 +520,7 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
  *       200:
  *         description: Milestone rejected successfully
  */
-router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireRole('employer'), validateAppwriteDocumentId(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId ?? '';

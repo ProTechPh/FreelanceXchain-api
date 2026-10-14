@@ -267,6 +267,29 @@ export function isFileProxyPath(url: string): boolean {
   return FILE_PROXY_PATH.test(url);
 }
 
+function normalizeMimeType(mime: string | undefined): string {
+  return (mime ?? '').split(';')[0]!.trim().toLowerCase();
+}
+
+function isCompatibleStoredMimeType(storedMime: string | undefined, expectedMime: string | undefined): boolean {
+  const stored = normalizeMimeType(storedMime);
+  const expected = normalizeMimeType(expectedMime);
+  if (stored === expected) return true;
+  // Appwrite Storage determines file.mimeType from the filename extension rather than
+  // the upload Content-Type, and falls back to 'text/plain' or 'application/octet-stream'
+  // for formats like '.md' ('text/markdown') or '.jpg' ('image/jpeg' vs 'image/jpg').
+  if (!stored || stored === 'application/octet-stream') return true;
+  if ((stored === 'text/plain' || stored === 'text/markdown' || stored === 'text/x-markdown') &&
+      (expected === 'text/plain' || expected === 'text/markdown' || expected === 'text/csv')) {
+    return true;
+  }
+  if ((stored === 'image/jpeg' || stored === 'image/jpg') &&
+      (expected === 'image/jpeg' || expected === 'image/jpg')) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Verify that client-supplied attachment metadata references a real file in
  * the expected bucket and that the authenticated user uploaded it. Resource
@@ -275,11 +298,12 @@ export function isFileProxyPath(url: string): boolean {
 export async function validateStoredAttachmentOwnership(
   attachments: readonly FileAttachment[],
   userId: string,
-  expectedBucket: BucketId,
+  expectedBucket: BucketId | readonly string[] | string[],
 ): Promise<FileValidationError[]> {
   const results = await Promise.all(attachments.map(async (attachment, index) => {
     const match = FILE_PROXY_PARTS.exec(attachment.url);
-    if (!match || match[1] !== expectedBucket || !match[2]) {
+    const bucketAllowed = Array.isArray(expectedBucket) ? expectedBucket.includes(match?.[1] ?? '') : match?.[1] === expectedBucket;
+    if (!match || !bucketAllowed || !match[2]) {
       return {
         field: `attachments[${index}].url`,
         message: 'Attachment must be an uploaded file from the expected storage bucket',
@@ -287,11 +311,12 @@ export async function validateStoredAttachmentOwnership(
     }
 
     try {
-      const file = await storage.getFile(expectedBucket, match[2]);
+      const actualBucket = match[1] as BucketId;
+      const file = await storage.getFile(actualBucket, match[2]);
       if (!file.name.startsWith(`${userId}_`)) {
         return { field: `attachments[${index}].url`, message: 'Attachment is not owned by the authenticated user' };
       }
-      if (file.sizeOriginal !== attachment.size || file.mimeType !== attachment.mimeType) {
+      if (file.sizeOriginal !== attachment.size || !isCompatibleStoredMimeType(file.mimeType, attachment.mimeType)) {
         return { field: `attachments[${index}]`, message: 'Attachment metadata does not match the stored file' };
       }
       return null;

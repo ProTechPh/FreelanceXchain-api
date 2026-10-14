@@ -1,7 +1,7 @@
 import type { Models } from 'node-appwrite';
 import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
-import { safeJsonParse } from '../utils/index.js';
+import { safeJsonParse, parseField } from '../utils/index.js';
 
 export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'resolved' | 'cancelled';
 
@@ -15,6 +15,7 @@ export type ContractEntity = {
   base_amount: number;
   rush_fee: number;
   total_amount: number;
+  currency?: string;
   status: ContractStatus;
   created_at: string;
   updated_at: string;
@@ -39,6 +40,7 @@ export type ContractWithRelations = ContractEntity & {
     id?: string;
     title?: string | undefined;
     description?: string | undefined;
+    deadline?: string | undefined;
     milestones?: unknown[] | undefined;
   } | null;
   freelancer?: {
@@ -162,6 +164,8 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
           id: projectDoc.$id,
           title: strField(projectDoc, 'title'),
           description: strField(projectDoc, 'description'),
+          deadline: strField(projectDoc, 'deadline'),
+          milestones: parseField(docAttrs(projectDoc).milestones, []),
         } : null,
         freelancer: {
           ...mapUser(freelancerDoc),

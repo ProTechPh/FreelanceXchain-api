@@ -59,7 +59,7 @@ export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
 
 export function validateAppwriteDocumentId(paramNames: string[] = ['id']): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const requestId = (req.headers['x-request-id'] as string) ?? 'unknown';
+    const requestId = getRequestId(req);
     const errors: ValidationError[] = [];
 
     for (const paramName of paramNames) {
@@ -74,15 +74,7 @@ export function validateAppwriteDocumentId(paramNames: string[] = ['id']): Reque
     }
 
     if (errors.length > 0) {
-      res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid Appwrite document ID format',
-          details: errors,
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid Appwrite document ID format', { requestId, details: errors });
       return;
     }
 

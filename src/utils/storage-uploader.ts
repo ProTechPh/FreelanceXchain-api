@@ -517,7 +517,13 @@ export async function getFileQuota(userId: string): Promise<{
 }> {
   const DEFAULT_QUOTA_BYTES = 100 * 1024 * 1024;
 
-  const buckets: BucketId[] = [BUCKETS.PORTFOLIO_IMAGES, BUCKETS.PROPOSAL_ATTACHMENTS];
+  const buckets: BucketId[] = [
+    BUCKETS.PORTFOLIO_IMAGES,
+    BUCKETS.PROPOSAL_ATTACHMENTS,
+    BUCKETS.PROJECT_ATTACHMENTS,
+    BUCKETS.MILESTONE_DELIVERABLES,
+    BUCKETS.DISPUTE_EVIDENCE,
+  ];
   const results = await Promise.all(
     buckets.map(bucket => listUserFiles(bucket, userId))
   );
