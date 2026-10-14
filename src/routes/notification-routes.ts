@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requirePermission } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import {
+  validate,
+  validateAppwriteDocumentId,
+  isValidAppwriteDocumentId,
+  bulkNotificationActionSchema,
+} from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -10,6 +15,10 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   getUnreadCount,
+  setNotificationArchived,
+  deleteNotification,
+  bulkUpdateNotifications,
+  type BulkNotificationAction,
 } from '../services/notification-service.js';
 import { initializeSSEConnection, getSSEStats } from '../services/notification-delivery-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -39,6 +48,8 @@ const router = Router();
  *           additionalProperties: true
  *         isRead:
  *           type: boolean
+ *         isArchived:
+ *           type: boolean
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -66,7 +77,12 @@ const router = Router();
  *         name: continuationToken
  *         schema:
  *           type: string
- *         description: Token for pagination
+ *         description: Id of the last notification already loaded; returns the items after it
+ *       - in: query
+ *         name: archived
+ *         schema:
+ *           type: boolean
+ *         description: When true, returns archived notifications instead of the inbox
  *     responses:
  *       200:
  *         description: Notifications retrieved successfully
@@ -99,10 +115,12 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
     ? parseInt(req.query['maxItemCount'] as string, 10) 
     : undefined);
   const continuationToken = req.query['continuationToken'] as string | undefined;
+  const archived = req.query['archived'] === 'true';
 
   const options = {
     ...(maxItemCount && { maxItemCount }),
     ...(continuationToken && { continuationToken }),
+    archived,
   };
 
   const result = await getNotificationsByUser(userId, options);
@@ -175,8 +193,7 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, asyncHandler(async (
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: Notification ID (UUID)
+ *         description: Notification ID
  *     responses:
  *       200:
  *         description: Notification marked as read successfully
@@ -185,13 +202,15 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, asyncHandler(async (
  *             schema:
  *               $ref: '#/components/schemas/Notification'
  *       400:
- *         description: Invalid UUID format
+ *         description: Invalid notification ID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Notification not found
  */
-router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+// Appwrite-id validation rather than UUID: scheduler-created notifications
+// (saved-search matches) use Appwrite's 20-char ids, which validateUUID rejected.
+router.patch('/:id/read', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const notificationId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -253,6 +272,208 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, asyncHandler(async (re
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+function statusForNotificationError(code: string): number {
+  if (code === 'NOT_FOUND') return 404;
+  if (code === 'UNAUTHORIZED') return 403;
+  return 400;
+}
+
+function archiveHandler(archived: boolean) {
+  return asyncHandler(async (req: Request, res: Response) => {
+    const notificationId = req.params['id'] ?? '';
+    const userId = req.user?.userId;
+    const requestId = getRequestId(req);
+
+    if (!userId) {
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+      return;
+    }
+
+    const result = await setNotificationArchived(notificationId, userId, archived);
+
+    if (!result.success) {
+      sendErrorResponse(res, statusForNotificationError(result.error.code), result.error.code, result.error.message, { requestId });
+      return;
+    }
+
+    res.status(200).json(result.data);
+  });
+}
+
+/**
+ * @swagger
+ * /api/notifications/bulk:
+ *   post:
+ *     summary: Archive, restore, or delete several notifications
+ *     description: Applies one action to up to 100 of the authenticated user's notifications. Ids that do not exist or belong to another user are reported in `failed`.
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Action applied; see succeeded/failed
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+// Registered before the /:id routes so "bulk" is never read as a notification id.
+router.post('/bulk', authMiddleware, apiRateLimiter, validate(bulkNotificationActionSchema), asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const { action, ids } = req.body as { action: BulkNotificationAction; ids: string[] };
+  const invalid = ids.filter((id) => !isValidAppwriteDocumentId(id));
+  if (invalid.length > 0) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid notification ID format', {
+      requestId,
+      details: invalid.map((value) => ({ field: 'ids', message: 'must be a valid notification ID', value })),
+    });
+    return;
+  }
+
+  const result = await bulkUpdateNotifications(userId, action, ids);
+
+  if (!result.success) {
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+/**
+ * @swagger
+ * /api/notifications/{id}/archive:
+ *   patch:
+ *     summary: Archive a notification
+ *     description: Moves a notification out of the inbox. Archived notifications are excluded from the default list and the unread count.
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification archived
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Notification'
+ *       400:
+ *         description: Invalid notification ID format
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Notification belongs to another user
+ *       404:
+ *         description: Notification not found
+ */
+router.patch('/:id/archive', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), archiveHandler(true));
+
+/**
+ * @swagger
+ * /api/notifications/{id}/unarchive:
+ *   patch:
+ *     summary: Restore an archived notification
+ *     description: Moves an archived notification back into the inbox.
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification restored
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Notification'
+ *       400:
+ *         description: Invalid notification ID format
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Notification belongs to another user
+ *       404:
+ *         description: Notification not found
+ */
+router.patch('/:id/unarchive', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), archiveHandler(false));
+
+/**
+ * @swagger
+ * /api/notifications/{id}:
+ *   delete:
+ *     summary: Delete a notification
+ *     description: Permanently deletes one of the authenticated user's notifications.
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *       400:
+ *         description: Invalid notification ID format
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Notification belongs to another user
+ *       404:
+ *         description: Notification not found
+ */
+router.delete('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+  const notificationId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = await deleteNotification(notificationId, userId);
+
+  if (!result.success) {
+    sendErrorResponse(res, statusForNotificationError(result.error.code), result.error.code, result.error.message, { requestId });
     return;
   }
 

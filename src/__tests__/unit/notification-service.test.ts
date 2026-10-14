@@ -39,6 +39,9 @@ const {
   markAllNotificationsAsRead,
   getUnreadCount,
   getNotificationById,
+  setNotificationArchived,
+  deleteNotification,
+  bulkUpdateNotifications,
   notifyProposalReceived,
   notifyProposalAccepted,
   notifyProposalRejected,
@@ -611,5 +614,145 @@ describe('Notification Service - Branch Coverage', () => {
     if (result.success) {
       expect(result.data.type).toBe('dispute_resolved');
     }
+  });
+});
+
+describe('Notification Service - archive and delete', () => {
+  beforeEach(() => {
+    mockNotificationRepo.clear();
+  });
+
+  async function seed(userId = 'owner-1') {
+    const result = await createNotification({ userId, type: 'message', title: 'Hi', message: 'Hello' });
+    if (!result.success) throw new Error('seed failed');
+    return result.data;
+  }
+
+  it('new notifications start out of the archive', async () => {
+    const notification = await seed();
+    expect(notification.isArchived).toBe(false);
+  });
+
+  it('archives and restores a notification for its owner', async () => {
+    const notification = await seed();
+
+    const archived = await setNotificationArchived(notification.id, 'owner-1', true);
+    expect(archived.success).toBe(true);
+    if (archived.success) expect(archived.data.isArchived).toBe(true);
+
+    const restored = await setNotificationArchived(notification.id, 'owner-1', false);
+    expect(restored.success).toBe(true);
+    if (restored.success) expect(restored.data.isArchived).toBe(false);
+  });
+
+  it("refuses to archive another user's notification", async () => {
+    const notification = await seed();
+    const result = await setNotificationArchived(notification.id, 'intruder', true);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    expect(mockNotificationRepo.setArchived).not.toHaveBeenCalledWith(notification.id, true);
+  });
+
+  it('returns NOT_FOUND when archiving a missing notification', async () => {
+    const result = await setNotificationArchived('missing', 'owner-1', true);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns UPDATE_FAILED when the repository update fails', async () => {
+    const notification = await seed();
+    mockNotificationRepo.setArchived.mockResolvedValueOnce(null);
+    const result = await setNotificationArchived(notification.id, 'owner-1', true);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('deletes a notification for its owner', async () => {
+    const notification = await seed();
+    const result = await deleteNotification(notification.id, 'owner-1');
+    expect(result).toEqual({ success: true, data: { id: notification.id } });
+    const lookup = await getNotificationById(notification.id, 'owner-1');
+    expect(lookup.success).toBe(false);
+  });
+
+  it("refuses to delete another user's notification", async () => {
+    const notification = await seed();
+    const result = await deleteNotification(notification.id, 'intruder');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    const lookup = await getNotificationById(notification.id, 'owner-1');
+    expect(lookup.success).toBe(true);
+  });
+
+  it('returns NOT_FOUND when deleting a missing notification', async () => {
+    const result = await deleteNotification('missing', 'owner-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns DELETE_FAILED when the repository delete fails', async () => {
+    const notification = await seed();
+    mockNotificationRepo.deleteNotification.mockResolvedValueOnce(false);
+    const result = await deleteNotification(notification.id, 'owner-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('DELETE_FAILED');
+  });
+});
+
+describe('Notification Service - bulk actions', () => {
+  beforeEach(() => {
+    mockNotificationRepo.clear();
+  });
+
+  async function seedMany(userId: string, count: number) {
+    const ids: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const result = await createNotification({ userId, type: 'message', title: `N${i}`, message: 'Hello' });
+      if (result.success) ids.push(result.data.id);
+    }
+    return ids;
+  }
+
+  it('archives every owned notification', async () => {
+    const ids = await seedMany('owner-1', 3);
+    const result = await bulkUpdateNotifications('owner-1', 'archive', ids);
+    expect(result).toEqual({ success: true, data: { action: 'archive', succeeded: ids, failed: [] } });
+    for (const id of ids) {
+      const lookup = await getNotificationById(id, 'owner-1');
+      if (lookup.success) expect(lookup.data.isArchived).toBe(true);
+    }
+  });
+
+  it('restores archived notifications', async () => {
+    const ids = await seedMany('owner-1', 2);
+    await bulkUpdateNotifications('owner-1', 'archive', ids);
+    const result = await bulkUpdateNotifications('owner-1', 'unarchive', ids);
+    expect(result.success && result.data.succeeded).toEqual(ids);
+    const lookup = await getNotificationById(ids[0]!, 'owner-1');
+    if (lookup.success) expect(lookup.data.isArchived).toBe(false);
+  });
+
+  it("deletes owned notifications and leaves other users' alone", async () => {
+    const mine = await seedMany('owner-1', 2);
+    const theirs = await seedMany('owner-2', 1);
+    const result = await bulkUpdateNotifications('owner-1', 'delete', [...mine, ...theirs]);
+    expect(result.success && result.data.succeeded).toEqual(mine);
+    expect(result.success && result.data.failed).toEqual(theirs);
+    expect((await getNotificationById(theirs[0]!, 'owner-2')).success).toBe(true);
+    expect((await getNotificationById(mine[0]!, 'owner-1')).success).toBe(false);
+  });
+
+  it('reports unknown ids as failed and de-duplicates the request', async () => {
+    const [id] = await seedMany('owner-1', 1);
+    const result = await bulkUpdateNotifications('owner-1', 'archive', [id!, id!, 'missing']);
+    expect(result.success && result.data).toEqual({ action: 'archive', succeeded: [id], failed: ['missing'] });
+  });
+
+  it('reports a repository write failure as failed', async () => {
+    const ids = await seedMany('owner-1', 2);
+    mockNotificationRepo.deleteNotification.mockResolvedValueOnce(false);
+    const result = await bulkUpdateNotifications('owner-1', 'delete', ids);
+    expect(result.success && result.data.failed).toEqual([ids[0]]);
+    expect(result.success && result.data.succeeded).toEqual([ids[1]]);
   });
 });

@@ -667,6 +667,26 @@ export const sendMessageSchema: RequestSchema = {
   },
 };
 
+/** Upper bound for one bulk notification request; matches the list page size cap. */
+export const MAX_BULK_NOTIFICATION_IDS = 100;
+
+export const bulkNotificationActionSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      action: { type: 'string', enum: ['archive', 'unarchive', 'delete'], required: true },
+      ids: {
+        type: 'array',
+        minItems: 1,
+        maxItems: MAX_BULK_NOTIFICATION_IDS,
+        items: { type: 'string' },
+        required: true,
+      },
+    },
+  },
+};
+
 /** Endpoints that accept no request body: any body key is rejected. */
 export const emptyBodySchema: RequestSchema = {
   body: {

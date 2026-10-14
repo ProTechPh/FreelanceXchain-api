@@ -345,6 +345,7 @@ export function mapNotificationFromEntity(entity: NotificationEntity): Notificat
     message: entity.message,
     data: entity.data,
     isRead: entity.is_read,
+    isArchived: entity.is_archived ?? false,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };

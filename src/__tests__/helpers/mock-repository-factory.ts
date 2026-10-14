@@ -333,6 +333,17 @@ export function createMockNotificationRepository(store: Map<string, any>) {
       store.set(id, updated);
       return updated;
     }),
+    setArchived: jest.fn(async (id: string, archived: boolean) => {
+      const notification = store.get(id);
+      if (!notification) return null;
+      const updated = { ...notification, is_archived: archived, updated_at: new Date().toISOString() };
+      store.set(id, updated);
+      return updated;
+    }),
+    deleteNotification: jest.fn(async (id: string) => store.delete(id)),
+    getOwnedByIds: jest.fn(async (userId: string, ids: string[]) =>
+      ids.map((id) => store.get(id)).filter((n) => n && n.user_id === userId)
+    ),
     getNotificationsByUser: jest.fn(async (userId: string) => {
       return Array.from(store.values()).filter(n => n.user_id === userId);
     }),

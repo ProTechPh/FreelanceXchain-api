@@ -13,11 +13,23 @@ export type NotificationEntity = {
   message: string;
   data: Record<string, unknown>;
   is_read: boolean;
+  /** Absent on documents written before the attribute existed; treat as false. */
+  is_archived?: boolean;
   created_at: string;
   updated_at: string;
 };
 
 const COLLECTION_ID = 'notifications';
+
+// Documents created before `is_archived` was added carry null, not false, so
+// "active" has to match both.
+function archivedFilter(archived: boolean) {
+  return archived
+    ? Query.equal('is_archived', true)
+    : Query.or([Query.equal('is_archived', false), Query.isNull('is_archived')]);
+}
+
+export type NotificationListOptions = QueryOptions & { archived?: boolean };
 
 function mapNotification(doc: Record<string, unknown>): NotificationEntity {
   const result = fromAppwriteDoc<Record<string, unknown>>(doc);
@@ -40,9 +52,16 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
     return this.getById(id);
   }
 
-  async getNotificationsByUser(userId: string, options?: QueryOptions): Promise<PaginatedResult<NotificationEntity>> {
-    const limit = options?.limit ?? 100;
+  async getNotificationsByUser(
+    userId: string,
+    options?: NotificationListOptions
+  ): Promise<PaginatedResult<NotificationEntity> & { continuationToken?: string }> {
+    const limit = options?.limit ?? options?.maxItemCount ?? 100;
     const offset = options?.offset ?? 0;
+    // The continuation token is the id of the last item the client holds.
+    // A cursor (unlike an offset) stays correct after the client archives or
+    // deletes rows from the pages it has already loaded.
+    const cursor = options?.continuationToken;
 
     try {
       const response = await databases.listDocuments(
@@ -50,15 +69,19 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
         COLLECTION_ID,
         [
           Query.equal('user_id', userId),
+          archivedFilter(options?.archived ?? false),
           Query.orderDesc('$createdAt'),
           Query.limit(limit),
-          Query.offset(offset),
+          ...(cursor ? [Query.cursorAfter(cursor)] : [Query.offset(offset)]),
         ]
       );
+      const items = response.documents.map(mapNotification);
+      const hasMore = response.documents.length === limit;
       return {
-        items: response.documents.map(mapNotification),
-        hasMore: response.documents.length === limit,
+        items,
+        hasMore,
         total: response.total,
+        ...(hasMore && items.length > 0 ? { continuationToken: items[items.length - 1]!.id } : {}),
       };
     } catch {
       return { items: [], hasMore: false, total: 0 };
@@ -118,6 +141,39 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
     }
   }
 
+  async setArchived(id: string, archived: boolean): Promise<NotificationEntity | null> {
+    return this.update(id, { is_archived: archived });
+  }
+
+  /**
+   * The subset of `ids` that exist and belong to `userId`. Ownership is part of
+   * the query, so ids owned by someone else are indistinguishable from missing
+   * ones — a bulk request cannot probe for other users' notification ids.
+   */
+  async getOwnedByIds(userId: string, ids: string[]): Promise<NotificationEntity[]> {
+    if (ids.length === 0) return [];
+    try {
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('$id', ids),
+          Query.equal('user_id', userId),
+          Query.limit(ids.length),
+        ]
+      );
+      return response.documents.map(mapNotification);
+    } catch (error) {
+      logger.error('Failed to load notifications for bulk action', { error: getErrorMessage(error), userId });
+      return [];
+    }
+  }
+
+  async deleteNotification(id: string): Promise<boolean> {
+    return this.delete(id);
+  }
+
+  /** Archived notifications are out of the inbox, so they no longer count as unread. */
   async getUnreadCount(userId: string): Promise<number> {
     try {
       const response = await databases.listDocuments(
@@ -126,6 +182,7 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
         [
           Query.equal('user_id', userId),
           Query.equal('is_read', false),
+          archivedFilter(false),
           Query.limit(1),
         ]
       );

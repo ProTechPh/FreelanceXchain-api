@@ -353,8 +353,10 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'message', type: 'string', size: 10000, required: true },
       { name: 'data', type: 'string', size: 50000, required: false, default: '{}' },
       { name: 'is_read', type: 'boolean', required: false, default: false },
+      { name: 'is_archived', type: 'boolean', required: false, default: false },
     ],
     indexes: [
+      { key: 'user_id_is_archived_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', 'is_archived', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
       { key: 'user_id_is_read_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', 'is_read', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
       { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'is_read_createdAt', type: DatabasesIndexType.Key, attributes: ['is_read', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },

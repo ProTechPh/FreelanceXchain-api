@@ -1,6 +1,6 @@
 import { Notification, NotificationType, mapNotificationFromEntity } from '../utils/entity-mapper.js';
-import { notificationRepository, NotificationEntity } from '../repositories/notification-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/types.js';
+import { notificationRepository, NotificationEntity, NotificationListOptions } from '../repositories/notification-repository.js';
+import { PaginatedResult } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -59,15 +59,16 @@ export async function getNotificationById(
 
 export async function getNotificationsByUser(
   userId: string,
-  options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<Notification>>> {
+  options?: NotificationListOptions
+): Promise<ServiceResult<PaginatedResult<Notification> & { continuationToken?: string }>> {
   const result = await notificationRepository.getNotificationsByUser(userId, options);
   return successResult({
     items: result.items.map(mapNotificationFromEntity),
     hasMore: result.hasMore,
     total: result.total,
+    ...(result.continuationToken ? { continuationToken: result.continuationToken } : {}),
   });
-  }
+}
 
 export async function getAllNotificationsByUser(
   userId: string
@@ -103,6 +104,85 @@ export async function markNotificationAsRead(
   }
 
   return successResult(mapNotificationFromEntity(updatedEntity));
+}
+
+async function getOwnedNotification(
+  notificationId: string,
+  userId: string
+): Promise<ServiceResult<NotificationEntity>> {
+  const notificationEntity = await notificationRepository.getNotificationById(notificationId);
+  if (!notificationEntity) {
+    return errorResult('NOT_FOUND', 'Notification not found');
+  }
+
+  if (notificationEntity.user_id !== userId) {
+    return errorResult('UNAUTHORIZED', 'You are not authorized to update this notification');
+  }
+
+  return successResult(notificationEntity);
+}
+
+export async function setNotificationArchived(
+  notificationId: string,
+  userId: string,
+  archived: boolean
+): Promise<ServiceResult<Notification>> {
+  const owned = await getOwnedNotification(notificationId, userId);
+  if (!owned.success) return owned;
+
+  const updatedEntity = await notificationRepository.setArchived(notificationId, archived);
+  if (!updatedEntity) {
+    return errorResult('UPDATE_FAILED', archived ? 'Failed to archive notification' : 'Failed to restore notification');
+  }
+
+  return successResult(mapNotificationFromEntity(updatedEntity));
+}
+
+export async function deleteNotification(
+  notificationId: string,
+  userId: string
+): Promise<ServiceResult<{ id: string }>> {
+  const owned = await getOwnedNotification(notificationId, userId);
+  if (!owned.success) return owned;
+
+  const deleted = await notificationRepository.deleteNotification(notificationId);
+  if (!deleted) {
+    return errorResult('DELETE_FAILED', 'Failed to delete notification');
+  }
+
+  return successResult({ id: notificationId });
+}
+
+export type BulkNotificationAction = 'archive' | 'unarchive' | 'delete';
+
+/** Appwrite writes run in small batches so a 100-item request doesn't open 100 sockets at once. */
+const BULK_BATCH_SIZE = 20;
+
+export async function bulkUpdateNotifications(
+  userId: string,
+  action: BulkNotificationAction,
+  ids: string[]
+): Promise<ServiceResult<{ action: BulkNotificationAction; succeeded: string[]; failed: string[] }>> {
+  const uniqueIds = [...new Set(ids)];
+  const owned = await notificationRepository.getOwnedByIds(userId, uniqueIds);
+  const ownedIds = new Set(owned.map((notification) => notification.id));
+
+  const succeeded: string[] = [];
+  const failed = uniqueIds.filter((id) => !ownedIds.has(id));
+  const targets = uniqueIds.filter((id) => ownedIds.has(id));
+
+  for (let start = 0; start < targets.length; start += BULK_BATCH_SIZE) {
+    const batch = targets.slice(start, start + BULK_BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        if (action === 'delete') return notificationRepository.deleteNotification(id);
+        return (await notificationRepository.setArchived(id, action === 'archive')) !== null;
+      })
+    );
+    batch.forEach((id, index) => (results[index] ? succeeded : failed).push(id));
+  }
+
+  return successResult({ action, succeeded, failed });
 }
 
 export async function markAllNotificationsAsRead(
