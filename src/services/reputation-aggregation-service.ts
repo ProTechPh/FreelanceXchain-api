@@ -3,6 +3,7 @@ import { reviewRepository } from '../repositories/review-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { blockchainRatingRepository } from '../repositories/blockchain-rating-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import { platformMetricsCache } from '../utils/cache.js';
@@ -27,11 +28,14 @@ type ReputationBreakdown = {
   twoStars: number;
   oneStar: number;
   recentRatings: Array<{
+    id?: string;
+    contractId?: string;
     rating: number;
     comment: string;
     reviewerName: string;
     projectTitle: string;
     createdAt: Date;
+    transactionHash?: string;
   }>;
 };
 
@@ -198,6 +202,24 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 10);
 
+    const txHashMap = new Map<string, string>();
+    try {
+      const bcRatings = await blockchainRatingRepository.findByRatee(userId);
+      for (const bcr of bcRatings.items) {
+        if (bcr.transaction_hash) {
+          if (bcr.contract_id && bcr.rater_id) {
+            txHashMap.set(`${bcr.contract_id}:${bcr.rater_id}`, bcr.transaction_hash);
+          }
+          if (bcr.contract_id) {
+            txHashMap.set(bcr.contract_id, bcr.transaction_hash);
+          }
+          txHashMap.set(bcr.id, bcr.transaction_hash);
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+
     const recentRatings = await Promise.all(
       recentReviews.map(async r => {
         let reviewerName = 'Anonymous';
@@ -215,6 +237,11 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
           }
         }
 
+        const txHash =
+          txHashMap.get(`${r.contract_id}:${r.reviewer_id}`) ||
+          txHashMap.get(r.contract_id) ||
+          txHashMap.get(r.id);
+
         return {
           id: r.id,
           contractId: r.contract_id,
@@ -223,6 +250,7 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
           reviewerName,
           projectTitle,
           createdAt: new Date(r.created_at),
+          ...(txHash ? { transactionHash: txHash } : {}),
         };
       })
     );
