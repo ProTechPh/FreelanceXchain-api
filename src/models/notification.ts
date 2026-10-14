@@ -33,6 +33,7 @@ export type Notification = {
   message: string;
   data: Record<string, unknown>;
   isRead: boolean;
+  isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 };

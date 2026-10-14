@@ -15,6 +15,13 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     }
     next();
   },
+  optionalAuthMiddleware: (req: any, _res: any, next: any) => {
+    const authHeader = req.headers.authorization as string | undefined;
+    if (authHeader?.startsWith('Bearer test-token-')) {
+      req.user = { id: authHeader.slice(18), userId: authHeader.slice(18), email: 'test@example.com', role: 'freelancer' };
+    }
+    next();
+  },
   requireRole: (_role: string) => (req: any, res: any, next: any) => {
     if (!req.user) {
       res.status(401).json({ error: { code: 'AUTH_UNAUTHORIZED', message: 'Authentication required' }, timestamp: new Date().toISOString(), requestId: 'test' });

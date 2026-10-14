@@ -10,12 +10,18 @@ const mockGetNotificationsByUser = jest.fn<any>();
 const mockMarkNotificationAsRead = jest.fn<any>();
 const mockMarkAllNotificationsAsRead = jest.fn<any>();
 const mockGetUnreadCount = jest.fn<any>();
+const mockSetNotificationArchived = jest.fn<any>();
+const mockDeleteNotification = jest.fn<any>();
+const mockBulkUpdateNotifications = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
   getNotificationsByUser: mockGetNotificationsByUser,
   markNotificationAsRead: mockMarkNotificationAsRead,
   markAllNotificationsAsRead: mockMarkAllNotificationsAsRead,
   getUnreadCount: mockGetUnreadCount,
+  setNotificationArchived: mockSetNotificationArchived,
+  deleteNotification: mockDeleteNotification,
+  bulkUpdateNotifications: mockBulkUpdateNotifications,
 }));
 
 const mockGetSSEStats = jest.fn<any>(() => ({ success: true, data: { activeConnections: 0 } }));
@@ -40,6 +46,10 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: (value: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/.test(value),
+  bulkNotificationActionSchema: {},
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -140,6 +150,92 @@ describe('Notification Routes', () => {
       });
       const res = await request(app).patch('/api/notifications/n-1/read');
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /:id/archive and /:id/unarchive', () => {
+    it('archives the notification for the authenticated user', async () => {
+      mockSetNotificationArchived.mockResolvedValue({ success: true, data: { id: 'n-1', isArchived: true } });
+      const res = await request(app).patch('/api/notifications/n-1/archive');
+      expect(res.status).toBe(200);
+      expect(res.body.isArchived).toBe(true);
+      expect(mockSetNotificationArchived).toHaveBeenCalledWith('n-1', 'user-1', true);
+    });
+
+    it('restores the notification on unarchive', async () => {
+      mockSetNotificationArchived.mockResolvedValue({ success: true, data: { id: 'n-1', isArchived: false } });
+      const res = await request(app).patch('/api/notifications/n-1/unarchive');
+      expect(res.status).toBe(200);
+      expect(mockSetNotificationArchived).toHaveBeenCalledWith('n-1', 'user-1', false);
+    });
+
+    it.each([
+      ['NOT_FOUND', 404],
+      ['UNAUTHORIZED', 403],
+      ['UPDATE_FAILED', 400],
+    ])('maps %s to %i', async (code, status) => {
+      mockSetNotificationArchived.mockResolvedValue({ success: false, error: { code, message: 'x' } });
+      const res = await request(app).patch('/api/notifications/n-1/archive');
+      expect(res.status).toBe(status);
+    });
+  });
+
+  describe('DELETE /:id', () => {
+    it('deletes the notification for the authenticated user', async () => {
+      mockDeleteNotification.mockResolvedValue({ success: true, data: { id: 'n-1' } });
+      const res = await request(app).delete('/api/notifications/n-1');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ id: 'n-1' });
+      expect(mockDeleteNotification).toHaveBeenCalledWith('n-1', 'user-1');
+    });
+
+    it.each([
+      ['NOT_FOUND', 404],
+      ['UNAUTHORIZED', 403],
+      ['DELETE_FAILED', 400],
+    ])('maps %s to %i', async (code, status) => {
+      mockDeleteNotification.mockResolvedValue({ success: false, error: { code, message: 'x' } });
+      const res = await request(app).delete('/api/notifications/n-1');
+      expect(res.status).toBe(status);
+    });
+  });
+
+  describe('GET / archived filter', () => {
+    it('passes archived=true through to the service', async () => {
+      mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
+      await request(app).get('/api/notifications?archived=true');
+      expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ archived: true }));
+    });
+
+    it('defaults to the inbox (archived=false)', async () => {
+      mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
+      await request(app).get('/api/notifications');
+      expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ archived: false }));
+    });
+  });
+
+  describe('POST /bulk', () => {
+    it('applies the action to the given ids for the authenticated user', async () => {
+      mockBulkUpdateNotifications.mockResolvedValue({
+        success: true,
+        data: { action: 'archive', succeeded: ['n-1', 'n-2'], failed: [] },
+      });
+      const res = await request(app).post('/api/notifications/bulk').send({ action: 'archive', ids: ['n-1', 'n-2'] });
+      expect(res.status).toBe(200);
+      expect(res.body.succeeded).toEqual(['n-1', 'n-2']);
+      expect(mockBulkUpdateNotifications).toHaveBeenCalledWith('user-1', 'archive', ['n-1', 'n-2']);
+    });
+
+    it('rejects malformed ids before touching the service', async () => {
+      const res = await request(app).post('/api/notifications/bulk').send({ action: 'delete', ids: ['ok-id', '../etc'] });
+      expect(res.status).toBe(400);
+      expect(mockBulkUpdateNotifications).not.toHaveBeenCalled();
+    });
+
+    it('is not shadowed by the /:id routes', async () => {
+      mockBulkUpdateNotifications.mockResolvedValue({ success: true, data: { action: 'delete', succeeded: [], failed: [] } });
+      await request(app).post('/api/notifications/bulk').send({ action: 'delete', ids: ['n-1'] });
+      expect(mockDeleteNotification).not.toHaveBeenCalled();
     });
   });
 
@@ -258,6 +354,9 @@ describe('notification-routes.ts - Branch Coverage', () => {
       markNotificationAsRead: mockMarkNotificationAsRead,
       markAllNotificationsAsRead: jest.fn(),
       getUnreadCount: jest.fn(),
+      setNotificationArchived: jest.fn(),
+      deleteNotification: jest.fn(),
+      bulkUpdateNotifications: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
       initializeSSEConnection: jest.fn(),
@@ -299,6 +398,9 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
       markNotificationAsRead: jest.fn(),
       markAllNotificationsAsRead: jest.fn(),
       getUnreadCount: jest.fn(),
+      setNotificationArchived: jest.fn(),
+      deleteNotification: jest.fn(),
+      bulkUpdateNotifications: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
       initializeSSEConnection: mockSSEConnection,
@@ -318,6 +420,10 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: (value: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/.test(value),
+  bulkNotificationActionSchema: {},
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
@@ -407,7 +513,7 @@ describe('notification-routes - additional branch coverage', () => {
     mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
     const res = await request(app).get('/api/notifications?maxItemCount=10');
     expect(res.status).toBe(200);
-    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 10 });
+    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 10, archived: false });
   });
 
   it('GET / with only continuationToken (no maxItemCount)', async () => {
@@ -415,7 +521,7 @@ describe('notification-routes - additional branch coverage', () => {
     const res = await request(app).get('/api/notifications?continuationToken=abc123');
     expect(res.status).toBe(200);
     // clampLimit(undefined) returns 20 from the mock, so maxItemCount is always present
-    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 20, continuationToken: 'abc123' });
+    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 20, continuationToken: 'abc123', archived: false });
   });
 
   it('PATCH /:id/read with generic error code returns 400', async () => {
@@ -440,6 +546,9 @@ describe('notification-routes - ?? "" param fallback coverage', () => {
       markNotificationAsRead: mockMarkNotificationAsRead,
       markAllNotificationsAsRead: jest.fn(),
       getUnreadCount: jest.fn(),
+      setNotificationArchived: jest.fn(),
+      deleteNotification: jest.fn(),
+      bulkUpdateNotifications: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
       initializeSSEConnection: jest.fn(),
@@ -463,6 +572,10 @@ describe('notification-routes - ?? "" param fallback coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  isValidAppwriteDocumentId: (value: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/.test(value),
+  bulkNotificationActionSchema: {},
     }));
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',

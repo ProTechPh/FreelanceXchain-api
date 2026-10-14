@@ -23,10 +23,8 @@ import {
 import { createHash } from 'node:crypto';
 import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
-import { portfolioRepository } from '../repositories/portfolio-repository.js';
 import { databases, DATABASE_ID } from '../config/appwrite.js';
 import { COLLECTIONS } from '../config/collections.js';
-import { safeJsonParse } from '../utils/index.js';
 import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
 import { getProUserIdSet } from './subscription-service.js';
@@ -593,10 +591,9 @@ export async function generateProposalForProject(
   customNotes?: string
 ): Promise<ServiceResult<AIProposalResult>> {
   try {
-    const [freelancerProfile, userDoc, portfolioEntities, reputationResult, projectEntity] = await Promise.all([
+    const [freelancerProfile, userDoc, reputationResult, projectEntity] = await Promise.all([
       freelancerProfileRepository.getProfileByUserId(freelancerId),
       databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, freelancerId).catch(() => null),
-      portfolioRepository.findByFreelancer(freelancerId).catch(() => []),
       getReputation(freelancerId).catch(() => null),
       projectRepository.findProjectById(projectId),
     ]);
@@ -633,13 +630,6 @@ export async function generateProposalForProject(
       amount: m.amount || 0,
     }));
 
-    const mappedPortfolio = portfolioEntities.map((item: { title: string; description: string; skills?: string; project_url?: string }) => ({
-      title: item.title,
-      description: item.description,
-      skills: item.skills ? (safeJsonParse<string[]>(item.skills) || []) : [],
-      projectUrl: item.project_url,
-    }));
-
     const requestData: AIProposalGenerationRequest = {
       freelancerName,
       freelancerTitle,
@@ -647,7 +637,7 @@ export async function generateProposalForProject(
       freelancerSkills,
       reputationScore,
       completedProjectsCount,
-      portfolioItems: mappedPortfolio,
+      portfolioItems: [],
       projectTitle: projectEntity.title,
       projectDescription: projectEntity.description,
       projectSkills,

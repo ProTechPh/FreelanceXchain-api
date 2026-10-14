@@ -89,6 +89,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () 
 jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
   createCategory: jest.fn<any>(),
   createSkill: jest.fn<any>(),
+  updateSkill: jest.fn<any>(),
   deprecateSkill: jest.fn<any>(),
   getFullTaxonomy: jest.fn<any>(),
   searchSkills: jest.fn<any>(),

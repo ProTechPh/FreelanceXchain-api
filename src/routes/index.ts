@@ -28,7 +28,6 @@ import healthRoutes from './health-routes.js';
 import favoriteRoutes from './favorite-routes.js';
 import transactionRoutes from './transaction-routes.js';
 import analyticsRoutes from './analytics-routes.js';
-import portfolioRoutes from './portfolio-routes.js';
 import emailPreferenceRoutes from './email-preference-routes.js';
 import userPreferencesRoutes from './user-preferences-routes.js';
 import savedSearchRoutes from './saved-search-routes.js';
@@ -129,9 +128,6 @@ router.use('/analytics', analyticsRoutes);
 
 // Favorite routes
 router.use('/favorites', favoriteRoutes);
-
-// Portfolio routes
-router.use('/portfolio', portfolioRoutes);
 
 // Email preference routes
 router.use('/email-preferences', emailPreferenceRoutes);

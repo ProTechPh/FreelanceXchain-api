@@ -5,6 +5,7 @@ import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
   createCategory,
   createSkill,
+  updateSkill,
   deprecateSkill,
   getFullTaxonomy,
   searchSkills,
@@ -401,6 +402,73 @@ router.patch('/:id/deprecate', authMiddleware, requirePermission('skills:manage'
 
   if (!result.success) {
     const statusCode = result.error.code === 'SKILL_NOT_FOUND' ? 404 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+/**
+ * @swagger
+ * /api/skills/{id}:
+ *   put:
+ *     summary: Update a skill (admin)
+ *     description: Updates skill category, name, or description. Requires admin privileges.
+ *     tags:
+ *       - Skills
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the skill to update (UUID)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               categoryId:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Skill updated successfully
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Skill or category not found
+ *       409:
+ *         description: Duplicate skill name in category
+ */
+router.put('/:id', authMiddleware, requirePermission('skills:manage'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { categoryId, name, description } = req.body;
+  const requestId = getRequestId(req);
+
+  if (!id) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Skill ID is required', { requestId, details: [{ field: 'id', message: 'Skill ID is required' }] });
+    return;
+  }
+
+  const updates: Partial<CreateSkillInput> = {};
+  if (categoryId !== undefined && typeof categoryId === 'string' && categoryId.trim()) updates.categoryId = categoryId.trim();
+  if (name !== undefined && typeof name === 'string' && name.trim()) updates.name = name.trim();
+  if (description !== undefined && typeof description === 'string' && description.trim()) updates.description = description.trim();
+
+  const result = await updateSkill(id, updates);
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'SKILL_NOT_FOUND' || result.error.code === 'CATEGORY_NOT_FOUND' ? 404 : result.error.code === 'DUPLICATE_SKILL' ? 409 : 400;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
@@ -914,7 +982,7 @@ router.post('/suggestions', authMiddleware, apiRateLimiter, asyncHandler(async (
     return;
   }
 
-  const { name, description, categoryName } = req.body;
+  const { name, description, categoryName, yearsOfExperience } = req.body;
   const errors: { field: string; message: string }[] = [];
 
   if (!name || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
@@ -929,6 +997,10 @@ router.post('/suggestions', authMiddleware, apiRateLimiter, asyncHandler(async (
     errors.push({ field: 'categoryName', message: 'Category name cannot exceed 100 characters' });
   }
 
+  if (yearsOfExperience !== undefined && (typeof yearsOfExperience !== 'number' || yearsOfExperience < 0 || yearsOfExperience > 50)) {
+    errors.push({ field: 'yearsOfExperience', message: 'Years of experience must be a number between 0 and 50' });
+  }
+
   if (errors.length > 0) {
     sendValidationError(res, errors, requestId);
     return;
@@ -938,6 +1010,7 @@ router.post('/suggestions', authMiddleware, apiRateLimiter, asyncHandler(async (
     name: name.trim(),
     description: description.trim(),
     ...(categoryName && typeof categoryName === 'string' && categoryName.trim() ? { categoryName: categoryName.trim() } : {}),
+    ...(typeof yearsOfExperience === 'number' ? { yearsOfExperience } : {}),
   });
 
   if (!result.success) {
@@ -1003,7 +1076,7 @@ router.get('/suggestions', authMiddleware, requirePermission('skills:manage'), a
  */
 router.put('/suggestions/:id/status', authMiddleware, requirePermission('skills:manage'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, categoryId } = req.body;
   const requestId = getRequestId(req);
 
   if (!status || !['approved', 'rejected'].includes(status)) {
@@ -1018,7 +1091,7 @@ router.put('/suggestions/:id/status', authMiddleware, requirePermission('skills:
     return;
   }
 
-  const result = await updateSkillSuggestionStatus(id, status);
+  const result = await updateSkillSuggestionStatus(id, status, typeof categoryId === 'string' ? categoryId : undefined);
 
   if (!result.success) {
     const statusCode = result.error.code === 'SUGGESTION_NOT_FOUND' ? 404 : 400;

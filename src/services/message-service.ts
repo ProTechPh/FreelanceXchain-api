@@ -177,6 +177,7 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
       message: content.substring(0, 100),
       data: { message } as Record<string, unknown>,
       isRead: false,
+      isArchived: false,
       createdAt: now,
       updatedAt: now,
     };

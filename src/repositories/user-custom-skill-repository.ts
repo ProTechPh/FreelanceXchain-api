@@ -127,6 +127,14 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEn
     }
   }
 
+  async getSkillSuggestionById(id: string): Promise<SkillSuggestionEntity | null> {
+    try {
+      return await this.getById(id);
+    } catch (error) {
+      throw new Error(`Failed to get skill suggestion: ${getErrorMessageOr(error, 'Unknown error')}`);
+    }
+  }
+
   /**
    * Find a suggestion whose name matches the canonical normalized form of the
    * input. Appwrite `equal` is exact and case-sensitive, so we compare in
@@ -192,7 +200,7 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEn
 
   async updateSkillSuggestionStatus(
     id: string,
-    status: "approved" | "rejected"
+    status: "pending" | "approved" | "rejected"
   ): Promise<SkillSuggestionEntity | null> {
     try {
       return await this.update(id, { status });

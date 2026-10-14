@@ -8,6 +8,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 
 const mockCreateCategory = jest.fn<any>();
 const mockCreateSkill = jest.fn<any>();
+const mockUpdateSkill = jest.fn<any>();
 const mockDeprecateSkill = jest.fn<any>();
 const mockGetFullTaxonomy = jest.fn<any>();
 const mockSearchSkills = jest.fn<any>();
@@ -16,6 +17,7 @@ const mockGetActiveSkillsByCategory = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
   createCategory: mockCreateCategory,
   createSkill: mockCreateSkill,
+  updateSkill: mockUpdateSkill,
   deprecateSkill: mockDeprecateSkill,
   getFullTaxonomy: mockGetFullTaxonomy,
   searchSkills: mockSearchSkills,
@@ -680,6 +682,7 @@ describe('skill-routes - custom skill edge cases', () => {
     jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
       createCategory: jest.fn(),
       createSkill: jest.fn(),
+      updateSkill: jest.fn(),
       deprecateSkill: jest.fn(),
       getFullTaxonomy: jest.fn(),
       searchSkills: jest.fn(),
@@ -783,6 +786,7 @@ describe('skill-routes - userName fallback (line 583)', () => {
     jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
       createCategory: jest.fn(),
       createSkill: jest.fn(),
+      updateSkill: jest.fn(),
       deprecateSkill: jest.fn(),
       getFullTaxonomy: jest.fn(),
       searchSkills: jest.fn(),

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   addMilestonesSchema,
+  bulkNotificationActionSchema,
   createProjectSchema,
   createProjectWithAttachmentsSchema,
   emptyBodySchema,
@@ -40,6 +41,37 @@ type ValidatedEndpoint = {
  * so they cannot drift.
  */
 export const VALIDATED_ENDPOINTS: ValidatedEndpoint[] = [
+  {
+    path: '/api/notifications/bulk',
+    method: 'post',
+    schema: bulkNotificationActionSchema.body!,
+    operation: {
+      summary: 'Archive, restore, or delete several notifications',
+      description:
+        "Applies one action to up to 100 of the authenticated user's notifications. Ids that do not exist or belong to another user are reported in `failed`.",
+      tags: ['Notifications'],
+      security: [{ bearerAuth: [] }],
+      responses: {
+        '200': {
+          description: 'Action applied; see succeeded/failed',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  action: { type: 'string', enum: ['archive', 'unarchive', 'delete'] },
+                  succeeded: { type: 'array', items: { type: 'string' } },
+                  failed: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            },
+          },
+        },
+        '400': { description: 'Validation error' },
+        '401': { description: 'Unauthorized' },
+      },
+    },
+  },
   {
     path: '/api/reviews',
     method: 'post',

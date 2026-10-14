@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth-middleware.js';
 import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -85,25 +85,25 @@ async function hasResourceFileAccess(bucket: BucketId, fileId: string, userId: s
 async function hasFileAccess(
   bucket: BucketId,
   fileId: string,
-  userId: string,
-  userRole: string
+  userId?: string,
+  userRole?: string
 ): Promise<{ allowed: boolean; reason?: string }> {
   if (userRole === 'admin') {
     return { allowed: true };
   }
 
   // First check direct ownership
-  const isOwner = await isFileOwnedBy(bucket, fileId, userId);
+  const isOwner = userId ? await isFileOwnedBy(bucket, fileId, userId) : false;
   if (isOwner) {
     return { allowed: true };
   }
 
   // Portfolio images are public for viewing by authenticated users
-  if (bucket === BUCKETS.PORTFOLIO_IMAGES) {
+  if (bucket === BUCKETS.PORTFOLIO_IMAGES || (bucket as string) === 'profile-images') {
     return { allowed: true };
   }
 
-  if (await hasResourceFileAccess(bucket, fileId, userId)) {
+  if (userId && await hasResourceFileAccess(bucket, fileId, userId)) {
     return { allowed: true };
   }
 
@@ -114,13 +114,15 @@ async function hasFileAccess(
   };
 }
 
+
+
 /**
  * GET /api/files/access/:bucket/:fileId
  * Access a file securely through proxy
  */
 router.get(
   '/:bucket/:fileId',
-  authMiddleware,
+  optionalAuthMiddleware,
   apiRateLimiter,
   validateAppwriteDocumentId(['fileId']),
   asyncHandler(async (req: Request, res: Response) => {
@@ -130,7 +132,8 @@ router.get(
     const requestId = getRequestId(req);
     const download = req.query.download === 'true';
 
-    if (!userId) {
+    const isPublicBucket = bucket === BUCKETS.PORTFOLIO_IMAGES || (bucket as string) === 'profile-images';
+    if (!userId && !isPublicBucket) {
       sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
       return;
     }
@@ -182,6 +185,7 @@ router.get(
 
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Length', file.sizeOriginal.toString());
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 
       if (download) {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);

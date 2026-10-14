@@ -40,9 +40,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: { getAllOpenProjects, findProjectById },
 }));
-jest.unstable_mockModule(resolveModule('src/repositories/portfolio-repository.ts'), () => ({
-  portfolioRepository: { findByFreelancer: jest.fn() },
-}));
 jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({ getReputation }));
 jest.unstable_mockModule(resolveModule('src/services/subscription-service.ts'), () => ({ getProUserIdSet }));
 jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({ getActiveSkills }));
