@@ -42,16 +42,16 @@ const REPUTATION_WEIGHT = 0.3;
 const SKILL_MATCH_WEIGHT = 0.7;
 const MATCHING_CACHE_TTL_SECONDS = 300; // 5 minutes
 /**
- * Priority matching: the Pro perk, expressed on the same 0-100 scale as the
- * match scores. Deliberately small — a Pro freelancer outranks an equally good
- * Free one and edges past a marginally better one, but cannot displace a
- * materially better match. Selling ranking, not outcomes.
+ * Priority matching (the Pro perk) never changes a score. Scores reflect only
+ * skills and reputation; Pro decides order only between equal scores, and Pro
+ * freelancers are notified of new matching projects first (project-service).
  *
  * NOTE: results are cached for MATCHING_CACHE_TTL_SECONDS without the plan in
  * the cache key, so a freshly-upgraded user can wait up to that long for the
- * boost to appear. Accepted over key-scanning invalidation.
+ * tie-break to apply. Accepted over key-scanning invalidation.
  */
-const PRO_RANKING_BOOST = 5;
+const byScoreThenPro = <T>(score: (item: T) => number, isPro: (item: T) => boolean) =>
+  (a: T, b: T): number => score(b) - score(a) || Number(isPro(b)) - Number(isPro(a));
 /**
  * Projects below this skill-match score are not recommended to a freelancer:
  * fewer than 40% of the required skills is not a fit worth surfacing.
@@ -153,18 +153,16 @@ export async function getProjectRecommendations(
     };
   });
 
-  // Priority matching: a Pro employer's project sorts higher. The boost is
-  // applied to the SORT KEY only — matchScore is shown to the freelancer, so
-  // inflating it would misreport how well they actually fit the project.
+  // Priority matching: between equally matched projects, a Pro employer's
+  // project is listed first. The match score itself is never changed.
   const proEmployerIds = await getProUserIdSet(
     preMatched.map(({ projectEntity }) => projectEntity.employer_id)
   );
 
-  const rankOf = (entry: typeof preMatched[number]): number =>
-    entry.keywordResult.matchScore +
-    (proEmployerIds.has(entry.projectEntity.employer_id) ? PRO_RANKING_BOOST : 0);
-
-  preMatched.sort((a, b) => rankOf(b) - rankOf(a));
+  preMatched.sort(byScoreThenPro(
+    (entry) => entry.keywordResult.matchScore,
+    (entry) => proEmployerIds.has(entry.projectEntity.employer_id)
+  ));
 
   // 2. Take top items up to limit, skipping projects the freelancer barely fits
   const topCandidates = preMatched
@@ -241,7 +239,7 @@ async function scoreFreelancerCandidate(
   const combinedScore = Math.min(100, Math.round(
     keywordResult.matchScore * SKILL_MATCH_WEIGHT +
     rankingReputationScore * REPUTATION_WEIGHT
-  ) + (isProFreelancer ? PRO_RANKING_BOOST : 0));
+  ));
 
   return {
     freelancerEntity,
@@ -297,12 +295,11 @@ async function buildFreelancerRecommendation(
     }
   }
 
-  // The Pro boost is re-applied here on purpose: this recomputes the score from
-  // scratch after AI enhancement and would otherwise silently drop it.
+  // Recomputed after AI enhancement, which may confirm more or fewer skills.
   const finalCombinedScore = Math.min(100, Math.round(
     matchResult.matchScore * SKILL_MATCH_WEIGHT +
     rankingReputationScore * REPUTATION_WEIGHT
-  ) + (isProFreelancer ? PRO_RANKING_BOOST : 0));
+  ));
 
   return {
     freelancerId: freelancerEntity.user_id,
@@ -377,7 +374,7 @@ export async function getFreelancerRecommendations(
     )
   );
 
-  candidates.sort((a, b) => b.combinedScore - a.combinedScore);
+  candidates.sort(byScoreThenPro((c) => c.combinedScore, (c) => c.isProFreelancer));
   const topCandidates = candidates.slice(0, limit);
 
   // 2. Enhance top candidates only (capped at top 3 for optimal performance)
@@ -387,7 +384,7 @@ export async function getFreelancerRecommendations(
     )
   );
 
-  recommendations.sort((a, b) => b.combinedScore - a.combinedScore);
+  recommendations.sort(byScoreThenPro((r) => r.combinedScore, (r) => Boolean(r.isPro)));
   await setCached(cacheKey, recommendations, localFreelancerRecCache, MATCHING_CACHE_TTL_SECONDS);
   return successResult(recommendations);
 }

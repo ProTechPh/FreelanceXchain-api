@@ -191,4 +191,44 @@ describe('matching service cache, invalidation, and bounded-pool paths', () => {
       expect.stringContaining('project matching cache of project-1'), expect.any(Object),
     );
   });
+
+  it('never changes a freelancer score for Pro and only uses Pro to break ties', async () => {
+    findProjectById.mockResolvedValue(project);
+    getAvailableProfiles.mockResolvedValue([
+      { user_id: 'free-equal', skills: [{ name: 'React', years_of_experience: 2 }] },
+      { user_id: 'pro-equal', skills: [{ name: 'React', years_of_experience: 2 }] },
+      { user_id: 'pro-weaker', skills: [{ name: 'Rust', years_of_experience: 2 }] },
+    ]);
+    getProUserIdSet.mockResolvedValue(new Set(['pro-equal', 'pro-weaker']));
+
+    const result = await matching.getFreelancerRecommendations('project-tie', 3);
+
+    // 0.7 * 100 skill + 0.3 * 80 reputation (4.0 stars) = 94, with no Pro bonus
+    expect(result.data.map((rec) => [rec.freelancerId, rec.combinedScore])).toEqual([
+      ['pro-equal', 94],
+      ['free-equal', 94],
+      ['pro-weaker', 24],
+    ]);
+  });
+
+  it('lists a better-matched Free project above a weaker Pro project', async () => {
+    getProfileByUserId.mockResolvedValue({ user_id: 'user-tie', skills: [{ name: 'React', years_of_experience: 2 }] });
+    getAllOpenProjects.mockResolvedValue({ items: [
+      { ...project, id: 'pro-partial', employer_id: 'pro-employer', required_skills: [
+        { skill_id: 'react', skill_name: 'React', category_id: 'frontend' },
+        { skill_id: 'vue', skill_name: 'Vue', category_id: 'frontend' },
+      ] },
+      { ...project, id: 'free-full', employer_id: 'free-employer' },
+      { ...project, id: 'pro-full', employer_id: 'pro-employer' },
+    ] });
+    getProUserIdSet.mockResolvedValue(new Set(['pro-employer']));
+
+    const result = await matching.getProjectRecommendations('user-tie', 3);
+
+    expect(result.data.map((rec) => [rec.projectId, rec.matchScore])).toEqual([
+      ['pro-full', 100],
+      ['free-full', 100],
+      ['pro-partial', 50],
+    ]);
+  });
 });
