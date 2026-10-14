@@ -14,7 +14,6 @@ const mockAnalyzeSkillMatch = jest.fn<any>();
 const mockExtractSkillsFn = jest.fn<any>();
 const mockGenerateAIProposal = jest.fn<any>();
 const mockFallbackGenerateProposal = jest.fn<any>();
-const mockFindPortfolioByFreelancer = jest.fn<any>();
 const mockGenerateSkillGapAnalysis = jest.fn<any>();
 
 // Mock reputation-service and skill-service so (getReputation as jest.Mock) casts work
@@ -31,9 +30,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: mockProjectRepository,
-}));
-jest.unstable_mockModule(resolveModule('src/repositories/portfolio-repository.ts'), () => ({
-  portfolioRepository: { findByFreelancer: mockFindPortfolioByFreelancer },
 }));
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
@@ -79,7 +75,6 @@ describe('generateProposalForProject', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsAIError.mockReturnValue(false);
-    mockFindPortfolioByFreelancer.mockResolvedValue([]);
     mockGetReputation.mockResolvedValue({ success: true, data: { score: 4.5, totalRatings: 10 } });
     global.__mockDatabases.getDocument.mockResolvedValue({ name: 'Ada Lovelace' });
   });
@@ -95,7 +90,7 @@ describe('generateProposalForProject', () => {
     expect(mockGenerateAIProposal).not.toHaveBeenCalled();
   });
 
-  it('maps profile, reputation, portfolio, project skills, milestones, and custom notes', async () => {
+  it('maps profile, reputation, project skills, milestones, and custom notes', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       user_id: 'freelancer-1',
       name: 'Profile Name',
@@ -107,10 +102,6 @@ describe('generateProposalForProject', () => {
         { title: '', start_date: undefined },
       ],
     });
-    mockFindPortfolioByFreelancer.mockResolvedValue([
-      { title: 'Escrow', description: 'Milestone payments', skills: '["Solidity"]', project_url: 'https://example.com/escrow' },
-      { title: 'Empty metadata', description: 'Still usable', skills: 'null' },
-    ]);
     mockProjectRepository.findProjectById.mockResolvedValue({
       id: 'project-1', title: 'Marketplace', description: 'Build an escrow marketplace', budget: 5000,
       deadline: '2026-12-31',
@@ -130,10 +121,7 @@ describe('generateProposalForProject', () => {
       freelancerSkills: ['Solidity', 'React'],
       reputationScore: 90,
       completedProjectsCount: 10,
-      portfolioItems: [
-        { title: 'Escrow', description: 'Milestone payments', skills: ['Solidity'], projectUrl: 'https://example.com/escrow' },
-        { title: 'Empty metadata', description: 'Still usable', skills: [], projectUrl: undefined },
-      ],
+      portfolioItems: [],
       projectSkills: ['Solidity'],
       projectMilestones: [{ title: 'Contract', description: '', amount: 0 }],
       customNotes: 'Available now',
@@ -142,7 +130,6 @@ describe('generateProposalForProject', () => {
 
   it('uses safe defaults when optional provider reads fail and falls back on an AI error', async () => {
     global.__mockDatabases.getDocument.mockRejectedValue(new Error('user lookup failed'));
-    mockFindPortfolioByFreelancer.mockRejectedValue(new Error('portfolio lookup failed'));
     mockGetReputation.mockRejectedValue(new Error('reputation lookup failed'));
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue(null);
     mockProjectRepository.findProjectById.mockResolvedValue({

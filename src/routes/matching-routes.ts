@@ -347,7 +347,7 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, requirePro, asyncHandl
  * /api/matching/generate-proposal/{projectId}:
  *   post:
  *     summary: Generate personalized AI proposal for a project
- *     description: Uses AI to analyze the freelancer's portfolio, verified skills, and reputation score to craft a tailored, high-converting proposal.
+ *     description: Uses AI to analyze the freelancer's verified skills and reputation score to craft a tailored, high-converting proposal.
  *     tags:
  *       - Matching
  *     security:

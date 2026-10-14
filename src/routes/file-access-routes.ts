@@ -114,6 +114,8 @@ async function hasFileAccess(
   };
 }
 
+
+
 /**
  * GET /api/files/access/:bucket/:fileId
  * Access a file securely through proxy

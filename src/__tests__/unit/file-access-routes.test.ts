@@ -45,6 +45,10 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     req.user = mockUser;
     next();
   },
+  optionalAuthMiddleware: (req: any, _res: any, next: any) => {
+    req.user = mockUser;
+    next();
+  },
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
