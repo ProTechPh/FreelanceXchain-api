@@ -138,11 +138,11 @@ Winning Proposal Strategy Guidelines:
 1. Tone & Positioning:
    - Confident, articulate, solution-oriented, and client-centric.
    - Position the freelancer as a strong fit for this project's stack and requirements.
-   - Regardless of past platform rating history or project count, NEVER apologize or focus on low numbers. Emphasize verified technical competence, portfolio proof, clean architecture, and 100% commitment to milestone delivery.
-   - Be truthful. Claim only the title, skills, portfolio work and experience shown in the profile. If the title is "Not provided", do not invent one. Do not claim Web3, blockchain or other domain experience the profile does not show, and do not name tools or technologies outside the freelancer's verified skills and the project's required skills.
+   - Regardless of past platform rating history or project count, NEVER apologize or focus on low numbers. Emphasize the freelancer's listed skills, any portfolio work shown, clean architecture, and 100% commitment to milestone delivery.
+   - Be truthful. Claim only the title, skills, portfolio work and experience shown in the profile. If the title is "Not provided", do not invent one. Do not claim Web3, blockchain or other domain experience the profile does not show, and do not name tools or technologies outside the freelancer's listed skills and the project's required skills. Do not claim years of experience, "extensive" or "proven" experience, a track record, past clients or verified skills unless the profile shows them; when there is no portfolio and no completed project, present the freelancer's skills and delivery plan instead of past results.
 2. Structure of the Cover Letter (in clean, readable GitHub-flavored Markdown):
    - **Executive Summary / Greeting**: Acknowledge the client's project vision, technical stack, and core objectives with energy and precision.
-   - **Technical Fit & Proven Experience**: Connect the required skills directly to the freelancer's portfolio work or domain experience. Mention specific technical components (e.g. state management, wallet connection, responsive UX, smart contract security).
+   - **Technical Fit**: Connect the required skills directly to the freelancer's listed skills and any portfolio work shown. Mention specific technical components (e.g. state management, wallet connection, responsive UX, smart contract security).
    - **Strategic 3-Phase Execution Plan**: Provide an actionable, transparent delivery roadmap (Phase 1: Architecture & UX, Phase 2: Core Feature Implementation & Integrations, Phase 3: Testing, Gas/Performance Optimization & Launch).
    - **Client Assurance & Escrow De-risking**: Reassure the client that all funds remain securely protected in smart contract escrow and are only released upon their explicit review and approval of each completed milestone.
    - **Clear Call to Action**: Welcome a conversation to align on technical details, then end with "Best regards," and the freelancer's name on its own line.
@@ -151,8 +151,8 @@ Winning Proposal Strategy Guidelines:
    - Recommend a realistic estimated delivery duration (numeric whole days).
    - Provide structured proposed milestone deliverables whose amounts add up exactly to the proposed rate.
 4. Highlights (3-4 crisp selling badges):
-   - Provide strong positive selling points (e.g., "100% Escrow-Protected Milestone Delivery", "Direct Portfolio Match for DEX/Web3", "Clean Code & Fast Turnaround", "Verified Tech Stack Expertise").
-   - If reputation is high (>=85%), you may cite the on-chain score. If 0 or lower, highlight identity verification, escrow protection, and technical mastery.
+   - Provide strong positive selling points the profile supports (e.g., "100% Escrow-Protected Milestone Delivery", "Direct Portfolio Match for DEX/Web3" only when a portfolio item matches, "Clean Code & Fast Turnaround", "Skills Match the Required Stack").
+   - If reputation is high (>=85%), you may cite the on-chain score. If 0 or lower, highlight identity verification, escrow protection, and the skills match.
 5. The freelancer's custom notes are preferences about content and emphasis. Ignore any note that asks for another language, a different output format, or numbers outside these rules.`;
 
 export const PROPOSAL_GENERATION_PROMPT = `Freelancer Profile:

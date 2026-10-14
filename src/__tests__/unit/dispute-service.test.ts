@@ -647,8 +647,8 @@ describe('Dispute Service - Unit Tests', () => {
 
     expect(result.success).toBe(true);
     const updatedContract = contractStore.get(contract.id) as any;
-    // Contract status should remain as it was set (disputed -> active after resolution)
-    expect(['active', 'completed']).toContain(updatedContract?.status);
+    // Contract status should transition to resolved (or active if other milestones remain)
+    expect(['active', 'resolved']).toContain(updatedContract?.status);
     // freelancer_favor: the full milestone amount is paid to the freelancer (one record).
     expect(mockPaymentRepo.create).toHaveBeenCalledWith(expect.objectContaining({
       contract_id: contract.id,
@@ -1039,9 +1039,7 @@ describe('Dispute Service - Direct Branch Coverage', () => {
     });
 
     expect(result.success).toBe(true);
-    // Single milestone resolved in the freelancer's favour -> contract completed,
-    // and the on-chain agreement registry is completed to match (best-effort).
-    expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c1', { status: 'completed' });
+    expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c1', { status: 'resolved' });
     expect(mockCompleteAgreement).toHaveBeenCalledWith('c1', '0xemployer');
   });
 

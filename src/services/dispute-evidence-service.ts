@@ -130,7 +130,9 @@ export async function getDisputeEvidence(
       return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
+    const user = await userRepository.getUserById(userId);
     const isAuthorized = 
+      user?.role === 'admin' ||
       contractEntity.freelancer_id === userId || 
       contractEntity.employer_id === userId ||
       disputeEntity.resolution?.resolved_by === userId;
