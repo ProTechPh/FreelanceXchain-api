@@ -759,7 +759,7 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       const result = await repo.listRecentOpenProjects(5);
       expect(result).toHaveLength(1);
       const queries = mockListDocuments.mock.calls[0][2] as any[];
-      expect(queries.some(q => q.type === 'orderDesc' && q.args[0] === 'created_at')).toBe(true);
+      expect(queries.some(q => q.type === 'orderDesc' && q.args[0] === '$createdAt')).toBe(true);
     });
   });
 
