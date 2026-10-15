@@ -27,6 +27,8 @@ jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () 
 
 jest.unstable_mockModule(resolveModule('src/services/didit-client.ts'), () => ({
   verifyWebhookSignature: jest.fn(),
+  updateVerificationSessionStatus: jest.fn(),
+  isExternalDiditSessionId: jest.fn(() => true),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({

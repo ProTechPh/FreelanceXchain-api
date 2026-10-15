@@ -19,6 +19,8 @@ describe('Webhook Routes Integration Tests', () => {
       checkPassiveLiveness: jest.fn(),
       matchFaces: jest.fn(),
       screenAml: jest.fn(),
+      updateVerificationSessionStatus: jest.fn(),
+      isExternalDiditSessionId: jest.fn(() => true),
     }));
 
     jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () => ({
