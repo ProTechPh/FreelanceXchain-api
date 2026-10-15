@@ -304,14 +304,14 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
   };
 }
 
-// Dispute mapping functions
 function mapEvidenceFromEntity(entity: EvidenceEntity): Evidence {
+  const raw = entity as any;
   return {
-    id: entity.id,
-    submitterId: entity.submitter_id,
-    type: entity.type,
-    content: entity.content,
-    submittedAt: entity.submitted_at,
+    id: raw.id || '',
+    submitterId: raw.submitter_id || raw.submitterId || raw.submitted_by || raw.submittedBy || '',
+    type: raw.type || raw.evidence_type || raw.evidenceType || 'text',
+    content: raw.content || raw.description || '',
+    submittedAt: raw.submitted_at || raw.submittedAt || raw.createdAt || raw.created_at || '',
   };
 }
 
