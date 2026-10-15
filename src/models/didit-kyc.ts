@@ -57,6 +57,18 @@ export type DiditVerificationDecisionResponse = {
   expires_at?: string;
 };
 
+export type DiditUpdateSessionStatusRequest = {
+  new_status: 'Approved' | 'Declined' | 'Resubmitted';
+  comment?: string;
+};
+
+export type DiditUpdateSessionStatusResponse = {
+  success: boolean;
+  message?: string;
+  session_id?: string;
+  status?: string;
+};
+
 export type DiditWebhookType = 'status.updated' | 'data.updated';
 
 export type DiditWebhookStatus = 

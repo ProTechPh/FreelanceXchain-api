@@ -12,6 +12,10 @@ import {
   getKycVerificationByUserId,
   updateKycVerification,
 } from '../repositories/didit-kyc-repository.js';
+import {
+  updateVerificationSessionStatus,
+  isExternalDiditSessionId,
+} from './didit-client.js';
 import type { KycVerification } from '../models/didit-kyc.js';
 import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import type { ServiceResult } from '../types/service-result.js';
@@ -403,6 +407,34 @@ export async function verifyUser(
         success: false,
         error: { code: 'DATABASE_ERROR', message: 'Failed to save KYC verification' },
       };
+    }
+
+    // Synchronize approval to Didit if the user has an existing external Didit session
+    if (existingVerification && isExternalDiditSessionId(existingVerification.didit_session_id)) {
+      try {
+        const diditRes = await updateVerificationSessionStatus(existingVerification.didit_session_id, {
+          new_status: 'Approved',
+          comment: `Admin manual override: ${auditReason}`,
+        });
+        if (!diditRes.success) {
+          logger.warn('Failed to sync manual verification to Didit', {
+            userId,
+            sessionId: existingVerification.didit_session_id,
+            error: diditRes.error,
+          });
+        } else {
+          logger.info('Synced manual verification to Didit', {
+            userId,
+            sessionId: existingVerification.didit_session_id,
+          });
+        }
+      } catch (diditErr) {
+        logger.warn('Unexpected error syncing manual verification to Didit', {
+          userId,
+          sessionId: existingVerification.didit_session_id,
+          error: diditErr instanceof Error ? diditErr.message : String(diditErr),
+        });
+      }
     }
 
     logger.info('ADMIN ACTION: user manually verified', { actor: adminUserId, userId });

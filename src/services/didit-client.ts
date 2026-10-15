@@ -9,6 +9,8 @@ import {
   DiditCreateSessionRequest,
   DiditCreateSessionResponse,
   DiditVerificationDecisionResponse,
+  DiditUpdateSessionStatusRequest,
+  DiditUpdateSessionStatusResponse,
   DiditApiError,
 } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
@@ -594,6 +596,104 @@ export async function screenAml(params: {
     return successResult(data);
   } catch (error) {
     logger.error('Failed to screen AML', error as Error);
+    return {
+      success: false,
+      error: {
+        error: {
+          code: 'NETWORK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
+        },
+      },
+    };
+  }
+}
+
+/**
+ * Check if a session ID belongs to an external Didit verification session
+ * (as opposed to synthetic sessions like `manual-...` or `admin-override-...`)
+ */
+export function isExternalDiditSessionId(sessionId?: string | null): boolean {
+  if (!sessionId || typeof sessionId !== 'string') return false;
+  if (sessionId.startsWith('manual-') || sessionId.startsWith('admin-override-')) return false;
+  return sessionId.length >= 8;
+}
+
+/**
+ * Update verification session status in Didit (manual override: Approved, Declined, Resubmitted)
+ */
+export async function updateVerificationSessionStatus(
+  sessionId: string,
+  request: DiditUpdateSessionStatusRequest
+): Promise<DiditClientResult<DiditUpdateSessionStatusResponse>> {
+  try {
+    const sanitizedSessionId = sanitizeSessionId(sessionId);
+
+    const response = await fetch(`${DIDIT_API_URL}/v3/session/${sanitizedSessionId}/update-status/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': DIDIT_API_KEY ?? '',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      let rawText = '';
+      let errorData: DiditApiError;
+      try {
+        rawText = await response.text();
+        const parsed = JSON.parse(rawText);
+        errorData = parsed?.error
+          ? parsed
+          : { error: { code: 'HTTP_ERROR', message: parsed?.message || rawText || `Status update failed with status ${response.status}` } };
+      } catch {
+        errorData = { error: { code: 'HTTP_ERROR', message: rawText || `Status update failed with status ${response.status}` } };
+      }
+
+      // Didit idempotency guardrail: If status is already the new status, Didit returns 400
+      // e.g. "The new status is the same as the current status"
+      const errorMessage = errorData.error?.message?.toLowerCase() || '';
+      if (response.status === 400 && errorMessage.includes('same as the current status')) {
+        logger.info('Didit session already in requested status (idempotent)', {
+          sessionId: sanitizedSessionId,
+          status: request.new_status,
+        });
+        return successResult({
+          success: true,
+          session_id: sanitizedSessionId,
+          status: request.new_status,
+          message: 'Status already up-to-date in Didit',
+        });
+      }
+
+      logger.warn('Didit API returned error for session update-status', {
+        sessionId: sanitizedSessionId,
+        status: response.status,
+        error: errorData,
+      });
+      return { success: false, error: errorData };
+    }
+
+    let data: Record<string, unknown> = {};
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        data = (await response.json()) as Record<string, unknown>;
+      } catch {
+        // empty JSON response
+      }
+    }
+
+    return successResult({
+      success: true,
+      session_id: sanitizedSessionId,
+      status: request.new_status,
+      message: (data['message'] as string) || 'Status updated successfully in Didit',
+    });
+  } catch (error) {
+    logger.error('Failed to update Didit session status', error as Error, {
+      sessionId,
+    });
     return {
       success: false,
       error: {

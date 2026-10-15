@@ -1409,5 +1409,104 @@ describe('didit-client - unparseable error bodies fall back to HTTP_ERROR', () =
       expect(result.data.session_id).toBe('session-404-fallback');
     }
   });
+
+  describe('updateVerificationSessionStatus and isExternalDiditSessionId', () => {
+    it('isExternalDiditSessionId correctly identifies external vs synthetic sessions', async () => {
+      const { isExternalDiditSessionId } = await importModule();
+
+      expect(isExternalDiditSessionId('11111111-2222-3333-4444-555555555555')).toBe(true);
+      expect(isExternalDiditSessionId('session-xyz')).toBe(true);
+      expect(isExternalDiditSessionId('manual-12345')).toBe(false);
+      expect(isExternalDiditSessionId('admin-override-12345')).toBe(false);
+      expect(isExternalDiditSessionId('')).toBe(false);
+      expect(isExternalDiditSessionId(null)).toBe(false);
+      expect(isExternalDiditSessionId(undefined)).toBe(false);
+      expect(isExternalDiditSessionId('short')).toBe(false);
+    });
+
+    it('updateVerificationSessionStatus updates status successfully on 200 OK', async () => {
+      const { updateVerificationSessionStatus } = await importModule();
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ message: 'Status updated' }),
+      }) as any;
+
+      const result = await updateVerificationSessionStatus('session-12345', {
+        new_status: 'Approved',
+        comment: 'Manual review passed',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.status).toBe('Approved');
+      }
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/v3/session/session-12345/update-status/'),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ new_status: 'Approved', comment: 'Manual review passed' }),
+        })
+      );
+    });
+
+    it('updateVerificationSessionStatus treats 400 "same as the current status" as idempotent success', async () => {
+      const { updateVerificationSessionStatus } = await importModule();
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        status: 400,
+        ok: false,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({
+          error: { code: 'BAD_REQUEST', message: 'The new status is the same as the current status' },
+        }),
+      }) as any;
+
+      const result = await updateVerificationSessionStatus('session-12345', {
+        new_status: 'Approved',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.status).toBe('Approved');
+      }
+    });
+
+    it('updateVerificationSessionStatus handles API failure', async () => {
+      const { updateVerificationSessionStatus } = await importModule();
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        status: 403,
+        ok: false,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({
+          error: { code: 'FORBIDDEN', message: 'Unauthorized session update' },
+        }),
+      }) as any;
+
+      const result = await updateVerificationSessionStatus('session-12345', {
+        new_status: 'Declined',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.code).toBe('FORBIDDEN');
+      }
+    });
+
+    it('updateVerificationSessionStatus handles network errors', async () => {
+      const { updateVerificationSessionStatus } = await importModule();
+      globalThis.fetch = jest.fn().mockRejectedValueOnce(new Error('Connection timed out')) as any;
+
+      const result = await updateVerificationSessionStatus('session-12345', {
+        new_status: 'Approved',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.code).toBe('NETWORK_ERROR');
+      }
+    });
+  });
 });
+
 

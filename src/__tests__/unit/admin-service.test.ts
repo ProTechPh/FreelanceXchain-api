@@ -85,6 +85,18 @@ jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'),
   reviewRepository: mockReviewRepo,
 }));
 
+const mockUpdateSessionStatus = jest.fn<any>();
+const isExternalDiditSessionId = (sessionId?: string | null) => {
+  if (!sessionId || typeof sessionId !== 'string') return false;
+  if (sessionId.startsWith('manual-') || sessionId.startsWith('admin-override-')) return false;
+  return sessionId.length >= 8;
+};
+
+jest.unstable_mockModule(resolveModule('src/services/didit-client.ts'), () => ({
+  updateVerificationSessionStatus: mockUpdateSessionStatus,
+  isExternalDiditSessionId,
+}));
+
 describe('Admin Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -110,6 +122,7 @@ describe('Admin Service', () => {
       created_at: '2026-08-05T00:00:00.000Z',
       updated_at: '2026-08-05T00:00:00.000Z',
     }));
+    mockUpdateSessionStatus.mockReset().mockResolvedValue({ success: true, data: { success: true } });
   });
 
   const importModule = async () => {
@@ -406,6 +419,45 @@ describe('Admin Service', () => {
         admin_notes: 'Manual review completed',
       }));
       expect(mockKycRepo.createKycVerification).not.toHaveBeenCalled();
+    });
+
+    it('should sync Approved status to Didit when user has an external Didit session', async () => {
+      const { verifyUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockKycRepo.getKycVerificationByUserId.mockResolvedValueOnce({
+        id: 'kyc-1',
+        user_id: 'user-1',
+        status: 'completed',
+        didit_session_id: 'session-xyz',
+        created_at: '2026-08-01T00:00:00.000Z',
+        updated_at: '2026-08-01T00:00:00.000Z',
+      });
+
+      const result = await verifyUser('user-1', 'admin-1', 'Manual verification approved');
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateSessionStatus).toHaveBeenCalledWith('session-xyz', {
+        new_status: 'Approved',
+        comment: 'Admin manual override: Manual verification approved',
+      });
+    });
+
+    it('should still succeed in verifyUser when Didit sync fails', async () => {
+      const { verifyUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockKycRepo.getKycVerificationByUserId.mockResolvedValueOnce({
+        id: 'kyc-1',
+        user_id: 'user-1',
+        status: 'completed',
+        didit_session_id: 'session-xyz',
+        created_at: '2026-08-01T00:00:00.000Z',
+        updated_at: '2026-08-01T00:00:00.000Z',
+      });
+      mockUpdateSessionStatus.mockResolvedValueOnce({ success: false, error: { message: 'Network error' } });
+
+      const result = await verifyUser('user-1', 'admin-1', 'Manual verification approved');
+
+      expect(result.success).toBe(true);
     });
 
     it('should prevent administrators from verifying themselves', async () => {

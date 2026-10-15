@@ -27,6 +27,8 @@ import {
   checkPassiveLiveness,
   matchFaces,
   screenAml,
+  updateVerificationSessionStatus,
+  isExternalDiditSessionId,
 } from './didit-client.js';
 import {
   KycVerification,
@@ -737,6 +739,37 @@ export async function adminReviewVerification(
       verification.last_name ?? null,
       verification.nationality ?? null
     );
+  }
+
+  // Synchronize decision to Didit if this verification was conducted via an external Didit session
+  if (isExternalDiditSessionId(verification.didit_session_id)) {
+    try {
+      const diditStatus = decision === 'approved' ? 'Approved' : 'Declined';
+      const diditRes = await updateVerificationSessionStatus(verification.didit_session_id, {
+        new_status: diditStatus,
+        comment: notes ? `Admin review: ${notes.trim()}` : `Admin review decision: ${decision}`,
+      });
+      if (!diditRes.success) {
+        logger.warn('Failed to sync KYC review decision to Didit', {
+          verificationId,
+          sessionId: verification.didit_session_id,
+          decision,
+          error: diditRes.error,
+        });
+      } else {
+        logger.info('Synced KYC review decision to Didit', {
+          verificationId,
+          sessionId: verification.didit_session_id,
+          status: diditStatus,
+        });
+      }
+    } catch (diditErr) {
+      logger.warn('Unexpected error syncing KYC decision to Didit', {
+        verificationId,
+        sessionId: verification.didit_session_id,
+        error: diditErr instanceof Error ? diditErr.message : String(diditErr),
+      });
+    }
   }
 
   // Transactional email gated by the user's email preferences. Best-effort:
