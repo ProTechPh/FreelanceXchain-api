@@ -71,6 +71,7 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'unique_email', type: DatabasesIndexType.Unique, attributes: ['email'] },
+      { key: 'wallet_address', type: DatabasesIndexType.Key, attributes: ['wallet_address'] },
       { key: 'role_createdAt', type: DatabasesIndexType.Key, attributes: ['role', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
     ],
   },
@@ -98,6 +99,7 @@ const COLLECTIONS: CollectionDef[] = [
     indexes: [
       { key: 'category_id_name', type: DatabasesIndexType.Key, attributes: ['category_id', 'name'], orders: [OrderBy.Asc, OrderBy.Asc] },
       { key: 'category_id_is_active_name', type: DatabasesIndexType.Key, attributes: ['category_id', 'is_active', 'name'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Asc] },
+      { key: 'is_active_name', type: DatabasesIndexType.Key, attributes: ['is_active', 'name'], orders: [OrderBy.Asc, OrderBy.Asc] },
       { key: 'name', type: DatabasesIndexType.Key, attributes: ['name'], orders: [OrderBy.Asc] },
     ],
   },
@@ -117,6 +119,7 @@ const COLLECTIONS: CollectionDef[] = [
     indexes: [
       { key: 'user_id', type: DatabasesIndexType.Key, attributes: ['user_id'] },
       { key: 'availability_createdAt', type: DatabasesIndexType.Key, attributes: ['availability', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -155,12 +158,14 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'employer_id', type: DatabasesIndexType.Key, attributes: ['employer_id'] },
+      { key: 'employer_id_status', type: DatabasesIndexType.Key, attributes: ['employer_id', 'status'] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       // Marketplace search hot paths: keyword (contains on title), budget range,
       // and skills (equal on the required_skill_ids array attribute).
       { key: 'status_title', type: DatabasesIndexType.Key, attributes: ['status', 'title'] },
       { key: 'status_budget', type: DatabasesIndexType.Key, attributes: ['status', 'budget'] },
       { key: 'status_required_skill_ids', type: DatabasesIndexType.Key, attributes: ['status', 'required_skill_ids'] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -179,7 +184,9 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'freelancer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['freelancer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'project_id_status', type: DatabasesIndexType.Key, attributes: ['project_id', 'status'] },
+      { key: 'freelancer_id_status', type: DatabasesIndexType.Key, attributes: ['freelancer_id', 'status'] },
       { key: 'project_id_freelancer_id', type: DatabasesIndexType.Key, attributes: ['project_id', 'freelancer_id'] },
+      { key: 'unique_project_freelancer', type: DatabasesIndexType.Unique, attributes: ['project_id', 'freelancer_id'] },
     ],
   },
   {
@@ -201,9 +208,12 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'employer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['employer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'freelancer_id_status', type: DatabasesIndexType.Key, attributes: ['freelancer_id', 'status'] },
+      { key: 'employer_id_status', type: DatabasesIndexType.Key, attributes: ['employer_id', 'status'] },
+      { key: 'unique_contract_proposal', type: DatabasesIndexType.Unique, attributes: ['proposal_id'] },
       { key: 'proposal_id', type: DatabasesIndexType.Key, attributes: ['proposal_id'] },
       { key: 'status', type: DatabasesIndexType.Key, attributes: ['status'] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -249,6 +259,8 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'reviewee_id_createdAt', type: DatabasesIndexType.Key, attributes: ['reviewee_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'contract_id_reviewer_id', type: DatabasesIndexType.Key, attributes: ['contract_id', 'reviewer_id'] },
+      { key: 'unique_contract_reviewer', type: DatabasesIndexType.Unique, attributes: ['contract_id', 'reviewer_id'] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -268,6 +280,7 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'milestone_id', type: DatabasesIndexType.Key, attributes: ['milestone_id'] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'initiator_id_createdAt', type: DatabasesIndexType.Key, attributes: ['initiator_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -523,6 +536,7 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'unique_user_skill', type: DatabasesIndexType.Unique, attributes: ['user_id', 'name'] },
     ],
   },
   {
@@ -542,6 +556,7 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'status_times_requested', type: DatabasesIndexType.Key, attributes: ['status', 'times_requested'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'unique_suggestion_name', type: DatabasesIndexType.Unique, attributes: ['skill_name'] },
     ],
   },
   {
@@ -578,9 +593,11 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'actor_id_createdAt', type: DatabasesIndexType.Key, attributes: ['actor_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'action_createdAt', type: DatabasesIndexType.Key, attributes: ['action', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'resource_type_resource_id_createdAt', type: DatabasesIndexType.Key, attributes: ['resource_type', 'resource_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -620,6 +637,7 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'deployment_tx_hash', type: 'string', size: 66, required: true },
     ],
     indexes: [
+      { key: 'contract_id', type: DatabasesIndexType.Key, attributes: ['contract_id'] },
       { key: 'address', type: DatabasesIndexType.Key, attributes: ['address'] },
       { key: 'escrow_address', type: DatabasesIndexType.Key, attributes: ['escrow_address'] },
     ],
@@ -813,6 +831,7 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'source_createdAt', type: DatabasesIndexType.Key, attributes: ['source', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'rating', type: DatabasesIndexType.Key, attributes: ['rating'] },
       { key: 'source_context_id', type: DatabasesIndexType.Key, attributes: ['source', 'context_id'] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -841,8 +860,10 @@ const COLLECTIONS: CollectionDef[] = [
     ],
     indexes: [
       { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'user_id_status', type: DatabasesIndexType.Key, attributes: ['user_id', 'status'] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'category_createdAt', type: DatabasesIndexType.Key, attributes: ['category', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'createdAt', type: DatabasesIndexType.Key, attributes: ['$createdAt'], orders: [OrderBy.Desc] },
     ],
   },
   {
@@ -873,83 +894,17 @@ const COLLECTIONS: CollectionDef[] = [
       { key: 'user_id', type: DatabasesIndexType.Unique, attributes: ['user_id'] },
       { key: 'stripe_customer_id', type: DatabasesIndexType.Key, attributes: ['stripe_customer_id'] },
       { key: 'stripe_subscription_id', type: DatabasesIndexType.Key, attributes: ['stripe_subscription_id'] },
+      { key: 'plan', type: DatabasesIndexType.Key, attributes: ['plan'] },
       { key: 'status_currentPeriodEnd', type: DatabasesIndexType.Key, attributes: ['status', 'current_period_end'], orders: [OrderBy.Asc, OrderBy.Asc] },
     ],
   },
 ];
 
-// ─── Index Definitions ───────────────────────────────────────────────────────
-// Database-level constraints that cannot be expressed as plain attributes.
-// The unique (contract_id, reviewer_id) index backs BLF-9.1: the reputation
-// service serializes the duplicate-review check-then-insert with an app-level
-// lock, but that lock is per-process — this index is the global backstop that
-// makes a double-submit fail even across server instances.
-// NOTE: on an existing `reviews` collection that already contains duplicate
-// (contract_id, reviewer_id) rows, creation will fail — de-duplicate first.
-const INDEXES = [
-  {
-    // Global race backstop: one proposal per freelancer and project. Remove
-    // pre-existing duplicate pairs before applying this index.
-    collectionId: 'proposals',
-    key: 'unique_project_freelancer',
-    type: 'key',
-    attributes: ['project_id', 'freelancer_id'],
-    indexes: ['unique'],
-  },
-  {
-    // A proposal may create exactly one contract, even when acceptance
-    // requests arrive concurrently on different API replicas.
-    collectionId: 'contracts',
-    key: 'unique_contract_proposal',
-    type: 'key',
-    attributes: ['proposal_id'],
-    indexes: ['unique'],
-  },
-  {
-    collectionId: 'reviews',
-    key: 'unique_contract_reviewer',
-    type: 'key',
-    attributes: ['contract_id', 'reviewer_id'],
-    indexes: ['unique'],
-  },
-  {
-    // Anti-spam backstop for custom skills (BLF-skill.1): even if two requests
-    // race past the app-level duplicate check, the DB rejects a second
-    // (user_id, name) row. NOTE: de-duplicate existing user_custom_skills rows
-    // before running on a populated collection.
-    collectionId: 'user_custom_skills',
-    key: 'unique_user_skill',
-    type: 'key',
-    attributes: ['user_id', 'name'],
-    indexes: ['unique'],
-  },
-  {
-    // Anti-spam backstop for the suggestion queue (BLF-skill.2): two concurrent
-    // suggestForGlobal requests with the same skill name can both pass the
-    // app-level lookup; this index makes the second create fail at the DB.
-    // NOTE: on an existing `skill_suggestions` collection that already contains
-    // duplicate skill_name rows, creation will fail — de-duplicate first.
-    collectionId: 'skill_suggestions',
-    key: 'unique_suggestion_name',
-    type: 'key',
-    attributes: ['skill_name'],
-    indexes: ['unique'],
-  },
-  {
-    // Race backstop for favorites: addFavorite does a check-then-insert, so two
-    // concurrent identical requests can both pass the check. This unique
-    // (user_id, target_type, target_id) index makes the second insert fail at
-    // the DB even across server instances (same pattern as reviews/skills).
-    // NOTE: on an existing `favorites` collection that already contains
-    // duplicate (user_id, target_type, target_id) rows, creation will fail —
-    // de-duplicate first.
-    collectionId: 'favorites',
-    key: 'unique_user_target',
-    type: 'key',
-    attributes: ['user_id', 'target_type', 'target_id'],
-    indexes: ['unique'],
-  },
-];
+// ─── Database-Level Unique Constraints & Indexes ─────────────────────────────
+// All database-level constraints (including unique indexes backing BLF-9.1,
+// BLF-skill.1, BLF-skill.2, duplicate proposals, contracts, and favorites)
+// are declared directly within each entry in COLLECTIONS above and applied
+// via createIndexes().
 
 // ─── Setup Functions ────────────────────────────────────────────────────────
 

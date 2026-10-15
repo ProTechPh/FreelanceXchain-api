@@ -84,6 +84,21 @@ describe('Appwrite setup index coverage', () => {
     ['blockchain_transactions', ['hash']],
     ['emails', ['user_id', 'folder', 'received_at']],
     ['emails', ['user_id', 'is_read']],
+    ['users', ['wallet_address']],
+    ['projects', ['employer_id', 'status']],
+    ['proposals', ['freelancer_id', 'status']],
+    ['contracts', ['employer_id', 'status']],
+    ['skills', ['is_active', 'name']],
+    ['freelancer_profiles', ['$createdAt']],
+    ['disputes', ['$createdAt']],
+    ['reviews', ['$createdAt']],
+    ['support_tickets', ['user_id', 'status']],
+    ['support_tickets', ['$createdAt']],
+    ['subscriptions', ['plan']],
+    ['audit_log_entries', ['actor_id', '$createdAt']],
+    ['blockchain_escrows', ['contract_id']],
+    ['user_custom_skills', ['user_id', 'name']],
+    ['skill_suggestions', ['skill_name']],
   ])('indexes %s (%s)', (collection, attrs) => {
     expect(indexCoverage(collection, attrs)).toBe(true);
   });
