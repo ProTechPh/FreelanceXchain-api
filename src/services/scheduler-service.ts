@@ -16,7 +16,6 @@ import type { FreelancerProfileEntity } from '../repositories/freelancer-profile
 import { fromAppwriteDoc } from '../repositories/base-repository.js';
 import { parseField } from '../utils/index.js';
 import { reconcileContractPayments } from './escrow-reconciliation-service.js';
-import { purgeExpiredAccountDeletions } from './auth-service.js';
 
 /**
  * Auto-close expired projects
@@ -511,7 +510,9 @@ export function initializeScheduler(): void {
   // Permanently purge accounts whose 30-day grace period has expired - Daily at 3 AM
   cron.schedule('0 3 * * *', () => {
     logger.info('Running scheduled job: Purge expired account deletions');
-    purgeExpiredAccountDeletions();
+    import('./auth-service.js')
+      .then(({ purgeExpiredAccountDeletions }) => purgeExpiredAccountDeletions())
+      .catch((err) => logger.error('Failed to run purgeExpiredAccountDeletions', { error: err }));
   });
 
   logger.info('Scheduler service initialized successfully');

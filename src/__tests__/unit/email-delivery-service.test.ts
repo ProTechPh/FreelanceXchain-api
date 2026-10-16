@@ -665,7 +665,7 @@ describe('Email Delivery Service', () => {
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
-          subject: 'Your FreelanceXchain Account Has Been Permanently Deleted',
+          subject: 'Your FreelanceXchain Account is Scheduled for Deletion (30-Day Grace Period)',
         })
       );
     });

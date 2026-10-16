@@ -433,7 +433,7 @@ describe('auth service production session exchange', () => {
     const result = await auth.requestAccountDeletion('user-1');
     expect(result).toEqual({
       code: 'ACTIVE_CONTRACTS_EXIST',
-      message: 'Cannot delete account while you have active or disputed contracts with pending escrow funds. Please complete or resolve active contracts first.',
+      message: 'Cannot delete account while you have 1 active contract(s) with escrow commitments. Please complete, cancel, or resolve ongoing contracts first.',
     });
   });
 
