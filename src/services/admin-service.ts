@@ -709,6 +709,40 @@ async function createAuthUserInAppwrite(
   }
 }
 
+async function dispatchUserInvitedEmail(params: {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  temporaryPassword?: string;
+  plan: PlanTier;
+}): Promise<boolean> {
+  try {
+    const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
+    const emailRes = await sendUserInvitedEmail(params.email, {
+      recipientName: params.name,
+      email: params.email,
+      role: params.role,
+      temporaryPassword: params.temporaryPassword,
+      loginUrl: `${frontendUrl}/login`,
+      plan: params.plan,
+    });
+    if (emailRes.success) {
+      logger.info('Invite email sent to user successfully', { userId: params.userId, email: params.email });
+      return true;
+    }
+    logger.warn('Failed to send invite email to user', { userId: params.userId, email: params.email, error: emailRes.error });
+    return false;
+  } catch (emailErr) {
+    logger.warn('Error attempting to send invite email to user', {
+      userId: params.userId,
+      email: params.email,
+      error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+    });
+    return false;
+  }
+}
+
 /**
  * Create or invite a new user through Appwrite Auth and register in public database.
  */
@@ -785,31 +819,14 @@ export async function inviteOrAddUser(
       payload: { role: createdUser.role, email: normalizedEmail, permissions: createdUser.permissions, plan },
     });
 
-    // Best-effort send invitation email with credentials / login link
-    let emailSent = false;
-    try {
-      const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
-      const emailRes = await sendUserInvitedEmail(normalizedEmail, {
-        recipientName: trimmedName,
-        email: normalizedEmail,
-        role: createdUser.role,
-        temporaryPassword: temporaryPasswordGenerated,
-        loginUrl: `${frontendUrl}/login`,
-        plan,
-      });
-      if (emailRes.success) {
-        emailSent = true;
-        logger.info('Invite email sent to user successfully', { userId: createdUser.id, email: normalizedEmail });
-      } else {
-        logger.warn('Failed to send invite email to user', { userId: createdUser.id, email: normalizedEmail, error: emailRes.error });
-      }
-    } catch (emailErr) {
-      logger.warn('Error attempting to send invite email to user', {
-        userId: createdUser.id,
-        email: normalizedEmail,
-        error: emailErr instanceof Error ? emailErr.message : String(emailErr),
-      });
-    }
+    const emailSent = await dispatchUserInvitedEmail({
+      userId: createdUser.id,
+      email: normalizedEmail,
+      name: trimmedName,
+      role: createdUser.role,
+      temporaryPassword: temporaryPasswordGenerated,
+      plan,
+    });
 
     return successResult({
       user: createdUser,
