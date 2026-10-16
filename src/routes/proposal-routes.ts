@@ -273,6 +273,7 @@ async function processMultipartProposal(req: Request, res: Response) {
     let statusCode = 400;
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
+    if (result.error.code === 'CANNOT_PROPOSE_OWN_PROJECT') statusCode = 403;
     
     return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
   }
@@ -324,6 +325,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     let statusCode = 400;
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
+    if (result.error.code === 'CANNOT_PROPOSE_OWN_PROJECT') statusCode = 403;
     
     return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
   }

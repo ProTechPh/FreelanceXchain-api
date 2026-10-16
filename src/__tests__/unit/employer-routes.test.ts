@@ -13,6 +13,7 @@ const mockListProjectsByEmployer = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
   getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
   updateEmployerProfile: mockUpdateEmployerProfile,
+  ensureEmployerProfile: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
@@ -185,6 +186,7 @@ const mockProjectService = { listProjectsByEmployer: mockListProjectsByEmployer 
 const mockEmployerProfileService = {
   getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
   updateEmployerProfile: mockUpdateEmployerProfile,
+  ensureEmployerProfile: jest.fn(),
 };
 
 describe('employer-routes branch coverage', () => {
@@ -269,6 +271,7 @@ describe('employer-routes.ts - Branch Coverage', () => {
     jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
       getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
       updateEmployerProfile: jest.fn(),
+      ensureEmployerProfile: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
       listProjectsByEmployer: jest.fn(),
@@ -303,6 +306,7 @@ describe('employer-routes - PATCH /profile description and industry validation',
     jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
       getEmployerProfileByUserId: jest.fn(),
       updateEmployerProfile: mockUpdateEmployerProfile,
+      ensureEmployerProfile: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
       listProjectsByEmployer: jest.fn(),
@@ -388,6 +392,7 @@ describe('employer-routes - GET /:id ?? fallback branch', () => {
     jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
       getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
       updateEmployerProfile: jest.fn(),
+      ensureEmployerProfile: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
       listProjectsByEmployer: jest.fn(),

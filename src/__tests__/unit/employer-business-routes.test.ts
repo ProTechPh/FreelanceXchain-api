@@ -8,6 +8,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 
 const mockGetEmployerProfileByUserId = jest.fn<any>();
 const mockUpdateEmployerProfile = jest.fn<any>();
+const mockEnsureEmployerProfile = jest.fn<any>();
 const mockListBusinessDocuments = jest.fn<any>();
 const mockUploadBusinessDocument = jest.fn<any>();
 const mockDeleteBusinessDocument = jest.fn<any>();
@@ -19,6 +20,7 @@ let uploadedFiles: any[] = [];
 jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
   getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
   updateEmployerProfile: mockUpdateEmployerProfile,
+  ensureEmployerProfile: mockEnsureEmployerProfile,
 }));
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   listProjectsByEmployer: jest.fn(),
@@ -159,6 +161,22 @@ describe('Employer business routes', () => {
       const res = await request(app).patch('/api/employers/profile').send({ website: 42, yearEstablished: '2010' });
       expect(res.status).toBe(400);
       expect(res.body.error.details.map((d: any) => d.field)).toEqual(['website', 'yearEstablished']);
+    });
+  });
+
+  describe('POST /profile (ensure)', () => {
+    it('returns the existing or newly created employer profile', async () => {
+      mockEnsureEmployerProfile.mockResolvedValueOnce({ success: true, data: { id: 'ep-1', userId: 'emp-1' } });
+      const res = await request(app).post('/api/employers/profile');
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe('ep-1');
+      expect(mockEnsureEmployerProfile).toHaveBeenCalledWith('emp-1');
+    });
+
+    it('returns 404 when the user is missing', async () => {
+      mockEnsureEmployerProfile.mockResolvedValueOnce({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+      const res = await request(app).post('/api/employers/profile');
+      expect(res.status).toBe(404);
     });
   });
 

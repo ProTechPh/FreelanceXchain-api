@@ -89,6 +89,11 @@ export async function submitProposal(
   }
   const project = mapProjectFromEntity(projectEntity);
 
+  // One account can act as both freelancer and employer, so block applying to your own project.
+  if (projectEntity.employer_id === freelancerId) {
+    return errorResult('CANNOT_PROPOSE_OWN_PROJECT', 'You cannot submit a proposal on your own project.');
+  }
+
   if (project.status !== 'open') {
     return errorResult('PROJECT_NOT_OPEN', 'This project is no longer accepting proposals.');
   }
@@ -272,6 +277,10 @@ async function validateProposalAcceptance(
 
   if (project.employerId !== employerId) {
     return { error: errorResult('UNAUTHORIZED', 'You are not authorized to accept proposals for this project') };
+  }
+
+  if (proposalEntity.freelancer_id === employerId) {
+    return { error: errorResult('CANNOT_PROPOSE_OWN_PROJECT', 'You cannot hire yourself on your own project.') };
   }
 
   if (!project.milestones || project.milestones.length === 0) {

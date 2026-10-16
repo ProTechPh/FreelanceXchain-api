@@ -861,6 +861,10 @@ describe('Integration Tests - Critical Flows', () => {
    */
   describe('Flow 1: Registration → Profile → Project → Proposal → Contract', () => {
     it('should complete the full freelancer-employer workflow', async () => {
+      // Distinct Appwrite user IDs: proposing on your own project is blocked.
+      (globalThis as any).mockAppwriteUsers.create
+        .mockResolvedValueOnce({ $id: 'flow1-freelancer-id' })
+        .mockResolvedValueOnce({ $id: 'flow1-employer-id' });
       const freelancerRegResult = await register({
         email: 'freelancer@test.com',
         password: 'SecurePass123!',

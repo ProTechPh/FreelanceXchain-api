@@ -3157,6 +3157,71 @@
         }
       }
     },
+    "/api/auth/switch-role": {
+      "post": {
+        "summary": "Switch the active role between freelancer and employer",
+        "description": "One account can act as a freelancer or an employer. Switching to employer requires a complete business profile (required fields and documents); switching to freelancer has no upfront requirement. Admin accounts cannot switch.",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "freelancer",
+                      "employer"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Role switched (or already active); returns the current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid role"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Admin accounts cannot switch roles (ROLE_SWITCH_NOT_ALLOWED)"
+          },
+          "409": {
+            "description": "Business profile incomplete (BUSINESS_PROFILE_INCOMPLETE), with missingFields and missingDocuments in error.details"
+          }
+        }
+      }
+    },
     "/api/contracts": {
       "get": {
         "summary": "List user's contracts",
@@ -4085,7 +4150,7 @@
     "/api/employers/profile": {
       "get": {
         "summary": "Get current user's employer profile",
-        "description": "Retrieves the authenticated user's employer profile",
+        "description": "Retrieves the authenticated user's employer profile Available to freelancers too, so they can set up their employer side before switching roles.",
         "tags": [
           "Employers"
         ],
@@ -4115,7 +4180,7 @@
       },
       "patch": {
         "summary": "Update employer profile",
-        "description": "Updates the authenticated user's employer profile",
+        "description": "Updates the authenticated user's employer profile Available to freelancers too, so they can set up their employer side before switching roles.",
         "tags": [
           "Employers"
         ],
@@ -4206,12 +4271,42 @@
             "description": "Profile not found"
           }
         }
+      },
+      "post": {
+        "summary": "Create the employer profile if it does not exist yet",
+        "description": "Idempotent. Lets a freelancer set up their employer side (business information and documents) before switching roles. Returns the existing profile when there is one. Available to freelancers too, so they can set up their employer side before switching roles.",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Employer profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployerProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
       }
     },
     "/api/employers/profile/completeness": {
       "get": {
         "summary": "Check whether the employer's business profile is complete",
-        "description": "Lists missing required business fields and documents. Posting a project requires a complete business profile. Website is optional.",
+        "description": "Lists missing required business fields and documents. Posting a project requires a complete business profile. Website is optional. Available to freelancers too, so they can set up their employer side before switching roles.",
         "tags": [
           "Employers"
         ],
@@ -4273,11 +4368,12 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "description": "Available to freelancers too, so they can set up their employer side before switching roles."
       },
       "post": {
         "summary": "Upload a business document",
-        "description": "Uploads one PDF or image (max 10MB). Uploading a type that already exists replaces it, except for \"other\". Documents are collected for transparency and are not checked against BIR, DTI or SEC records.",
+        "description": "Uploads one PDF or image (max 10MB). Uploading a type that already exists replaces it, except for \"other\". Documents are collected for transparency and are not checked against BIR, DTI or SEC records. Available to freelancers too, so they can set up their employer side before switching roles.",
         "tags": [
           "Employers"
         ],
@@ -4378,7 +4474,8 @@
           "404": {
             "description": "Document not found"
           }
-        }
+        },
+        "description": "Available to freelancers too, so they can set up their employer side before switching roles."
       }
     },
     "/api/employers/{id}": {

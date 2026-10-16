@@ -14,6 +14,7 @@ import {
   updatePassword,
   changePassword,
   getCurrentUserWithKyc,
+  switchActiveRole,
   logout,
   enrollMFA,
   verifyMFAEnrollment,
@@ -1737,6 +1738,58 @@ router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Requ
   }
 
   res.status(200).json({ user: result });
+}));
+
+/**
+ * @swagger
+ * /api/auth/switch-role:
+ *   post:
+ *     summary: Switch the active role between freelancer and employer
+ *     description: Switching to employer requires a complete business profile (required fields and documents). Switching to freelancer has no upfront requirement. Admin accounts cannot switch.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Role switched; returns the current user
+ *       400:
+ *         description: Invalid role
+ *       403:
+ *         description: Admin accounts cannot switch roles
+ *       409:
+ *         description: Business profile incomplete
+ */
+router.post('/switch-role', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
+    return;
+  }
+
+  const { role } = (req.body ?? {}) as { role?: unknown };
+  if (role !== 'freelancer' && role !== 'employer') {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Role must be freelancer or employer', { requestId });
+    return;
+  }
+
+  const result = await switchActiveRole(userId, role);
+  if (!result.success) {
+    const status = result.code === 'ROLE_SWITCH_NOT_ALLOWED' ? 403
+      : result.code === 'BUSINESS_PROFILE_INCOMPLETE' ? 409
+      : result.code === 'USER_NOT_FOUND' ? 404
+      : 500;
+    sendErrorResponse(res, status, result.code, result.message, {
+      requestId,
+      ...(result.details ? { details: result.details } : {}),
+    });
+    return;
+  }
+
+  res.status(200).json({ user: result.user });
 }));
 
 /**

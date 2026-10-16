@@ -19,6 +19,7 @@ const mockRequestPasswordReset = jest.fn<any>();
 const mockUpdatePassword = jest.fn<any>();
 const mockChangePassword = jest.fn<any>();
 const mockGetCurrentUserWithKyc = jest.fn<any>();
+const mockSwitchActiveRole = jest.fn<any>();
 const mockLogout = jest.fn<any>();
 const mockEnrollMFA = jest.fn<any>();
 const mockVerifyMFAEnrollment = jest.fn<any>();
@@ -69,6 +70,7 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   updatePassword: mockUpdatePassword,
   changePassword: mockChangePassword,
   getCurrentUserWithKyc: mockGetCurrentUserWithKyc,
+  switchActiveRole: mockSwitchActiveRole,
   logout: mockLogout,
   enrollMFA: mockEnrollMFA,
   verifyMFAEnrollment: mockVerifyMFAEnrollment,
@@ -319,6 +321,51 @@ describe('Auth Routes', () => {
       mockLogout.mockResolvedValue({ code: 'LOGOUT_FAILED', message: 'Failed to logout' });
       const res = await request(app).post('/api/auth/logout').set('Authorization', 'Bearer test-token');
       expect(res.status).toBe(500);
+    });
+  });
+
+  describe('POST /switch-role', () => {
+    it('switches the active role and returns the user', async () => {
+      mockSwitchActiveRole.mockResolvedValueOnce({ success: true, user: { id: 'user-1', role: 'employer' } });
+      const res = await request(app).post('/api/auth/switch-role').send({ role: 'employer' });
+      expect(res.status).toBe(200);
+      expect(res.body.user.role).toBe('employer');
+      expect(mockSwitchActiveRole).toHaveBeenCalledWith('user-1', 'employer');
+    });
+
+    it('rejects an invalid role', async () => {
+      const res = await request(app).post('/api/auth/switch-role').send({ role: 'admin' });
+      expect(res.status).toBe(400);
+      expect(mockSwitchActiveRole).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing body', async () => {
+      const res = await request(app).post('/api/auth/switch-role');
+      expect(res.status).toBe(400);
+    });
+
+    it.each([
+      ['ROLE_SWITCH_NOT_ALLOWED', 403],
+      ['USER_NOT_FOUND', 404],
+      ['UPDATE_FAILED', 500],
+    ])('maps %s to %i', async (code, status) => {
+      mockSwitchActiveRole.mockResolvedValueOnce({ success: false, code, message: 'nope' });
+      const res = await request(app).post('/api/auth/switch-role').send({ role: 'freelancer' });
+      expect(res.status).toBe(status);
+      expect(res.body.error.code).toBe(code);
+      expect(res.body.error.details).toBeUndefined();
+    });
+
+    it('returns 409 with the missing items when the business profile is incomplete', async () => {
+      mockSwitchActiveRole.mockResolvedValueOnce({
+        success: false,
+        code: 'BUSINESS_PROFILE_INCOMPLETE',
+        message: 'Complete your business information',
+        details: { missingFields: ['tin'], missingDocuments: ['bir_2303'] },
+      });
+      const res = await request(app).post('/api/auth/switch-role').send({ role: 'employer' });
+      expect(res.status).toBe(409);
+      expect(res.body.error.details).toEqual({ missingFields: ['tin'], missingDocuments: ['bir_2303'] });
     });
   });
 
@@ -910,6 +957,7 @@ describe('auth-routes.ts - Branch Coverage', () => {
       updatePassword: jest.fn(),
       changePassword: jest.fn(),
       getCurrentUserWithKyc: jest.fn(),
+      switchActiveRole: jest.fn(),
       logout: jest.fn(),
       enrollMFA: jest.fn(),
       verifyMFAEnrollment: jest.fn(),
@@ -1233,6 +1281,7 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       updatePassword: jest.fn(),
       changePassword: jest.fn(),
       getCurrentUserWithKyc: jest.fn(),
+      switchActiveRole: jest.fn(),
       logout: jest.fn(),
       enrollMFA: jest.fn(),
       verifyMFAEnrollment: jest.fn(),
@@ -1606,6 +1655,7 @@ describe('auth-routes.ts - Remaining coverage gaps', () => {
       updatePassword: svcUpdatePassword,
       changePassword: svcChangePassword,
       getCurrentUserWithKyc: svcGetCurrentUserWithKyc,
+      switchActiveRole: jest.fn(),
       logout: svcLogout,
       enrollMFA: svcEnrollMFA,
       verifyMFAEnrollment: svcVerifyMFAEnrollment,

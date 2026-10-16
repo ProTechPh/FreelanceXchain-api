@@ -2,6 +2,7 @@ import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-m
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
+import { userRepository } from '../repositories/user-repository.js';
 import type { BusinessType } from '../models/employer-profile.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -97,6 +98,41 @@ export async function createEmployerProfileFromKyc(
   };
 
   const createdEntity = await employerProfileRepository.createProfile(profileEntity);
+  return successResult(mapEmployerProfileFromEntity(createdEntity));
+}
+
+/**
+ * Return the user's employer profile, creating a minimal one if it is missing.
+ * Used when a freelancer sets up their employer side before switching roles.
+ * Only identity fields are prefilled (name/nationality from approved KYC, else
+ * the account name); business fields are left for the user to fill in.
+ */
+export async function ensureEmployerProfile(
+  userId: string
+): Promise<EmployerProfileServiceResult<EmployerProfile>> {
+  const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
+  if (existingProfile) {
+    return successResult(mapEmployerProfileFromEntity(existingProfile));
+  }
+
+  const user = await userRepository.getUserById(userId);
+  if (!user) {
+    return errorResult('USER_NOT_FOUND', 'User not found');
+  }
+
+  const kycResult = await getProfileDataFromKyc(userId);
+  const kycData = kycResult.success ? kycResult.data : null;
+  const name = kycData?.name ?? user.name ?? null;
+
+  const createdEntity = await employerProfileRepository.createProfile({
+    id: generateId(),
+    user_id: userId,
+    name,
+    nationality: kycData?.nationality ?? null,
+    company_name: name ?? '',
+    description: '',
+    industry: '',
+  });
   return successResult(mapEmployerProfileFromEntity(createdEntity));
 }
 

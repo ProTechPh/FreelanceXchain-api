@@ -9,6 +9,7 @@ import { clampLimit } from '../utils/index.js';
 import {
   getEmployerProfileByUserId,
   updateEmployerProfile,
+  ensureEmployerProfile,
 } from '../services/employer-profile-service.js';
 import type { UpdateEmployerProfileInput } from '../services/employer-profile-service.js';
 import {
@@ -218,7 +219,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
  *       404:
  *         description: Profile not found
  */
-router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -276,7 +277,7 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { companyName, description, industry } = req.body;
   const body = req.body as Record<string, unknown>;
   const userId = req.user?.userId;
@@ -327,6 +328,41 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
 
 /**
  * @swagger
+ * /api/employers/profile:
+ *   post:
+ *     summary: Create the employer profile if it does not exist yet
+ *     description: Idempotent. Lets a freelancer set up their employer side (business information and documents) before switching roles. Returns the existing profile when there is one.
+ *     tags:
+ *       - Employers
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Employer profile
+ *       404:
+ *         description: User not found
+ */
+router.post('/profile', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = await ensureEmployerProfile(userId);
+  if (!result.success) {
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
+}));
+
+/**
+ * @swagger
  * /api/employers/profile/completeness:
  *   get:
  *     summary: Check whether the employer's business profile is complete
@@ -341,7 +377,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
  *       404:
  *         description: Profile not found
  */
-router.get('/profile/completeness', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/profile/completeness', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -385,7 +421,7 @@ router.get('/profile/completeness', authMiddleware, requireRole('employer'), api
  *       400:
  *         description: Validation error
  */
-router.get('/profile/documents', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.get('/profile/documents', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -399,7 +435,7 @@ router.get('/profile/documents', authMiddleware, requireRole('employer'), apiRat
   res.status(200).json({ documents });
 }));
 
-router.post('/profile/documents', authMiddleware, requireRole('employer'), fileUploadRateLimiter, uploadBusinessDocumentMiddleware, asyncHandler(async (req: Request, res: Response) => {
+router.post('/profile/documents', authMiddleware, requireRole('employer', 'freelancer'), fileUploadRateLimiter, uploadBusinessDocumentMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -463,7 +499,7 @@ router.post('/profile/documents', authMiddleware, requireRole('employer'), fileU
  *       404:
  *         description: Document not found
  */
-router.delete('/profile/documents/:documentId', authMiddleware, requireRole('employer'), apiRateLimiter, validateAppwriteDocumentId(['documentId']), asyncHandler(async (req: Request, res: Response) => {
+router.delete('/profile/documents/:documentId', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, validateAppwriteDocumentId(['documentId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 

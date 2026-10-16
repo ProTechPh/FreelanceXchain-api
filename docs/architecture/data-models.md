@@ -13,7 +13,7 @@ models (camelCase).
 | ---------- | ------- |
 | `users` | Accounts, role, wallet, suspension/MFA flags |
 | `skill_categories` / `skills` | Two-level skill taxonomy for matching |
-| `freelancer_profiles` / `employer_profiles` | Role-specific profile data, including employer business registration and contact details |
+| `freelancer_profiles` / `employer_profiles` | Role-specific profile data, including employer business registration and contact details. One account can hold both and switch its active role (`users.role`) via `POST /api/auth/switch-role`; switching to employer requires a complete business profile |
 | `employer_business_documents` | Business documents employers upload (BIR 2303, DTI or SEC, Mayor's permit, Barangay clearance, other); kept on file for transparency and not checked against BIR, DTI or SEC records |
 | `projects` | Job postings with budget, deadline, milestones, tags |
 | `proposals` | Freelancer bids on projects |

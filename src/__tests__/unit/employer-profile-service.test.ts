@@ -42,12 +42,20 @@ jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-reposi
   EmployerProfileEntity: {} as EmployerProfileEntity,
 }));
 
+const mockGetUserById = jest.fn(async (userId: string): Promise<{ id: string; name: string | null } | null> =>
+  userId === 'missing-user' ? null : { id: userId, name: `Account ${userId}` }
+);
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: { getUserById: mockGetUserById },
+}));
+
 // Mock the didit-kyc-service
 jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () => ({
   getProfileDataFromKyc: mockKycService.getProfileDataFromKyc,
 }));
 
 const {
+  ensureEmployerProfile,
   createEmployerProfile,
   createEmployerProfileFromKyc,
   getEmployerProfileByUserId,
@@ -151,6 +159,59 @@ describe('Employer Profile Service', () => {
       if (result.success) {
         expect(result.data.companyName).toBe(input.companyName);
       }
+    });
+  });
+
+  describe('ensureEmployerProfile', () => {
+    it('returns the existing profile without creating another', async () => {
+      const userId = createTestUser().id;
+      await createEmployerProfile(userId, { companyName: 'Acme', description: 'Existing description', industry: 'Tech' });
+
+      const result = await ensureEmployerProfile(userId);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.companyName).toBe('Acme');
+    });
+
+    it('creates a minimal profile from approved KYC data', async () => {
+      const result = await ensureEmployerProfile('user-with-kyc');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe('John Doe');
+        expect(result.data.nationality).toBe('US');
+        expect(result.data.companyName).toBe('John Doe');
+        expect(result.data.description).toBe('');
+        expect(result.data.industry).toBe('');
+      }
+    });
+
+    it('falls back to the account name without approved KYC', async () => {
+      const result = await ensureEmployerProfile('user-without-kyc');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe('Account user-without-kyc');
+        expect(result.data.companyName).toBe('Account user-without-kyc');
+        expect(result.data.nationality).toBeNull();
+      }
+    });
+
+    it('uses an empty company name when the account has no name', async () => {
+      mockGetUserById.mockResolvedValueOnce({ id: 'nameless-user', name: null });
+      const result = await ensureEmployerProfile('nameless-user');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBeNull();
+        expect(result.data.companyName).toBe('');
+      }
+    });
+
+    it('returns USER_NOT_FOUND for an unknown user', async () => {
+      const result = await ensureEmployerProfile('missing-user');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('USER_NOT_FOUND');
     });
   });
 
