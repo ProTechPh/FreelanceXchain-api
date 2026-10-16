@@ -3,6 +3,7 @@ import { employerProfileRepository, EmployerProfileEntity } from '../repositorie
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { withLock } from '../utils/async-lock.js';
 import type { BusinessType } from '../models/employer-profile.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -108,6 +109,14 @@ export async function createEmployerProfileFromKyc(
  * the account name); business fields are left for the user to fill in.
  */
 export async function ensureEmployerProfile(
+  userId: string
+): Promise<EmployerProfileServiceResult<EmployerProfile>> {
+  // Serialized per user: two concurrent calls (e.g. a React dev double-render)
+  // must not both see "no profile" and create two.
+  return withLock(`employer-profile-ensure:${userId}`, () => ensureEmployerProfileUnlocked(userId));
+}
+
+async function ensureEmployerProfileUnlocked(
   userId: string
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
   const existingProfile = await employerProfileRepository.getProfileByUserId(userId);

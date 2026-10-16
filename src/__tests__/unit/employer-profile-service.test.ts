@@ -208,6 +208,20 @@ describe('Employer Profile Service', () => {
       }
     });
 
+    it('creates only one profile when called twice at the same time', async () => {
+      const [first, second] = await Promise.all([
+        ensureEmployerProfile('user-concurrent'),
+        ensureEmployerProfile('user-concurrent'),
+      ]);
+
+      expect(first.success && second.success).toBe(true);
+      if (first.success && second.success) {
+        expect(second.data.id).toBe(first.data.id);
+      }
+      const profiles = [...profileStore.values()].filter((profile: any) => profile.user_id === 'user-concurrent');
+      expect(profiles).toHaveLength(1);
+    });
+
     it('returns USER_NOT_FOUND for an unknown user', async () => {
       const result = await ensureEmployerProfile('missing-user');
       expect(result.success).toBe(false);

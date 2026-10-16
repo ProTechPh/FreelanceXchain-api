@@ -9,9 +9,14 @@ const mockDocRepo = {
   getDocumentById: jest.fn<any>(),
   deleteDocument: jest.fn<any>(),
   findByEmployer: jest.fn<any>(),
+  queryAll: jest.fn<any>(),
 };
 const mockProfileRepo = {
   getProfileByUserId: jest.fn<any>(),
+  queryAll: jest.fn<any>(),
+};
+const mockUserRepo = {
+  getUsersByIds: jest.fn<any>(),
 };
 const mockUploadFileToStorage = jest.fn<any>();
 const mockDeleteFileFromStorage = jest.fn<any>();
@@ -22,6 +27,9 @@ jest.unstable_mockModule(resolveModule('src/repositories/employer-business-docum
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
   employerProfileRepository: mockProfileRepo,
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: mockUserRepo,
 }));
 jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
   uploadFileToStorage: mockUploadFileToStorage,
@@ -38,6 +46,7 @@ const {
   getBusinessProfileCompleteness,
   getRequiredDocumentTypes,
   mapBusinessDocumentFromEntity,
+  listBusinessProfilesForAdmin,
 } = await import('../../services/employer-business-document-service.js');
 
 const docEntity = (overrides: Record<string, unknown> = {}) => ({
@@ -257,6 +266,88 @@ describe('employer-business-document-service', () => {
       const result = await getBusinessProfileCompleteness('emp-1');
       expect(result.data.complete).toBe(false);
       expect(result.data.missingDocuments).toEqual(['sec_registration']);
+    });
+  });
+
+  describe('listBusinessProfilesForAdmin', () => {
+    const profiles = [
+      { ...completeProfile, id: 'ep-1', user_id: 'emp-1', company_name: 'Acme Trading', updated_at: '2026-01-01T00:00:00.000Z' },
+      { ...completeProfile, id: 'ep-2', user_id: 'emp-2', company_name: 'Beta Corp', business_type: 'corporation', tin: null, updated_at: '2026-03-01T00:00:00.000Z' },
+      { id: 'ep-3', user_id: 'ghost', name: 'Profile Name', company_name: 'No Docs Inc', description: '', industry: '', updated_at: '2026-02-01T00:00:00.000Z' },
+    ];
+    const documents = [
+      docEntity({ id: 'd1', employer_id: 'emp-1', document_type: 'bir_2303', created_at: '2026-04-01T00:00:00.000Z' }),
+      docEntity({ id: 'd2', employer_id: 'emp-1', document_type: 'dti_certificate', created_at: '2026-01-05T00:00:00.000Z' }),
+      docEntity({ id: 'd3', employer_id: 'emp-1', document_type: 'mayors_permit', created_at: '2026-01-06T00:00:00.000Z' }),
+      docEntity({ id: 'd4', employer_id: 'emp-2', document_type: 'bir_2303', created_at: '2026-02-10T00:00:00.000Z' }),
+    ];
+
+    beforeEach(() => {
+      mockProfileRepo.queryAll.mockResolvedValue(profiles);
+      mockDocRepo.queryAll.mockResolvedValue(documents);
+      mockUserRepo.getUsersByIds.mockResolvedValue([
+        { id: 'emp-1', name: 'Ana Reyes', email: 'ana@acme.ph', role: 'employer' },
+        { id: 'emp-2', name: 'Ben Cruz', email: 'ben@beta.ph', role: 'freelancer' },
+      ]);
+    });
+
+    it('summarizes every profile, newest activity first, with filter counts', async () => {
+      const result = await listBusinessProfilesForAdmin();
+
+      expect(result.counts).toEqual({ all: 3, withDocuments: 2, complete: 1, incomplete: 2 });
+      expect(result.items.map(item => item.userId)).toEqual(['emp-1', 'emp-2', 'ghost']);
+
+      const [acme, beta, ghost] = result.items;
+      expect(acme).toMatchObject({
+        name: 'Ana Reyes', email: 'ana@acme.ph', activeRole: 'employer', complete: true,
+        documentCount: 3, requiredDocumentCount: 3, submittedRequiredCount: 3,
+        missingFieldCount: 0, missingDocumentCount: 0,
+        lastDocumentAt: '2026-04-01T00:00:00.000Z', updatedAt: '2026-04-01T00:00:00.000Z',
+      });
+      expect(beta).toMatchObject({
+        activeRole: 'freelancer', businessType: 'corporation', complete: false,
+        documentCount: 1, submittedRequiredCount: 1, missingFieldCount: 1, missingDocumentCount: 2,
+        updatedAt: '2026-03-01T00:00:00.000Z',
+      });
+      expect(ghost).toMatchObject({
+        name: 'Profile Name', email: null, activeRole: null, businessType: null,
+        documentCount: 0, lastDocumentAt: null, updatedAt: '2026-02-01T00:00:00.000Z',
+      });
+      expect(mockUserRepo.getUsersByIds).toHaveBeenCalledWith(['emp-1', 'emp-2', 'ghost']);
+    });
+
+    it.each([
+      ['complete', ['emp-1']],
+      ['incomplete', ['emp-2', 'ghost']],
+      ['with_documents', ['emp-1', 'emp-2']],
+      ['all', ['emp-1', 'emp-2', 'ghost']],
+    ])('filters by status %s', async (status, expected) => {
+      const result = await listBusinessProfilesForAdmin({ status });
+      expect(result.items.map(item => item.userId)).toEqual(expected);
+    });
+
+    it('searches company, name and email case-insensitively and counts only matches', async () => {
+      expect((await listBusinessProfilesForAdmin({ search: 'BETA' })).items.map(item => item.userId)).toEqual(['emp-2']);
+      expect((await listBusinessProfilesForAdmin({ search: 'ana@' })).items.map(item => item.userId)).toEqual(['emp-1']);
+      const result = await listBusinessProfilesForAdmin({ search: 'no docs' });
+      expect(result.items.map(item => item.userId)).toEqual(['ghost']);
+      expect(result.counts).toEqual({ all: 1, withDocuments: 0, complete: 0, incomplete: 1 });
+    });
+
+    it('shows one row per user when a user has duplicate employer profiles', async () => {
+      mockProfileRepo.queryAll.mockResolvedValueOnce([
+        { ...completeProfile, id: 'ep-old', user_id: 'emp-1', company_name: 'Acme Trading', updated_at: '2026-01-01T00:00:00.000Z' },
+        { id: 'ep-dup', user_id: 'emp-1', company_name: 'Empty copy', description: '', industry: '', updated_at: '2026-05-01T00:00:00.000Z' },
+      ]);
+      const result = await listBusinessProfilesForAdmin();
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ userId: 'emp-1', companyName: 'Acme Trading', complete: true });
+      expect(mockProfileRepo.queryAll).toHaveBeenCalledWith('$createdAt', true);
+    });
+
+    it('ignores a blank search', async () => {
+      const result = await listBusinessProfilesForAdmin({ search: '   ' });
+      expect(result.items).toHaveLength(3);
     });
   });
 });

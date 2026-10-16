@@ -8078,6 +8078,142 @@
         }
       }
     },
+    "/api/admin/employers/business-profiles": {
+      "get": {
+        "summary": "List employer business profiles and documents on file (read-only)",
+        "description": "Every employer profile with completeness and document counts, including users currently acting as freelancers. Documents are kept on file and are not checked against BIR, DTI or SEC records.",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "with_documents",
+                "complete",
+                "incomplete"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Case-insensitive match on company, name or email"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Business profile summaries and filter counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "email": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "activeRole": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "companyName": {
+                            "type": "string"
+                          },
+                          "businessType": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "documentCount": {
+                            "type": "integer"
+                          },
+                          "requiredDocumentCount": {
+                            "type": "integer"
+                          },
+                          "submittedRequiredCount": {
+                            "type": "integer"
+                          },
+                          "complete": {
+                            "type": "boolean"
+                          },
+                          "missingFieldCount": {
+                            "type": "integer"
+                          },
+                          "missingDocumentCount": {
+                            "type": "integer"
+                          },
+                          "lastDocumentAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "all": {
+                          "type": "integer"
+                        },
+                        "withDocuments": {
+                          "type": "integer"
+                        },
+                        "complete": {
+                          "type": "integer"
+                        },
+                        "incomplete": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status filter"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Missing users:view permission"
+          }
+        }
+      }
+    },
     "/api/admin/employers/{userId}/business-profile": {
       "get": {
         "summary": "View an employer's business information and documents (read-only)",

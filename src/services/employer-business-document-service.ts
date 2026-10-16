@@ -3,6 +3,7 @@ import {
   EmployerBusinessDocumentEntity,
 } from '../repositories/employer-business-document-repository.js';
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { logger } from '../config/logger.js';
 import { BUCKETS } from '../config/appwrite.js';
 import { generateId } from '../utils/id.js';
@@ -163,18 +164,135 @@ export async function getBusinessProfileCompleteness(
     return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
   }
 
+  const docs = await employerBusinessDocumentRepository.findByEmployer(userId);
+  return successResult(computeCompleteness(profile, docs));
+}
+
+/** Required business fields and documents still missing from a profile. */
+export function computeCompleteness(
+  profile: EmployerProfileEntity,
+  docs: EmployerBusinessDocumentEntity[]
+): BusinessProfileCompleteness {
   const missingFields = REQUIRED_PROFILE_FIELDS
     .filter(([column]) => !isFilled(profile[column]))
     .map(([, field]) => field);
 
-  const docs = await employerBusinessDocumentRepository.findByEmployer(userId);
   const submitted = new Set(docs.map(doc => doc.document_type));
   const missingDocuments = getRequiredDocumentTypes(profile.business_type)
     .filter(type => !submitted.has(type));
 
-  return successResult({
+  return {
     complete: missingFields.length === 0 && missingDocuments.length === 0,
     missingFields,
     missingDocuments,
+  };
+}
+
+export const ADMIN_BUSINESS_PROFILE_STATUSES = ['all', 'with_documents', 'complete', 'incomplete'] as const;
+export type AdminBusinessProfileStatus = typeof ADMIN_BUSINESS_PROFILE_STATUSES[number];
+
+export type AdminBusinessProfileSummary = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  activeRole: string | null;
+  companyName: string;
+  businessType: string | null;
+  documentCount: number;
+  requiredDocumentCount: number;
+  submittedRequiredCount: number;
+  complete: boolean;
+  missingFieldCount: number;
+  missingDocumentCount: number;
+  lastDocumentAt: string | null;
+  updatedAt: string;
+};
+
+export type AdminBusinessProfileList = {
+  items: AdminBusinessProfileSummary[];
+  counts: { all: number; withDocuments: number; complete: number; incomplete: number };
+};
+
+function latest(...dates: Array<string | null | undefined>): string | null {
+  return dates.filter((date): date is string => Boolean(date)).sort().at(-1) ?? null;
+}
+
+/**
+ * Read-only overview of every employer business profile for admins: identity,
+ * completeness and documents on file. Includes users currently acting as
+ * freelancers who have set up an employer side.
+ */
+export async function listBusinessProfilesForAdmin(
+  options: { status?: AdminBusinessProfileStatus; search?: string } = {}
+): Promise<AdminBusinessProfileList> {
+  const [allProfiles, documents] = await Promise.all([
+    employerProfileRepository.queryAll('$createdAt', true),
+    employerBusinessDocumentRepository.queryAll(),
+  ]);
+
+  // One row per user. If a user somehow has more than one employer profile,
+  // keep the oldest: it is the one getProfileByUserId returns and the app uses.
+  const seenUsers = new Set<string>();
+  const profiles = allProfiles.filter(profile => {
+    if (seenUsers.has(profile.user_id)) return false;
+    seenUsers.add(profile.user_id);
+    return true;
   });
+
+  const docsByEmployer = new Map<string, EmployerBusinessDocumentEntity[]>();
+  for (const doc of documents) {
+    const list = docsByEmployer.get(doc.employer_id) ?? [];
+    list.push(doc);
+    docsByEmployer.set(doc.employer_id, list);
+  }
+
+  const users = await userRepository.getUsersByIds([...new Set(profiles.map(profile => profile.user_id))]);
+  const usersById = new Map(users.map(user => [user.id, user]));
+
+  const all: AdminBusinessProfileSummary[] = profiles.map(profile => {
+    const docs = docsByEmployer.get(profile.user_id) ?? [];
+    const completeness = computeCompleteness(profile, docs);
+    const required = getRequiredDocumentTypes(profile.business_type);
+    const user = usersById.get(profile.user_id);
+    const lastDocumentAt = latest(...docs.map(doc => doc.created_at));
+    return {
+      userId: profile.user_id,
+      name: user?.name ?? profile.name ?? null,
+      email: user?.email ?? null,
+      activeRole: user?.role ?? null,
+      companyName: profile.company_name,
+      businessType: profile.business_type ?? null,
+      documentCount: docs.length,
+      requiredDocumentCount: required.length,
+      submittedRequiredCount: required.length - completeness.missingDocuments.length,
+      complete: completeness.complete,
+      missingFieldCount: completeness.missingFields.length,
+      missingDocumentCount: completeness.missingDocuments.length,
+      lastDocumentAt,
+      updatedAt: latest(profile.updated_at, lastDocumentAt) ?? profile.updated_at,
+    };
+  });
+
+  const search = options.search?.trim().toLowerCase();
+  const matching = search
+    ? all.filter(item => [item.companyName, item.name, item.email]
+      .some(value => value?.toLowerCase().includes(search)))
+    : all;
+
+  const counts = {
+    all: matching.length,
+    withDocuments: matching.filter(item => item.documentCount > 0).length,
+    complete: matching.filter(item => item.complete).length,
+    incomplete: matching.filter(item => !item.complete).length,
+  };
+
+  const status = options.status ?? 'all';
+  const items = matching
+    .filter(item => status === 'all'
+      || (status === 'with_documents' && item.documentCount > 0)
+      || (status === 'complete' && item.complete)
+      || (status === 'incomplete' && !item.complete))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  return { items, counts };
 }
