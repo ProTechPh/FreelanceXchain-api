@@ -54,6 +54,13 @@ function mapKyc(doc: Record<string, unknown>): KycVerification {
     if (!result['ip_country_code'] && meta['ip_country_code']) result['ip_country_code'] = meta['ip_country_code'];
     if (result['is_vpn'] === undefined && meta['is_vpn'] !== undefined) result['is_vpn'] = meta['is_vpn'];
     if (result['is_proxy'] === undefined && meta['is_proxy'] !== undefined) result['is_proxy'] = meta['is_proxy'];
+    if (!result['completed_at'] && meta['completed_at']) result['completed_at'] = meta['completed_at'];
+    if (!result['expires_at'] && meta['expires_at']) result['expires_at'] = meta['expires_at'];
+    if (!result['reviewed_at'] && meta['reviewed_at']) result['reviewed_at'] = meta['reviewed_at'];
+  }
+
+  if (!result['reviewed_at'] && result['reviewed_by']) {
+    result['reviewed_at'] = (result['updated_at'] || doc['$updatedAt']) as string || null;
   }
 
   return result as KycVerification;
@@ -97,6 +104,9 @@ const DEFAULT_ALLOWED_KYC_ATTRIBUTES = new Set([
   'ip_address',
   'metadata',
   'reviewed_by',
+  'reviewed_at',
+  'completed_at',
+  'expires_at',
   'admin_notes',
 ]);
 
@@ -132,7 +142,7 @@ async function filterKycAttributes(data: Record<string, unknown>): Promise<Recor
     if (allowedKeys.has(key)) {
       attrs[key] = typeof value === 'object' && value !== null ? JSON.stringify(value) : value;
     } else {
-      if (['date_of_birth', 'issuing_country', 'liveness_confidence_score', 'face_similarity_score', 'ip_country_code', 'is_vpn', 'is_proxy', 'completed_at', 'expires_at'].includes(key)) {
+      if (['date_of_birth', 'issuing_country', 'liveness_confidence_score', 'face_similarity_score', 'ip_country_code', 'is_vpn', 'is_proxy', 'completed_at', 'expires_at', 'reviewed_at'].includes(key)) {
         meta[key] = value;
       }
     }
