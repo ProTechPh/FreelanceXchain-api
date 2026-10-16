@@ -33,6 +33,7 @@
     "deploy:contracts:prod": "node scripts/deployment/deploy-all.cjs --network polygon",
     "setup:appwrite-db": "tsx scripts/setup-appwrite-db.ts",
     "db:restore": "tsx scripts/setup-appwrite-db.ts",
+    "db:add-missing-skills": "tsx scripts/setup-appwrite-db.ts --add-missing-skills",
     "db:restore:seed": "tsx scripts/setup-appwrite-db.ts --seed",
     "db:reset": "tsx scripts/setup-appwrite-db.ts --reset",
     "db:reset:seed": "tsx scripts/setup-appwrite-db.ts --reset --seed",

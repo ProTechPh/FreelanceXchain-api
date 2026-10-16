@@ -36,7 +36,111 @@ type AddExperienceInput = {
   description: string;
   startDate: string;
   endDate?: string | null;
+  skills?: string[];
 };
+
+type ProfileSkillEntity = FreelancerProfileEntity['skills'][number];
+type ExperienceEntity = FreelancerProfileEntity['experience'][number];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const YEAR_MS = 365.25 * DAY_MS;
+
+function dedupeSkillNames(names: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  return (names ?? []).flatMap((name) => {
+    const trimmed = name.trim();
+    const key = normalizeSkillSearchKey(trimmed);
+    if (!trimmed || seen.has(key)) return [];
+    seen.add(key);
+    return [canonicalizeSkillDisplayName(trimmed)];
+  });
+}
+
+function experienceKeyPart(value: string | null | undefined): string {
+  return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Same position, company and dates: the entry is a repeat of one already on the profile. */
+function isSameExperience(
+  a: Pick<ExperienceEntity, 'title' | 'company' | 'start_date' | 'end_date'>,
+  b: Pick<ExperienceEntity, 'title' | 'company' | 'start_date' | 'end_date'>
+): boolean {
+  return (
+    experienceKeyPart(a.title) === experienceKeyPart(b.title) &&
+    experienceKeyPart(a.company) === experienceKeyPart(b.company) &&
+    experienceKeyPart(a.start_date).slice(0, 10) === experienceKeyPart(b.start_date).slice(0, 10) &&
+    experienceKeyPart(a.end_date).slice(0, 10) === experienceKeyPart(b.end_date).slice(0, 10)
+  );
+}
+
+const DUPLICATE_EXPERIENCE_MESSAGE = 'This work history entry is already on your profile';
+
+/** Total years covered by the ranges, counting overlapping jobs once, rounded to half years. */
+function yearsCovered(ranges: Array<[number, number]>): number {
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let current: [number, number] | null = null;
+  for (const [start, end] of sorted) {
+    if (!current || start > current[1]) {
+      if (current) total += current[1] - current[0];
+      current = [start, end];
+    } else if (end > current[1]) {
+      current[1] = end;
+    }
+  }
+  if (current) total += current[1] - current[0];
+  return Math.round((total / YEAR_MS) * 2) / 2;
+}
+
+/**
+ * Derives the profile's skill list from its work history. A skill used in any
+ * work history entry is listed with the years those entries cover; a skill the
+ * freelancer picked directly stays even when no entry uses it. Anything else
+ * is dropped.
+ */
+export function reconcileProfileSkills(
+  skills: ProfileSkillEntity[],
+  experience: ExperienceEntity[],
+  now: Date = new Date()
+): ProfileSkillEntity[] {
+  const rangesBySkill = new Map<string, { name: string; ranges: Array<[number, number]> }>();
+  for (const entry of experience) {
+    const start = new Date(entry.start_date).getTime();
+    const end = entry.end_date ? new Date(entry.end_date).getTime() + DAY_MS : now.getTime();
+    const range: [number, number] | null = Number.isFinite(start) && Number.isFinite(end) && end > start ? [start, end] : null;
+    for (const name of entry.skills ?? []) {
+      const key = normalizeSkillSearchKey(name);
+      if (!key) continue;
+      const group = rangesBySkill.get(key) ?? { name: canonicalizeSkillDisplayName(name), ranges: [] };
+      if (range) group.ranges.push(range);
+      rangesBySkill.set(key, group);
+    }
+  }
+
+  const result: ProfileSkillEntity[] = [];
+  const listed = new Set<string>();
+  for (const skill of skills) {
+    if (!skill?.name) continue;
+    const key = normalizeSkillSearchKey(skill.name);
+    if (listed.has(key)) continue;
+    const fromHistory = rangesBySkill.get(key);
+    if (!fromHistory && !skill.added_manually) continue;
+    listed.add(key);
+    result.push({
+      name: skill.name,
+      years_of_experience: fromHistory ? yearsCovered(fromHistory.ranges) : skill.years_of_experience,
+      added_manually: skill.added_manually,
+    });
+  }
+
+  for (const [key, group] of rangesBySkill) {
+    if (listed.has(key)) continue;
+    listed.add(key);
+    result.push({ name: group.name, years_of_experience: yearsCovered(group.ranges), added_manually: false });
+  }
+
+  return result;
+}
 
 
 
@@ -191,43 +295,30 @@ export async function addSkillsToProfile(
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
-  const newSkills: FreelancerProfileEntity['skills'] = [];
+  const updatedSkills: ProfileSkillEntity[] = [...(existingProfile.skills || [])];
 
   for (const skillInput of skills) {
     const trimmedName = skillInput.name.trim();
 
-    // Check if skill already exists in profile (normalized to prevent duplicates)
-    const existingSkillIndex = (existingProfile.skills || []).findIndex(
+    // Normalized match so "react" and "React" never become two skills
+    const existingSkill = updatedSkills.find(
       s => s && s.name && normalizeSkillSearchKey(s.name) === normalizeSkillSearchKey(trimmedName)
     );
 
-    // Check if skill already exists in newSkills being built (normalized)
-    /* istanbul ignore next -- newSkills is always initialized as [] at line 210; || [] is dead code */
-    const newSkillIndex = (newSkills || []).findIndex(
-      s => s && s.name && normalizeSkillSearchKey(s.name) === normalizeSkillSearchKey(trimmedName)
-    );
-    
-    if (existingSkillIndex === -1 && newSkillIndex === -1) {
-      newSkills.push({
+    if (existingSkill) {
+      existingSkill.years_of_experience = skillInput.yearsOfExperience;
+      existingSkill.added_manually = true;
+    } else {
+      updatedSkills.push({
         name: canonicalizeSkillDisplayName(trimmedName),
         years_of_experience: skillInput.yearsOfExperience,
+        added_manually: true,
       });
-    } else if (existingSkillIndex !== -1) {
-      const existingSkill = existingProfile.skills[existingSkillIndex];
-      if (existingSkill) {
-        existingSkill.years_of_experience = skillInput.yearsOfExperience;
-      }
-    } else if (newSkillIndex !== -1) {
-      const newSkill = newSkills[newSkillIndex];
-      if (newSkill) {
-        newSkill.years_of_experience = skillInput.yearsOfExperience;
-      }
     }
   }
 
-  const updatedSkills = [...(existingProfile.skills || []), ...newSkills];
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
-    skills: updatedSkills,
+    skills: reconcileProfileSkills(updatedSkills, existingProfile.experience || []),
   });
 
   if (!updatedEntity) {
@@ -247,14 +338,17 @@ export async function removeSkillFromProfile(
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
-  // Safely fallback and check for skills array to avoid crashing when deleting
+  // Unpicking a skill only clears the manual flag; it stays listed while
+  // a work history entry still uses it.
   const currentSkills = existingProfile.skills || [];
-  const updatedSkills = currentSkills.filter(
-    s => s && s.name && normalizeSkillSearchKey(s.name) !== normalizeSkillSearchKey(skillName)
-  );
+  const updatedSkills = currentSkills
+    .filter(s => s && s.name)
+    .map(s =>
+      normalizeSkillSearchKey(s.name) === normalizeSkillSearchKey(skillName) ? { ...s, added_manually: false } : s
+    );
 
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
-    skills: updatedSkills,
+    skills: reconcileProfileSkills(updatedSkills, existingProfile.experience || []),
   });
 
   if (!updatedEntity) {
@@ -290,11 +384,17 @@ export async function addExperience(
     description: input.description,
     start_date: input.startDate,
     end_date: input.endDate ?? null,
+    skills: dedupeSkillNames(input.skills),
   };
+
+  if (existingProfile.experience.some(entry => isSameExperience(entry, experienceEntity))) {
+    return errorResult('DUPLICATE_EXPERIENCE', DUPLICATE_EXPERIENCE_MESSAGE);
+  }
 
   const updatedExperience = [...existingProfile.experience, experienceEntity];
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     experience: updatedExperience,
+    skills: reconcileProfileSkills(existingProfile.skills || [], updatedExperience),
   });
 
   if (!updatedEntity) {
@@ -344,10 +444,17 @@ export async function updateExperience(
     description: input.description ?? currentExperience.description,
     start_date: newStartDate,
     end_date: newEndDate,
+    skills: input.skills !== undefined ? dedupeSkillNames(input.skills) : currentExperience.skills ?? [],
   };
+
+  const updatedEntry = updatedExperience[experienceIndex]!;
+  if (existingProfile.experience.some(entry => entry.id !== experienceId && isSameExperience(entry, updatedEntry))) {
+    return errorResult('DUPLICATE_EXPERIENCE', DUPLICATE_EXPERIENCE_MESSAGE);
+  }
 
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     experience: updatedExperience,
+    skills: reconcileProfileSkills(existingProfile.skills || [], updatedExperience),
   });
 
   if (!updatedEntity) {
@@ -370,6 +477,7 @@ export async function removeExperience(
   const updatedExperience = existingProfile.experience.filter(e => e.id !== experienceId);
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     experience: updatedExperience,
+    skills: reconcileProfileSkills(existingProfile.skills || [], updatedExperience),
   });
 
   if (!updatedEntity) {

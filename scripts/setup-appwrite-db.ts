@@ -1141,6 +1141,10 @@ const skillCategories = [
   { seedId: "cat-10", name: "Quality Assurance", description: "Software testing, automated QA, and test engineering", is_active: true },
   { seedId: "cat-11", name: "Product & Management", description: "Product management, agile project management, and strategy", is_active: true },
   { seedId: "cat-12", name: "Writing & Content", description: "Technical documentation, whitepapers, and content writing", is_active: true },
+  { seedId: "cat-13", name: "Soft Skills", description: "Interpersonal, communication, and work-style skills", is_active: true },
+  { seedId: "cat-14", name: "Web Development", description: "Full-stack web technology stacks, CMS platforms, and website delivery", is_active: true },
+  { seedId: "cat-15", name: "Nuclear Engineering", description: "Nuclear power, radiation protection, and nuclear safety engineering", is_active: true },
+  { seedId: "cat-16", name: "Explosives Safety & Disposal", description: "Bomb disposal, blasting engineering, and explosives safety compliance", is_active: true },
 ];
 
 const skills = [
@@ -1300,6 +1304,56 @@ const skills = [
   { seedId: "skill-131", category_id: "cat-12", name: "Web3 Whitepapers", description: "Architectural whitepapers, tokenomics documentation, and lightpapers", is_active: true },
   { seedId: "skill-132", category_id: "cat-12", name: "Developer Guides", description: "Step-by-step technical tutorials, code walkthroughs, and sample apps", is_active: true },
   { seedId: "skill-133", category_id: "cat-12", name: "Technical Copywriting", description: "Clear, compelling copywriting for technology products and landing pages", is_active: true },
+  { seedId: "skill-134", category_id: "cat-13", name: "Communication", description: "Clear written and verbal communication with clients and teammates", is_active: true },
+  { seedId: "skill-135", category_id: "cat-13", name: "Teamwork & Collaboration", description: "Working effectively with others toward shared goals", is_active: true },
+  { seedId: "skill-136", category_id: "cat-13", name: "Leadership", description: "Guiding people, setting direction, and taking ownership of outcomes", is_active: true },
+  { seedId: "skill-137", category_id: "cat-13", name: "Problem Solving", description: "Breaking down issues and finding practical solutions", is_active: true },
+  { seedId: "skill-138", category_id: "cat-13", name: "Critical Thinking", description: "Evaluating information objectively to make sound decisions", is_active: true },
+  { seedId: "skill-139", category_id: "cat-13", name: "Time Management", description: "Prioritizing work and meeting deadlines reliably", is_active: true },
+  { seedId: "skill-140", category_id: "cat-13", name: "Adaptability", description: "Adjusting quickly to new requirements, tools, and environments", is_active: true },
+  { seedId: "skill-141", category_id: "cat-13", name: "Attention to Detail", description: "Producing accurate, thorough, and polished work", is_active: true },
+  { seedId: "skill-142", category_id: "cat-13", name: "Client Relations", description: "Building trust and managing expectations with clients", is_active: true },
+  { seedId: "skill-143", category_id: "cat-13", name: "Conflict Resolution", description: "Handling disagreements calmly and finding common ground", is_active: true },
+  { seedId: "skill-144", category_id: "cat-13", name: "Self-Motivation", description: "Working independently and staying productive without supervision", is_active: true },
+  { seedId: "skill-145", category_id: "cat-13", name: "Creativity", description: "Bringing original ideas and fresh approaches to problems", is_active: true },
+  { seedId: "skill-146", category_id: "cat-14", name: "MERN Stack", description: "MongoDB, Express, React, and Node.js full-stack applications", is_active: true },
+  { seedId: "skill-147", category_id: "cat-14", name: "MEAN Stack", description: "MongoDB, Express, Angular, and Node.js full-stack applications", is_active: true },
+  { seedId: "skill-148", category_id: "cat-14", name: "LAMP Stack", description: "Linux, Apache, MySQL, and PHP web applications", is_active: true },
+  { seedId: "skill-149", category_id: "cat-14", name: "JAMstack", description: "JavaScript, APIs, and prebuilt markup for fast static sites", is_active: true },
+  { seedId: "skill-150", category_id: "cat-14", name: "Full-Stack Web Development", description: "Building complete web applications across client, server, and database", is_active: true },
+  { seedId: "skill-151", category_id: "cat-14", name: "PHP", description: "Server-side scripting for dynamic websites and web applications", is_active: true },
+  { seedId: "skill-152", category_id: "cat-14", name: "Laravel", description: "PHP framework for robust, maintainable web applications", is_active: true },
+  { seedId: "skill-153", category_id: "cat-14", name: "WordPress", description: "Theme and plugin development for WordPress sites", is_active: true },
+  { seedId: "skill-154", category_id: "cat-14", name: "WooCommerce", description: "E-commerce stores built on WordPress", is_active: true },
+  { seedId: "skill-155", category_id: "cat-14", name: "Shopify", description: "Shopify store setup, theme customization, and Liquid templates", is_active: true },
+  { seedId: "skill-156", category_id: "cat-14", name: "Webflow", description: "Visual website building and CMS on Webflow", is_active: true },
+  { seedId: "skill-157", category_id: "cat-14", name: "Headless CMS (Strapi / Sanity)", description: "Content APIs and editorial workflows with headless CMS platforms", is_active: true },
+  { seedId: "skill-158", category_id: "cat-14", name: "Firebase / Supabase", description: "Hosted auth, databases, and storage for web apps", is_active: true },
+  { seedId: "skill-159", category_id: "cat-14", name: "Bootstrap", description: "Responsive layouts and components with the Bootstrap framework", is_active: true },
+  { seedId: "skill-160", category_id: "cat-14", name: "jQuery", description: "DOM scripting and legacy front-end maintenance with jQuery", is_active: true },
+  { seedId: "skill-161", category_id: "cat-14", name: "SEO", description: "Technical and on-page search engine optimization", is_active: true },
+  { seedId: "skill-162", category_id: "cat-14", name: "Web Accessibility (WCAG)", description: "Building websites that meet WCAG accessibility standards", is_active: true },
+  { seedId: "skill-163", category_id: "cat-14", name: "Web Hosting & Deployment", description: "Domains, hosting, and deploying sites to Vercel, Netlify, or VPS servers", is_active: true },
+  { seedId: "skill-164", category_id: "cat-15", name: "Reactor Operations", description: "Safe operation and monitoring of nuclear power reactors", is_active: true },
+  { seedId: "skill-165", category_id: "cat-15", name: "Radiation Protection", description: "Dose monitoring, shielding, and ALARA radiation safety practices", is_active: true },
+  { seedId: "skill-166", category_id: "cat-15", name: "Nuclear Safety Analysis", description: "Safety cases, probabilistic risk assessment, and accident analysis", is_active: true },
+  { seedId: "skill-167", category_id: "cat-15", name: "Health Physics", description: "Radiation measurement and protection of workers and the public", is_active: true },
+  { seedId: "skill-168", category_id: "cat-15", name: "Nuclear Licensing & Compliance", description: "Regulatory licensing and IAEA / national regulator compliance", is_active: true },
+  { seedId: "skill-169", category_id: "cat-15", name: "Radioactive Waste Management", description: "Safe handling, storage, and disposal of radioactive waste", is_active: true },
+  { seedId: "skill-170", category_id: "cat-15", name: "Nuclear Instrumentation & Control", description: "Reactor sensors, instrumentation, and control systems", is_active: true },
+  { seedId: "skill-171", category_id: "cat-15", name: "Reactor Physics Simulation", description: "Core physics and neutronics modeling for reactor design", is_active: true },
+  { seedId: "skill-172", category_id: "cat-15", name: "Nuclear Decommissioning", description: "Safe dismantling and cleanup of retired nuclear facilities", is_active: true },
+  { seedId: "skill-173", category_id: "cat-15", name: "Medical Physics (Nuclear Medicine)", description: "Safe use of radiation in medical imaging and therapy", is_active: true },
+  { seedId: "skill-174", category_id: "cat-16", name: "Explosive Ordnance Disposal (EOD)", description: "Locating and safely rendering safe unexploded ordnance", is_active: true },
+  { seedId: "skill-175", category_id: "cat-16", name: "Bomb Disposal", description: "Render-safe procedures for suspected explosive devices", is_active: true },
+  { seedId: "skill-176", category_id: "cat-16", name: "Bomb Threat Response", description: "Threat assessment, search procedures, and evacuation planning", is_active: true },
+  { seedId: "skill-177", category_id: "cat-16", name: "Blasting Engineering", description: "Controlled blast design for mining, quarrying, and construction", is_active: true },
+  { seedId: "skill-178", category_id: "cat-16", name: "Controlled Demolition", description: "Planning and supervising the safe demolition of structures", is_active: true },
+  { seedId: "skill-179", category_id: "cat-16", name: "Explosives Storage & Transport Compliance", description: "Licensing, magazine storage, and transport regulations for explosives", is_active: true },
+  { seedId: "skill-180", category_id: "cat-16", name: "Blast Safety & Risk Assessment", description: "Exclusion zones, vibration, and overpressure monitoring", is_active: true },
+  { seedId: "skill-181", category_id: "cat-16", name: "Explosives Detection & Screening", description: "Security screening technology and procedures for explosives", is_active: true },
+  { seedId: "skill-182", category_id: "cat-16", name: "Humanitarian Demining", description: "Clearing landmines and explosive remnants of war", is_active: true },
+  { seedId: "skill-183", category_id: "cat-16", name: "Post-Blast Investigation", description: "Forensic investigation of explosive incidents", is_active: true },
 ];
 
 const adminUsers = [
@@ -1415,6 +1469,8 @@ const freelancerProfiles = [
       { name: "Rust", years_of_experience: 3 },
       { name: "Smart Contract Auditing", years_of_experience: 4 },
       { name: "Hardhat", years_of_experience: 5 },
+      { name: "Leadership", years_of_experience: 4.5, added_manually: false },
+      { name: "Attention to Detail", years_of_experience: 4.5, added_manually: false },
     ]),
     experience: JSON.stringify([
       {
@@ -1424,6 +1480,7 @@ const freelancerProfiles = [
         description: "Led security audits for multiple DeFi protocols",
         start_date: "2022-01-01",
         end_date: null,
+        skills: ["Leadership", "Attention to Detail"],
       },
     ]),
     availability: "available",
@@ -1440,6 +1497,8 @@ const freelancerProfiles = [
       { name: "Adobe XD", years_of_experience: 3 },
       { name: "CSS", years_of_experience: 5 },
       { name: "Tailwind", years_of_experience: 4 },
+      { name: "Communication", years_of_experience: 5.5, added_manually: false },
+      { name: "Creativity", years_of_experience: 5.5, added_manually: false },
     ]),
     experience: JSON.stringify([
       {
@@ -1449,6 +1508,7 @@ const freelancerProfiles = [
         description: "Designed intuitive interfaces for Web3 applications",
         start_date: "2021-06-01",
         end_date: null,
+        skills: ["Communication", "Creativity"],
       },
     ]),
     availability: "available",
@@ -1466,6 +1526,8 @@ const freelancerProfiles = [
       { name: "Solidity", years_of_experience: 3 },
       { name: "TypeScript", years_of_experience: 4 },
       { name: "PostgreSQL", years_of_experience: 4 },
+      { name: "Teamwork & Collaboration", years_of_experience: 4, added_manually: false },
+      { name: "Problem Solving", years_of_experience: 4, added_manually: false },
     ]),
     experience: JSON.stringify([
       {
@@ -1475,6 +1537,7 @@ const freelancerProfiles = [
         description: "Full-stack development for enterprise applications",
         start_date: "2023-01-01",
         end_date: null,
+        skills: ["Teamwork & Collaboration", "Problem Solving"],
       },
     ]),
     availability: "available",
@@ -2537,6 +2600,62 @@ async function wipeAuthUsers(): Promise<void> {
   }
 }
 
+async function listAllDocuments(collectionId: string): Promise<Record<string, any>[]> {
+  const all: Record<string, any>[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const queries = [Query.limit(100), ...(cursor ? [Query.cursorAfter(cursor)] : [])];
+    const page = await db.listDocuments(DATABASE_ID, collectionId, queries);
+    all.push(...page.documents);
+    if (page.documents.length < 100) return all;
+    cursor = page.documents[page.documents.length - 1]!.$id;
+  }
+}
+
+/**
+ * Adds catalog categories and skills that the database does not have yet.
+ * Never updates or deletes, so admin edits to the catalog are kept. Matching
+ * is by name, so a category an admin already created is reused.
+ */
+async function addMissingSkillCatalog(): Promise<void> {
+  const nameKey = (name: string) => name.trim().toLowerCase();
+  const existingCategories = await listAllDocuments("skill_categories");
+  const categoryIdBySeedId = new Map<string, string>();
+  let createdCategories = 0;
+
+  for (const { seedId, ...data } of skillCategories) {
+    const match = existingCategories.find((doc) => doc.$id === seedId || nameKey(doc.name) === nameKey(data.name));
+    if (match) {
+      categoryIdBySeedId.set(seedId, match.$id);
+      continue;
+    }
+    await db.createDocument(DATABASE_ID, "skill_categories", seedId, data);
+    categoryIdBySeedId.set(seedId, seedId);
+    createdCategories++;
+    console.log(`      + Category "${data.name}"`);
+  }
+
+  const existingSkillNames = new Set((await listAllDocuments("skills")).map((doc) => nameKey(doc.name)));
+  const existingSkillIds = new Set<string>();
+  let createdSkills = 0;
+  for (const { seedId, category_id, ...data } of skills) {
+    if (existingSkillNames.has(nameKey(data.name)) || existingSkillIds.has(seedId)) continue;
+    const categoryId = categoryIdBySeedId.get(category_id);
+    if (!categoryId) continue;
+    try {
+      await db.createDocument(DATABASE_ID, "skills", seedId, { ...data, category_id: categoryId });
+      createdSkills++;
+      console.log(`      + Skill "${data.name}"`);
+    } catch (e: any) {
+      if (e?.code !== 409) throw e;
+      existingSkillIds.add(seedId);
+      console.log(`      ⊘ Skipped "${data.name}": id ${seedId} is already used`);
+    }
+  }
+
+  console.log(`    ✓ Added ${createdCategories} categories and ${createdSkills} skills`);
+}
+
 async function seedCleanFoundation(): Promise<void> {
   await seedCollection("skill_categories", skillCategories, "Skill Categories");
   await seedCollection("skills", skills, "Skills");
@@ -2569,16 +2688,23 @@ async function main(): Promise<void> {
   const WIPE_ONLY = args.includes("--wipe-only");
   const WIPE_AUTH = args.includes("--wipe-auth");
   const WITH_SEED = (args.includes("--seed") || args.includes("-s")) && !WIPE_ONLY;
+  const ADD_MISSING_SKILLS = args.includes("--add-missing-skills");
 
   console.log("=== FreelanceXchain — Appwrite Setup, Reset & Restore ===\n");
   console.log(`Endpoint:   ${ENDPOINT}`);
   console.log(`Project:    ${PROJECT_ID}`);
   console.log(`Database:   ${DATABASE_ID}`);
-  console.log(`Mode:       ${WITH_RESET ? (WIPE_ONLY ? "WIPE ALL (Clean Slate)" : WITH_SEED ? "RESET + SEED DEMO DATA" : "RESET TO CLEAN DEFAULT") : WITH_SEED ? "SETUP + SEED" : "SETUP ONLY"}`);
+  console.log(`Mode:       ${ADD_MISSING_SKILLS ? "ADD MISSING SKILLS" : WITH_RESET ? (WIPE_ONLY ? "WIPE ALL (Clean Slate)" : WITH_SEED ? "RESET + SEED DEMO DATA" : "RESET TO CLEAN DEFAULT") : WITH_SEED ? "SETUP + SEED" : "SETUP ONLY"}`);
   if (WITH_SEED) {
     console.log(`Demo Creds: [email: any demo email above, password: ${DEMO_PASSWORD}]`);
   }
   console.log("");
+
+  if (ADD_MISSING_SKILLS) {
+    console.log(`Adding catalog categories and skills that are missing (nothing is updated or removed)...`);
+    await addMissingSkillCatalog();
+    return;
+  }
 
   await ensureDatabase();
 

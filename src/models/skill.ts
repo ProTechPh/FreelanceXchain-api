@@ -21,6 +21,8 @@ export type Skill = {
 export type SkillReference = {
   name: string;
   yearsOfExperience: number;
+  /** True when the freelancer picked the skill directly, not only through work history. */
+  addedManually: boolean;
 };
 
 export type ProjectSkillReference = {

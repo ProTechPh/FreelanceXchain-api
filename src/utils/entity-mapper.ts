@@ -36,9 +36,9 @@ export type { Notification, NotificationType } from '../models/notification.js';
 export type { RushUpgradeRequest, RushUpgradeRequestStatus } from '../models/rush-upgrade-request.js';
 
 // Internal helper types
-type SkillRefEntity = { name: string; years_of_experience: number };
+type SkillRefEntity = { name: string; years_of_experience: number; added_manually: boolean };
 type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string; years_of_experience?: number };
-type ExpEntity = { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null };
+type ExpEntity = { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null; skills: string[] };
 
 // Relational fields populated by getContractByIdWithRelations; shapes match the
 // repository's output (singular `profile` object). Other producers may omit
@@ -122,6 +122,7 @@ function mapSkillRefFromEntity(entity: SkillRefEntity): SkillReference {
   return {
     name: entity.name,
     yearsOfExperience: entity.years_of_experience,
+    addedManually: entity.added_manually,
   };
 }
 
@@ -155,6 +156,7 @@ export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity):
       description: e.description,
       startDate: e.start_date,
       endDate: e.end_date,
+      skills: e.skills ?? [],
     })),
     availability: entity.availability,
     createdAt: entity.created_at,

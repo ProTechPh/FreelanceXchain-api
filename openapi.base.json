@@ -184,6 +184,13 @@
             "type": "string",
             "format": "date",
             "nullable": true
+          },
+          "skills": {
+            "type": "array",
+            "description": "Technical and soft skill names used in this role",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

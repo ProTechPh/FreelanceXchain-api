@@ -45,6 +45,7 @@ const {
   removeSkillFromProfile,
   updateExperience,
   removeExperience,
+  reconcileProfileSkills,
 } = await import('../../services/freelancer-profile-service.js');
 
 const mockFreelancerProfileRepository = mockProfileRepo;
@@ -654,7 +655,7 @@ describe('Freelancer Profile Service - Direct Branch Coverage', () => {
     expect(result.success).toBe(true);
     expect(mockFreelancerProfileRepository.updateProfile).toHaveBeenCalledWith(
       'p1',
-      expect.objectContaining({ skills: [{ name: 'Node JS', years_of_experience: 4 }] })
+      expect.objectContaining({ skills: [{ name: 'Node JS', years_of_experience: 4, added_manually: true }] })
     );
   });
 
@@ -1295,5 +1296,178 @@ describe('Freelancer Profile Service - Additional Branch Coverage', () => {
     if (!result.success) {
       expect(result.error.code).toBe('INVALID_DATE_RANGE');
     }
+  });
+});
+
+describe('Work history skills', () => {
+  const now = new Date('2026-01-01T00:00:00Z');
+  const entry = (id: string, start: string, end: string | null, skills: string[]) => ({
+    id, title: 'Developer', company: 'Corp', description: 'Built things for clients',
+    start_date: start, end_date: end, skills,
+  });
+
+  it('lists skills from a work history entry with the years it covers', () => {
+    const result = reconcileProfileSkills([], [entry('e1', '2023-01-01', '2024-12-31', ['React', 'Communication'])], now);
+    expect(result).toEqual([
+      { name: 'React', years_of_experience: 2, added_manually: false },
+      { name: 'Communication', years_of_experience: 2, added_manually: false },
+    ]);
+  });
+
+  it('counts overlapping entries once and uses today for a current role', () => {
+    const result = reconcileProfileSkills([], [
+      entry('e1', '2023-01-01', '2024-12-31', ['React']),
+      entry('e2', '2024-01-01', null, ['React']),
+    ], now);
+    expect(result).toEqual([{ name: 'React', years_of_experience: 3, added_manually: false }]);
+  });
+
+  it('keeps a manually picked skill and its years when no entry uses it', () => {
+    const result = reconcileProfileSkills(
+      [{ name: 'Solidity', years_of_experience: 4, added_manually: true }],
+      [entry('e1', '2025-01-01', null, ['Leadership'])],
+      now
+    );
+    expect(result).toEqual([
+      { name: 'Solidity', years_of_experience: 4, added_manually: true },
+      { name: 'Leadership', years_of_experience: 1, added_manually: false },
+    ]);
+  });
+
+  it('uses work history years for a manual skill that an entry also uses', () => {
+    const result = reconcileProfileSkills(
+      [{ name: 'react', years_of_experience: 0, added_manually: true }],
+      [entry('e1', '2024-01-01', '2025-12-31', ['React'])],
+      now
+    );
+    expect(result).toEqual([{ name: 'react', years_of_experience: 2, added_manually: true }]);
+  });
+
+  it('drops a skill that is neither picked directly nor used in work history', () => {
+    const result = reconcileProfileSkills([{ name: 'Vue', years_of_experience: 1, added_manually: false }], [], now);
+    expect(result).toEqual([]);
+  });
+
+  it('keeps a skill on removal while work history still uses it', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1',
+      skills: [{ name: 'React', years_of_experience: 2, added_manually: true }],
+      experience: [entry('e1', '2023-01-01', '2024-12-31', ['React'])],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    await removeSkillFromProfile('u1', 'React');
+
+    expect(mockFreelancerProfileRepository.updateProfile).toHaveBeenLastCalledWith('p1', {
+      skills: [{ name: 'React', years_of_experience: 2, added_manually: false }],
+    });
+  });
+
+  it('removes skills that only the deleted entry used', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1',
+      skills: [
+        { name: 'React', years_of_experience: 2, added_manually: false },
+        { name: 'Solidity', years_of_experience: 3, added_manually: true },
+      ],
+      experience: [entry('e1', '2023-01-01', '2024-12-31', ['React'])],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    await removeExperience('u1', 'e1');
+
+    expect(mockFreelancerProfileRepository.updateProfile).toHaveBeenLastCalledWith('p1', {
+      experience: [],
+      skills: [{ name: 'Solidity', years_of_experience: 3, added_manually: true }],
+    });
+  });
+
+  it('saves the entry skills and adds them to the profile', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    await addExperience('u1', {
+      title: 'Developer', company: 'Corp', description: 'Built things for clients',
+      startDate: '2024-01-01', endDate: '2024-12-31', skills: ['React', 'react', 'Teamwork'],
+    });
+
+    const [, updates] = mockFreelancerProfileRepository.updateProfile.mock.calls.at(-1) as [string, any];
+    expect(updates.experience[0].skills).toEqual(['React', 'Teamwork']);
+    expect(updates.skills).toEqual([
+      { name: 'React', years_of_experience: 1, added_manually: false },
+      { name: 'Teamwork', years_of_experience: 1, added_manually: false },
+    ]);
+  });
+});
+
+describe('Duplicate work history entries', () => {
+  const existing = {
+    id: 'e1', title: 'Nuclear Engineer', company: 'Meralco', description: 'Reactor safety work',
+    start_date: '2026-06-03', end_date: '2026-10-22', skills: [],
+  };
+
+  it('rejects an entry with the same position, company and dates', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [existing],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockClear();
+
+    const result = await addExperience('u1', {
+      title: ' nuclear  engineer ', company: 'MERALCO', description: 'A different description',
+      startDate: '2026-06-03', endDate: '2026-10-22',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('DUPLICATE_EXPERIENCE');
+    expect(mockFreelancerProfileRepository.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('allows the same role at the same company over different dates', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [existing],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await addExperience('u1', {
+      title: 'Nuclear Engineer', company: 'Meralco', description: 'Second contract',
+      startDate: '2027-01-01', endDate: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an update that turns one entry into a copy of another', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [],
+      experience: [existing, { ...existing, id: 'e2', title: 'Radiation Officer' }],
+    });
+
+    const result = await updateExperience('u1', 'e2', { title: 'Nuclear Engineer' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('DUPLICATE_EXPERIENCE');
+  });
+
+  it('lets an entry be saved again without counting itself as a duplicate', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [existing],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await updateExperience('u1', 'e1', { description: 'Updated description of the work' });
+
+    expect(result.success).toBe(true);
   });
 });
