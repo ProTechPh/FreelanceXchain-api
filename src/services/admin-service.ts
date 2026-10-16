@@ -350,6 +350,40 @@ export async function unsuspendUser(userId: string, actorId: string = 'system-ad
 /**
  * Manually verify a user
  */
+async function syncApprovalToDidit(
+  sessionId: string | null | undefined,
+  userId: string,
+  comment: string
+): Promise<void> {
+  if (!sessionId || !isExternalDiditSessionId(sessionId)) {
+    return;
+  }
+  try {
+    const diditRes = await updateVerificationSessionStatus(sessionId, {
+      new_status: 'Approved',
+      comment: `Admin manual override: ${comment}`,
+    });
+    if (!diditRes.success) {
+      logger.warn('Failed to sync manual verification to Didit', {
+        userId,
+        sessionId,
+        error: diditRes.error,
+      });
+    } else {
+      logger.info('Synced manual verification to Didit', {
+        userId,
+        sessionId,
+      });
+    }
+  } catch (diditErr) {
+    logger.warn('Unexpected error syncing manual verification to Didit', {
+      userId,
+      sessionId,
+      error: diditErr instanceof Error ? diditErr.message : String(diditErr),
+    });
+  }
+}
+
 export async function verifyUser(
   userId: string,
   adminUserId = 'system-admin',
@@ -409,33 +443,7 @@ export async function verifyUser(
       };
     }
 
-    // Synchronize approval to Didit if the user has an existing external Didit session
-    if (existingVerification && isExternalDiditSessionId(existingVerification.didit_session_id)) {
-      try {
-        const diditRes = await updateVerificationSessionStatus(existingVerification.didit_session_id, {
-          new_status: 'Approved',
-          comment: `Admin manual override: ${auditReason}`,
-        });
-        if (!diditRes.success) {
-          logger.warn('Failed to sync manual verification to Didit', {
-            userId,
-            sessionId: existingVerification.didit_session_id,
-            error: diditRes.error,
-          });
-        } else {
-          logger.info('Synced manual verification to Didit', {
-            userId,
-            sessionId: existingVerification.didit_session_id,
-          });
-        }
-      } catch (diditErr) {
-        logger.warn('Unexpected error syncing manual verification to Didit', {
-          userId,
-          sessionId: existingVerification.didit_session_id,
-          error: diditErr instanceof Error ? diditErr.message : String(diditErr),
-        });
-      }
-    }
+    await syncApprovalToDidit(existingVerification?.didit_session_id, userId, auditReason);
 
     logger.info('ADMIN ACTION: user manually verified', { actor: adminUserId, userId });
     await recordAdminAudit({
