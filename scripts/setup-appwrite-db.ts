@@ -397,6 +397,9 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'ip_address', type: 'string', size: 45, required: false },
       { name: 'metadata', type: 'string', size: 100000, required: false },
       { name: 'reviewed_by', type: 'string', size: 36, required: false },
+      { name: 'reviewed_at', type: 'string', size: 50, required: false },
+      { name: 'completed_at', type: 'string', size: 50, required: false },
+      { name: 'expires_at', type: 'string', size: 50, required: false },
       { name: 'admin_notes', type: 'string', size: 5000, required: false },
     ],
     indexes: [
