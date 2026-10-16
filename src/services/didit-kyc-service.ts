@@ -27,6 +27,8 @@ import {
   checkPassiveLiveness,
   matchFaces,
   screenAml,
+  updateVerificationSessionStatus,
+  isExternalDiditSessionId,
 } from './didit-client.js';
 import {
   KycVerification,
@@ -684,6 +686,73 @@ type ProfileDataFromKyc = {
   kyc_verified_at: string | null;
 };
 
+async function syncDiditReviewDecision(
+  verificationId: string,
+  sessionId: string,
+  decision: 'approved' | 'rejected',
+  notes?: string
+): Promise<void> {
+  if (!isExternalDiditSessionId(sessionId)) {
+    return;
+  }
+  try {
+    const diditStatus = decision === 'approved' ? 'Approved' : 'Declined';
+    const diditRes = await updateVerificationSessionStatus(sessionId, {
+      new_status: diditStatus,
+      comment: notes ? `Admin review: ${notes.trim()}` : `Admin review decision: ${decision}`,
+    });
+    if (!diditRes.success) {
+      logger.warn('Failed to sync KYC review decision to Didit', {
+        verificationId,
+        sessionId,
+        decision,
+        error: diditRes.error,
+      });
+    } else {
+      logger.info('Synced KYC review decision to Didit', {
+        verificationId,
+        sessionId,
+        status: diditStatus,
+      });
+    }
+  } catch (diditErr) {
+    logger.warn('Unexpected error syncing KYC decision to Didit', {
+      verificationId,
+      sessionId,
+      error: diditErr instanceof Error ? diditErr.message : String(diditErr),
+    });
+  }
+}
+
+async function sendAdminReviewNotificationsAndAudit(
+  verification: KycVerification,
+  adminUserId: string,
+  decision: 'approved' | 'rejected',
+  notes?: string
+): Promise<void> {
+  await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+    decision === 'approved'
+      ? sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
+      : sendKycRejectedEmail(recipient.email, {
+          userName: recipient.name,
+          reason: notes?.trim() || 'Your submitted identity documents could not be verified.',
+        })
+  );
+
+  await persistAuditEntry({
+    user_id: verification.user_id,
+    actor_id: adminUserId,
+    action: decision === 'approved' ? 'kyc.approved' : 'kyc.rejected',
+    resource_type: 'kyc_verification',
+    resource_id: verification.id,
+    payload: { decision, ...(notes ? { notes } : {}) },
+    ip_address: null,
+    user_agent: null,
+    status: 'success',
+    error_message: null,
+  });
+}
+
 export async function adminReviewVerification(
   verificationId: string,
   adminUserId: string,
@@ -739,31 +808,8 @@ export async function adminReviewVerification(
     );
   }
 
-  // Transactional email gated by the user's email preferences. Best-effort:
-  // a preference lookup or send failure must never break the admin decision.
-  await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
-    decision === 'approved'
-      ? sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
-      : sendKycRejectedEmail(recipient.email, {
-          userName: recipient.name,
-          reason: notes?.trim() || 'Your submitted identity documents could not be verified.',
-        })
-  );
-
-  // BLF-12.2: durable audit trail — record every admin approve/reject decision
-  // (who decided, what outcome, on whose verification). Best-effort by design.
-  await persistAuditEntry({
-    user_id: verification.user_id,
-    actor_id: adminUserId,
-    action: decision === 'approved' ? 'kyc.approved' : 'kyc.rejected',
-    resource_type: 'kyc_verification',
-    resource_id: verificationId,
-    payload: { decision, ...(notes ? { notes } : {}) },
-    ip_address: null,
-    user_agent: null,
-    status: 'success',
-    error_message: null,
-  });
+  await syncDiditReviewDecision(verificationId, verification.didit_session_id, decision, notes);
+  await sendAdminReviewNotificationsAndAudit(verification, adminUserId, decision, notes);
 
   return successResult(updated);
   }); // BLF-12.3: end withLock

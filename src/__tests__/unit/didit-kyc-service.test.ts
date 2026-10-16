@@ -20,6 +20,12 @@ const mockVerifyId = jest.fn() as jest.Mock<any>;
 const mockCheckLiveness = jest.fn() as jest.Mock<any>;
 const mockMatchFaces = jest.fn() as jest.Mock<any>;
 const mockScreenAml = jest.fn() as jest.Mock<any>;
+const mockUpdateSessionStatus = jest.fn() as jest.Mock<any>;
+const isExternalDiditSessionId = (sessionId?: string | null) => {
+  if (!sessionId || typeof sessionId !== 'string') return false;
+  if (sessionId.startsWith('manual-') || sessionId.startsWith('admin-override-')) return false;
+  return sessionId.length >= 8;
+};
 const mockFreelancerGetProfile = jest.fn() as jest.Mock<any>;
 const mockFreelancerCreateProfile = jest.fn() as jest.Mock<any>;
 const mockFreelancerUpdateProfile = jest.fn() as jest.Mock<any>;
@@ -50,6 +56,8 @@ jest.unstable_mockModule(resolveModule('src/services/didit-client.ts'), () => ({
   checkPassiveLiveness: mockCheckLiveness,
   matchFaces: mockMatchFaces,
   screenAml: mockScreenAml,
+  updateVerificationSessionStatus: mockUpdateSessionStatus,
+  isExternalDiditSessionId,
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
   freelancerProfileRepository: {
@@ -147,6 +155,7 @@ describe('didit-kyc-service', () => {
     mockGetKycsByStatus.mockResolvedValue([]);
     mockGetPendingReviews.mockResolvedValue([]);
     mockGetKycHistory.mockResolvedValue([]);
+    mockUpdateSessionStatus.mockResolvedValue({ success: true, data: { success: true } });
   });
 
   describe('initiateKycVerification', () => {
@@ -629,6 +638,53 @@ describe('didit-kyc-service', () => {
       if (!second.success) expect(second.error.code).toBe('INVALID_STATUS');
       // Only one approval + one audit entry
       expect(mockAuditLogRepo.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('should sync Approved status to Didit when reviewing verification with external session', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', didit_session_id: 'session-xyz' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved', didit_session_id: 'session-xyz' }));
+
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved', 'Documents look valid');
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateSessionStatus).toHaveBeenCalledWith('session-xyz', {
+        new_status: 'Approved',
+        comment: 'Admin review: Documents look valid',
+      });
+    });
+
+    it('should sync Declined status to Didit when rejecting verification with external session', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', didit_session_id: 'session-xyz' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'rejected', didit_session_id: 'session-xyz' }));
+
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'rejected', 'Blurry photo');
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateSessionStatus).toHaveBeenCalledWith('session-xyz', {
+        new_status: 'Declined',
+        comment: 'Admin review: Blurry photo',
+      });
+    });
+
+    it('should not call Didit when session ID is synthetic (e.g., manual-*)', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', didit_session_id: 'manual-12345678' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved', didit_session_id: 'manual-12345678' }));
+
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateSessionStatus).not.toHaveBeenCalled();
+    });
+
+    it('should continue and succeed even if Didit sync returns failure or throws', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', didit_session_id: 'session-xyz' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved', didit_session_id: 'session-xyz' }));
+      mockUpdateSessionStatus.mockResolvedValue({ success: false, error: { message: 'Didit timeout' } });
+
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith('Failed to sync KYC review decision to Didit', expect.any(Object));
     });
   });
 

@@ -245,9 +245,10 @@ router.post('/register', registerRateLimiter, requireTurnstile('signup'), asyncH
     error_message: null,
   });
 
-  if (result.accessToken) {
-    setAuthCookies(res, result.accessToken, result.refreshToken);
-  }
+  // Email registration requires email confirmation before logging in.
+  // Explicitly clear auth cookies so the browser does not establish an active session immediately,
+  // preventing redirect loops and premature access to protected dashboard routes.
+  clearAuthCookies(res);
 
   res.status(201).json(result);
 }));
