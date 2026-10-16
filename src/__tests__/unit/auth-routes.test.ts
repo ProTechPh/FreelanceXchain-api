@@ -33,6 +33,7 @@ const mockUpdateUserWallet = jest.fn<any>();
 const mockVerifyAuthToken = jest.fn<any>();
 const mockVerifyEmail = jest.fn<any>();
 const mockDeleteUserAccount = jest.fn<any>();
+const mockCheckAccountDeletionEligibility = jest.fn<any>().mockResolvedValue({ canDelete: true, counts: { pending: 0, active: 0, disputed: 0 } });
 const mockRequestAccountDeletion = jest.fn<any>();
 const mockVerifyAccountDeletionCode = jest.fn<any>();
 const mockDisconnectUserWallet = jest.fn<any>().mockResolvedValue({ success: true, message: 'Wallet disconnected' });
@@ -83,6 +84,7 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   requestMagicUrl: jest.fn(),
   verifyAuthToken: mockVerifyAuthToken,
   deleteUserAccount: mockDeleteUserAccount,
+  checkAccountDeletionEligibility: mockCheckAccountDeletionEligibility,
   requestAccountDeletion: mockRequestAccountDeletion,
   verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
   disconnectUserWallet: mockDisconnectUserWallet,
@@ -921,6 +923,7 @@ describe('auth-routes.ts - Branch Coverage', () => {
       requestMagicUrl: jest.fn(),
       verifyAuthToken: jest.fn(),
       deleteUserAccount: mockDeleteUserAccount,
+      checkAccountDeletionEligibility: mockCheckAccountDeletionEligibility,
       requestAccountDeletion: mockRequestAccountDeletion,
       verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
       disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
@@ -1243,6 +1246,7 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       requestMagicUrl: mockRequestMagicUrl,
       verifyAuthToken: mockVerifyAuthToken,
       deleteUserAccount: mockDeleteUserAccount,
+      checkAccountDeletionEligibility: mockCheckAccountDeletionEligibility,
       requestAccountDeletion: mockRequestAccountDeletion,
       verifyAccountDeletionCode: mockVerifyAccountDeletionCode,
       disconnectUserWallet: jest.fn().mockResolvedValue({ success: true, message: 'Wallet disconnected' }),
@@ -1375,6 +1379,35 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
   });
 
   describe('Account Deletion Endpoints', () => {
+    describe('GET /api/auth/account/deletion-eligibility', () => {
+      it('should return eligibility status successfully', async () => {
+        const request = (await import('supertest')).default;
+        mockCheckAccountDeletionEligibility.mockResolvedValueOnce({
+          canDelete: true,
+          counts: { pending: 0, active: 0, disputed: 0 },
+        });
+
+        const res = await request(app).get('/api/auth/account/deletion-eligibility');
+        expect(res.status).toBe(200);
+        expect(res.body.canDelete).toBe(true);
+        expect(mockCheckAccountDeletionEligibility).toHaveBeenCalledWith('user-1');
+      });
+
+      it('should return canDelete false when user has ongoing contracts', async () => {
+        const request = (await import('supertest')).default;
+        mockCheckAccountDeletionEligibility.mockResolvedValueOnce({
+          canDelete: false,
+          reason: 'Cannot delete account while you have 1 pending contract(s).',
+          counts: { pending: 1, active: 0, disputed: 0 },
+        });
+
+        const res = await request(app).get('/api/auth/account/deletion-eligibility');
+        expect(res.status).toBe(200);
+        expect(res.body.canDelete).toBe(false);
+        expect(res.body.reason).toContain('1 pending');
+      });
+    });
+
     describe('POST /api/auth/account/delete-request', () => {
       it('should request deletion confirmation code successfully', async () => {
         const request = (await import('supertest')).default;
@@ -1528,6 +1561,7 @@ describe('auth-routes.ts - Remaining coverage gaps', () => {
   const svcRequestMagicUrl = jest.fn<any>();
   const svcVerifyAuthToken = jest.fn<any>();
   const svcDeleteUserAccount = jest.fn<any>();
+  const svcCheckAccountDeletionEligibility = jest.fn<any>().mockResolvedValue({ canDelete: true, counts: { pending: 0, active: 0, disputed: 0 } });
   const svcRequestAccountDeletion = jest.fn<any>();
   const svcVerifyAccountDeletionCode = jest.fn<any>();
   const svcDisconnectUserWallet = jest.fn<any>();
@@ -1585,6 +1619,7 @@ describe('auth-routes.ts - Remaining coverage gaps', () => {
       requestMagicUrl: svcRequestMagicUrl,
       verifyAuthToken: svcVerifyAuthToken,
       deleteUserAccount: svcDeleteUserAccount,
+      checkAccountDeletionEligibility: svcCheckAccountDeletionEligibility,
       requestAccountDeletion: svcRequestAccountDeletion,
       verifyAccountDeletionCode: svcVerifyAccountDeletionCode,
       disconnectUserWallet: svcDisconnectUserWallet,

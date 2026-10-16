@@ -27,6 +27,7 @@ import { ADMIN_PERMISSIONS, type AdminPermission } from '../models/user.js';
 import { platformMetricsCache } from '../utils/cache.js';
 import { grantComplimentaryPro } from './subscription-service.js';
 import type { PlanTier } from '../models/subscription.js';
+import { sendUserInvitedEmail } from './email-delivery-service.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -714,7 +715,7 @@ async function createAuthUserInAppwrite(
 export async function inviteOrAddUser(
   input: InviteUserInput,
   actorId: string = 'system-admin'
-): Promise<ServiceResult<{ user: UserEntity; plan: PlanTier; temporaryPassword?: string }>> {
+): Promise<ServiceResult<{ user: UserEntity; plan: PlanTier; temporaryPassword?: string; emailSent?: boolean }>> {
   try {
     const validationError = validateInviteUserInput(input);
     if (validationError) return validationError;
@@ -784,9 +785,36 @@ export async function inviteOrAddUser(
       payload: { role: createdUser.role, email: normalizedEmail, permissions: createdUser.permissions, plan },
     });
 
+    // Best-effort send invitation email with credentials / login link
+    let emailSent = false;
+    try {
+      const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
+      const emailRes = await sendUserInvitedEmail(normalizedEmail, {
+        recipientName: trimmedName,
+        email: normalizedEmail,
+        role: createdUser.role,
+        temporaryPassword: temporaryPasswordGenerated,
+        loginUrl: `${frontendUrl}/login`,
+        plan,
+      });
+      if (emailRes.success) {
+        emailSent = true;
+        logger.info('Invite email sent to user successfully', { userId: createdUser.id, email: normalizedEmail });
+      } else {
+        logger.warn('Failed to send invite email to user', { userId: createdUser.id, email: normalizedEmail, error: emailRes.error });
+      }
+    } catch (emailErr) {
+      logger.warn('Error attempting to send invite email to user', {
+        userId: createdUser.id,
+        email: normalizedEmail,
+        error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      });
+    }
+
     return successResult({
       user: createdUser,
       plan,
+      emailSent,
       ...(temporaryPasswordGenerated !== undefined ? { temporaryPassword: temporaryPasswordGenerated } : {}),
     });
   } catch (error) {

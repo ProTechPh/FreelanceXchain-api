@@ -22,7 +22,8 @@ type EmailTemplate =
   | 'weekly_digest'
   | 'account_deletion_code'
   | 'account_deleted'
-  | 'login_alert';
+  | 'login_alert'
+  | 'user_invited';
 
 type EmailData = {
   to: string;
@@ -459,7 +460,7 @@ export async function sendAccountDeletedEmail(
   const recipientName = data.recipientName ?? data.userName ?? 'User';
   return sendEmail({
     to,
-    subject: 'Your FreelanceXchain Account Has Been Permanently Deleted',
+    subject: 'Your FreelanceXchain Account is Scheduled for Deletion (30-Day Grace Period)',
     template: 'account_deleted',
     data: {
       ...data,
@@ -495,6 +496,39 @@ export async function sendNewDeviceLoginAlertEmail(
       recipientName,
       securityUrl,
       timestamp,
+    },
+  });
+}
+
+export async function sendUserInvitedEmail(
+  to: string,
+  data: {
+    recipientName: string;
+    email: string;
+    role: string;
+    temporaryPassword?: string | undefined;
+    loginUrl?: string | undefined;
+    plan?: string | undefined;
+  }
+): Promise<ServiceResult<{ messageId: string }>> {
+  const recipientName = data.recipientName || 'Member';
+  const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
+  const loginUrl = data.loginUrl ?? `${frontendUrl}/login`;
+  const temporaryPassword = data.temporaryPassword || 'Set by administrator';
+  const plan = data.plan ?? 'free';
+
+  return sendEmail({
+    to,
+    subject: 'Welcome to FreelanceXchain - Your Account is Ready',
+    template: 'user_invited',
+    data: {
+      ...data,
+      recipientName,
+      email: data.email,
+      role: data.role,
+      temporaryPassword,
+      loginUrl,
+      plan,
     },
   });
 }

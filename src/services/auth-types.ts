@@ -49,6 +49,8 @@ export type AuthResult = {
   };
   accessToken: string;
   refreshToken: string;
+  accountRestored?: boolean;
+  message?: string;
 };
 
 export type AuthError = {
@@ -86,7 +88,8 @@ export type AuthError = {
   | 'MAX_ATTEMPTS_EXCEEDED'
   | 'CONFIRMATION_REQUIRED'
   | 'CONFIRMATION_CODE_REQUIRED'
-  | 'ACCOUNT_LOCKED';
+  | 'ACCOUNT_LOCKED'
+  | 'ACCOUNT_DELETED';
   message: string;
 };
 

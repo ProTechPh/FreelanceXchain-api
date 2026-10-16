@@ -342,11 +342,43 @@ function createPasswordPwnedError(error: unknown): AuthError {
 }
 
 export async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult | AuthError> {
+  let wasRestored = false;
+
   if (user.is_suspended) {
-    return {
-      code: 'USER_SUSPENDED',
-      message: user.suspension_reason || 'Your account has been suspended',
-    };
+    if (user.suspension_reason?.startsWith('PENDING_DELETION:')) {
+      const scheduledDateStr = user.suspension_reason.slice('PENDING_DELETION:'.length).trim();
+      const scheduledDate = new Date(scheduledDateStr);
+      const now = new Date();
+
+      if (!isNaN(scheduledDate.getTime()) && now < scheduledDate) {
+        // Within 30-day grace period!
+        // Automatically cancel the deletion and restore the account
+        await userRepository.updateUser(user.id, {
+          is_suspended: false,
+          suspension_reason: null,
+        });
+        user.is_suspended = false;
+        user.suspension_reason = null;
+        wasRestored = true;
+
+        logger.info('Account deletion cancelled and restored upon user login within 30-day grace period', {
+          userId: user.id,
+          email: user.email,
+        });
+      } else {
+        // Grace period expired, complete permanent deletion
+        await permanentlyDeleteUserAccount(user.id);
+        return {
+          code: 'ACCOUNT_DELETED',
+          message: 'The 30-day grace period for your account deletion request has expired. Your account has been permanently deleted.',
+        };
+      }
+    } else {
+      return {
+        code: 'USER_SUSPENDED',
+        message: user.suspension_reason || 'Your account has been suspended',
+      };
+    }
   }
 
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
@@ -372,6 +404,10 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
     },
     accessToken,
     refreshToken,
+    ...(wasRestored ? {
+      accountRestored: true,
+      message: 'Welcome back! Your pending account deletion has been cancelled and your account has been fully restored.',
+    } : {}),
   };
 }
 
@@ -1459,14 +1495,57 @@ class ActiveContractsError extends Error {
 }
 
 async function ensureNoActiveContracts(userId: string): Promise<void> {
-  const [activeCount, disputedCount] = await Promise.all([
+  const [pendingCount, activeCount, disputedCount] = await Promise.all([
+    contractRepository.countContractsByUserAndStatus(userId, 'pending'),
     contractRepository.countContractsByUserAndStatus(userId, 'active'),
     contractRepository.countContractsByUserAndStatus(userId, 'disputed'),
   ]);
-  const hasActiveContract = activeCount > 0 || disputedCount > 0;
+  const hasActiveContract = pendingCount > 0 || activeCount > 0 || disputedCount > 0;
 
   if (hasActiveContract) {
-    throw new ActiveContractsError('Cannot delete account while you have active or disputed contracts with pending escrow funds. Please complete or resolve active contracts first.');
+    const details: string[] = [];
+    if (pendingCount > 0) details.push(`${pendingCount} pending`);
+    if (activeCount > 0) details.push(`${activeCount} active`);
+    if (disputedCount > 0) details.push(`${disputedCount} disputed`);
+    throw new ActiveContractsError(
+      `Cannot delete account while you have ${details.join(', ')} contract(s) with escrow commitments. Please complete, cancel, or resolve ongoing contracts first.`
+    );
+  }
+}
+
+export async function checkAccountDeletionEligibility(userId: string): Promise<{
+  canDelete: boolean;
+  reason?: string;
+  counts?: { pending: number; active: number; disputed: number };
+}> {
+  try {
+    const [pendingCount, activeCount, disputedCount] = await Promise.all([
+      contractRepository.countContractsByUserAndStatus(userId, 'pending'),
+      contractRepository.countContractsByUserAndStatus(userId, 'active'),
+      contractRepository.countContractsByUserAndStatus(userId, 'disputed'),
+    ]);
+    const total = pendingCount + activeCount + disputedCount;
+    if (total > 0) {
+      const details: string[] = [];
+      if (pendingCount > 0) details.push(`${pendingCount} pending`);
+      if (activeCount > 0) details.push(`${activeCount} active`);
+      if (disputedCount > 0) details.push(`${disputedCount} disputed`);
+      return {
+        canDelete: false,
+        reason: `Cannot delete account while you have ${details.join(', ')} contract(s) with escrow commitments. Please complete, cancel, or resolve ongoing contracts first.`,
+        counts: { pending: pendingCount, active: activeCount, disputed: disputedCount },
+      };
+    }
+    return {
+      canDelete: true,
+      counts: { pending: 0, active: 0, disputed: 0 },
+    };
+  } catch (error) {
+    logger.error('Failed to check account deletion eligibility', { error: getErrorMessage(error), userId });
+    return {
+      canDelete: false,
+      reason: 'Failed to verify contract status. Please try again later.',
+    };
   }
 }
 
@@ -1635,7 +1714,57 @@ export function verifyAccountDeletionCode(userId: string, code: string): true | 
   return true;
 }
 
-export async function deleteUserAccount(userId: string): Promise<{ success: boolean; message: string } | AuthError> {
+export const DELETION_GRACE_PERIOD_DAYS = 30;
+
+export async function permanentlyDeleteUserAccount(userId: string): Promise<boolean> {
+  try {
+    const user = await userRepository.getUserById(userId);
+    if (!user) return false;
+
+    await cleanupUserData(userId, user.role);
+
+    try {
+      await users.delete(userId);
+    } catch (appwriteErr) {
+      logger.warn('Failed to delete user from Appwrite auth service', { userId, error: getErrorMessage(appwriteErr) });
+    }
+
+    await userRepository.deleteUser(userId);
+    logger.info('User account permanently deleted under data erasure compliance', { userId });
+    return true;
+  } catch (error) {
+    logger.error('Failed to permanently delete user account', { userId, error: getErrorMessage(error) });
+    return false;
+  }
+}
+
+export async function purgeExpiredAccountDeletions(): Promise<number> {
+  try {
+    const allUsers = await userRepository.getAllUsers();
+    const now = new Date();
+    let purgedCount = 0;
+
+    for (const u of allUsers) {
+      if (u.is_suspended && u.suspension_reason?.startsWith('PENDING_DELETION:')) {
+        const scheduledDateStr = u.suspension_reason.slice('PENDING_DELETION:'.length).trim();
+        const scheduledDate = new Date(scheduledDateStr);
+        if (!isNaN(scheduledDate.getTime()) && now >= scheduledDate) {
+          logger.info('Purging account whose 30-day deletion grace period has expired', { userId: u.id, email: u.email });
+          const success = await permanentlyDeleteUserAccount(u.id);
+          if (success) purgedCount++;
+        }
+      }
+    }
+
+    logger.info('Purged expired account deletions', { purgedCount });
+    return purgedCount;
+  } catch (error) {
+    logger.error('Failed to purge expired account deletions', { error: getErrorMessage(error) });
+    return 0;
+  }
+}
+
+export async function deleteUserAccount(userId: string): Promise<{ success: boolean; message: string; scheduledDeletionDate?: string } | AuthError> {
   try {
     const user = await userRepository.getUserById(userId);
     if (!user) {
@@ -1653,21 +1782,30 @@ export async function deleteUserAccount(userId: string): Promise<{ success: bool
     const userEmail = user.email;
     const userName = user.name || user.email.split('@')[0] || 'User';
 
-    await cleanupUserData(userId, user.role);
+    const gracePeriodMs = DELETION_GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+    const scheduledDeletionDate = new Date(Date.now() + gracePeriodMs).toISOString();
 
+    // Mark account as inactive / suspended with pending deletion timestamp
+    await userRepository.updateUser(userId, {
+      is_suspended: true,
+      suspension_reason: `PENDING_DELETION:${scheduledDeletionDate}`,
+    });
+
+    // Invalidate active sessions in Appwrite so user is signed out
     try {
-      await users.delete(userId);
-    } catch (appwriteErr) {
-      logger.warn('Failed to delete user from Appwrite auth service', { userId, error: getErrorMessage(appwriteErr) });
+      await users.deleteSessions(userId);
+    } catch (sessionErr) {
+      logger.warn('Failed to delete user sessions during account deletion schedule', {
+        userId,
+        error: getErrorMessage(sessionErr),
+      });
     }
 
-    await userRepository.deleteUser(userId);
-
-    // Send post-deletion notification email
+    // Send notification email with grace period details
     if (userEmail) {
       sendAccountDeletedEmail(userEmail, {
         recipientName: userName,
-        deletionDate: new Date().toUTCString(),
+        deletionDate: scheduledDeletionDate,
       }).catch((emailErr) => {
         logger.warn('Failed to send account deletion notification email', {
           userId,
@@ -1678,10 +1816,11 @@ export async function deleteUserAccount(userId: string): Promise<{ success: bool
       logger.info('Account deletion notification email dispatched', { userId, email: userEmail });
     }
 
-    logger.info('User account permanently deleted under data erasure compliance', { userId });
+    logger.info('User account archived and scheduled for 30-day deletion grace period', { userId, scheduledDeletionDate });
     return {
       success: true,
-      message: 'Account and associated data have been permanently deleted.',
+      message: 'Your account has been deactivated and scheduled for deletion in 30 days. You can cancel this deletion anytime before then simply by logging back in.',
+      scheduledDeletionDate,
     };
   } catch (error: unknown) {
     logger.error('Account deletion failed', { error: getErrorMessage(error), userId });
