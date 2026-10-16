@@ -101,6 +101,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
     getUserByEmail: jest.fn().mockResolvedValue(null),
     getUserById: jest.fn().mockResolvedValue(null),
     getUserByWalletAddress: jest.fn().mockResolvedValue(null),
+    getAllUsers: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue({}),
     updateUser: jest.fn().mockResolvedValue({}),
     deleteUser: jest.fn().mockResolvedValue(true),
@@ -125,6 +126,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     updateEmailVerification: jest.fn().mockResolvedValue({}),
     createSession: jest.fn().mockResolvedValue({ $id: 'session-1', secret: 'test-session-secret' }),
     deleteSession: jest.fn().mockResolvedValue({}),
+    deleteSessions: jest.fn().mockResolvedValue({}),
   },
   ID: {
     unique: () => 'mock-unique-id',
@@ -181,6 +183,9 @@ const {
   requestMagicUrl,
   verifyAuthToken,
   deleteUserAccount,
+  checkAccountDeletionEligibility,
+  permanentlyDeleteUserAccount,
+  purgeExpiredAccountDeletions,
   requestAccountDeletion,
   verifyAccountDeletionCode,
   disconnectUserWallet,
@@ -2646,66 +2651,73 @@ describe('auth-service - updateUserWallet', () => {
         });
       });
 
-      it('should delete user and return success message', async () => {
+      it('should deactivate user and schedule 30-day grace period deletion', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
         contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
         contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
-        userRepository.deleteUser.mockResolvedValueOnce(true);
+        userRepository.updateUser.mockResolvedValueOnce({ ...mockUser, is_suspended: true });
 
         const result = await deleteUserAccount('del-user-1');
-        expect(result).toEqual({
+        expect(result).toMatchObject({
           success: true,
-          message: 'Account and associated data have been permanently deleted.',
+          message: expect.stringContaining('30 days'),
+          scheduledDeletionDate: expect.any(String),
         });
-        expect(userRepository.deleteUser).toHaveBeenCalledWith('del-user-1');
+        expect(userRepository.updateUser).toHaveBeenCalledWith('del-user-1', {
+          is_suspended: true,
+          suspension_reason: expect.stringContaining('PENDING_DELETION:'),
+        });
+        expect(users.deleteSessions).toHaveBeenCalledWith('del-user-1');
+        expect(mockSendAccountDeletedEmail).toHaveBeenCalledWith(
+          mockUser.email,
+          expect.objectContaining({ recipientName: mockUser.name, deletionDate: expect.any(String) }),
+        );
       });
 
-      it('cleans freelancer data, preferences, favorites, and tolerates provider failures', async () => {
+      it('tolerates session deletion and email delivery failures during deactivation', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
         contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
         contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
-        mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'profile-1' });
-        mockEmailPreferenceRepository.findByUserId.mockResolvedValueOnce({ id: 'pref-1' });
-        mockFavoriteRepository.findByUser.mockResolvedValueOnce([{ id: 'fav-1' }, { id: 'fav-2' }]);
-        users.delete.mockRejectedValueOnce(new Error('auth provider unavailable'));
+        userRepository.updateUser.mockResolvedValueOnce({ ...mockUser, is_suspended: true });
+        users.deleteSessions.mockRejectedValueOnce(new Error('sessions unavailable'));
         mockSendAccountDeletedEmail.mockRejectedValueOnce(new Error('mail unavailable'));
 
         const result = await deleteUserAccount('del-user-1');
         await new Promise<void>((resolve) => setImmediate(resolve));
 
-        expect(result.success).toBe(true);
-        expect(mockFreelancerProfileRepository.delete).toHaveBeenCalledWith('profile-1');
-        expect(mockEmailPreferenceRepository.delete).toHaveBeenCalledWith('pref-1');
-        expect(mockFavoriteRepository.delete).toHaveBeenCalledTimes(2);
+        expect(result).toMatchObject({ success: true });
         expect(logger.warn).toHaveBeenCalledWith(
-          'Failed to delete user from Appwrite auth service', expect.any(Object),
+          'Failed to delete user sessions during account deletion schedule',
+          expect.any(Object),
         );
         expect(logger.warn).toHaveBeenCalledWith(
-          'Failed to send account deletion notification email', expect.any(Object),
+          'Failed to send account deletion notification email',
+          expect.any(Object),
         );
       });
 
-      it('cleans employer profile data', async () => {
-        userRepository.getUserById.mockResolvedValueOnce({ ...mockUser, role: 'employer' });
-        contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
-        contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
-        mockEmployerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'employer-profile-1' });
-
-        const result = await deleteUserAccount('del-user-1');
-
-        expect(result.success).toBe(true);
-        expect(mockEmployerProfileRepository.delete).toHaveBeenCalledWith('employer-profile-1');
-      });
-
-      it('returns DELETE_FAILED when deleting the public user fails', async () => {
+      it('returns DELETE_FAILED when updating the public user fails', async () => {
         userRepository.getUserById.mockResolvedValueOnce(mockUser);
         contractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
         contractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [], total: 0 });
-        userRepository.deleteUser.mockRejectedValueOnce(new Error('database unavailable'));
+        userRepository.updateUser.mockRejectedValueOnce(new Error('database unavailable'));
 
         await expect(deleteUserAccount('del-user-1')).resolves.toEqual({
           code: 'DELETE_FAILED',
           message: 'Failed to delete account. Please try again or contact support.',
+        });
+      });
+
+      it('should return ACTIVE_CONTRACTS_EXIST when user has pending contracts', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        contractRepository.countContractsByUserAndStatus.mockImplementation(
+          async (_userId, status) => status === 'pending' ? 1 : 0
+        );
+
+        const result = await deleteUserAccount('del-user-1');
+        expect(result).toMatchObject({
+          code: 'ACTIVE_CONTRACTS_EXIST',
+          message: expect.stringContaining('1 pending'),
         });
       });
 
@@ -2718,6 +2730,196 @@ describe('auth-service - updateUserWallet', () => {
         await expect(deleteUserAccount('del-user-1')).resolves.toMatchObject({
           code: 'DELETE_FAILED',
         });
+      });
+    });
+
+    describe('checkAccountDeletionEligibility', () => {
+      it('returns canDelete true when user has no pending, active, or disputed contracts', async () => {
+        contractRepository.countContractsByUserAndStatus.mockResolvedValue(0);
+
+        const result = await checkAccountDeletionEligibility('user-clean');
+        expect(result).toEqual({
+          canDelete: true,
+          counts: { pending: 0, active: 0, disputed: 0 },
+        });
+      });
+
+      it('returns canDelete false with detailed message when user has pending contracts', async () => {
+        contractRepository.countContractsByUserAndStatus.mockImplementation(
+          async (_userId, status) => status === 'pending' ? 2 : 0
+        );
+
+        const result = await checkAccountDeletionEligibility('user-with-contracts');
+        expect(result).toEqual({
+          canDelete: false,
+          reason: expect.stringContaining('2 pending contract(s)'),
+          counts: { pending: 2, active: 0, disputed: 0 },
+        });
+      });
+
+      it('returns canDelete false when checking contracts fails', async () => {
+        contractRepository.countContractsByUserAndStatus.mockRejectedValueOnce(new Error('db down'));
+
+        const result = await checkAccountDeletionEligibility('user-err');
+        expect(result).toEqual({
+          canDelete: false,
+          reason: expect.stringContaining('Failed to verify contract status'),
+        });
+      });
+    });
+
+    describe('permanentlyDeleteUserAccount', () => {
+      it('cleans freelancer data, preferences, favorites, appwrite user, and deletes user from repository', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'profile-1' });
+        mockEmailPreferenceRepository.findByUserId.mockResolvedValueOnce({ id: 'pref-1' });
+        mockFavoriteRepository.findByUser.mockResolvedValueOnce([{ id: 'fav-1' }, { id: 'fav-2' }]);
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const result = await permanentlyDeleteUserAccount('del-user-1');
+
+        expect(result).toBe(true);
+        expect(mockFreelancerProfileRepository.delete).toHaveBeenCalledWith('profile-1');
+        expect(mockEmailPreferenceRepository.delete).toHaveBeenCalledWith('pref-1');
+        expect(mockFavoriteRepository.delete).toHaveBeenCalledTimes(2);
+        expect(users.delete).toHaveBeenCalledWith('del-user-1');
+        expect(userRepository.deleteUser).toHaveBeenCalledWith('del-user-1');
+      });
+
+      it('cleans employer profile data', async () => {
+        userRepository.getUserById.mockResolvedValueOnce({ ...mockUser, role: 'employer' });
+        mockEmployerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'employer-profile-1' });
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const result = await permanentlyDeleteUserAccount('del-user-1');
+
+        expect(result).toBe(true);
+        expect(mockEmployerProfileRepository.delete).toHaveBeenCalledWith('employer-profile-1');
+      });
+
+      it('returns false when user does not exist', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(null);
+        const result = await permanentlyDeleteUserAccount('non-existent');
+        expect(result).toBe(false);
+      });
+
+      it('tolerates appwrite user deletion failure and still deletes repository user', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        users.delete.mockRejectedValueOnce(new Error('auth provider unavailable'));
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const result = await permanentlyDeleteUserAccount('del-user-1');
+
+        expect(result).toBe(true);
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Failed to delete user from Appwrite auth service',
+          expect.any(Object),
+        );
+        expect(userRepository.deleteUser).toHaveBeenCalledWith('del-user-1');
+      });
+
+      it('returns false when repository deleteUser fails', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        userRepository.deleteUser.mockRejectedValueOnce(new Error('db error'));
+
+        const result = await permanentlyDeleteUserAccount('del-user-1');
+        expect(result).toBe(false);
+      });
+    });
+
+    describe('purgeExpiredAccountDeletions', () => {
+      it('purges users whose 30-day grace period has passed', async () => {
+        const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+        userRepository.getAllUsers.mockResolvedValueOnce([
+          {
+            id: 'expired-1',
+            email: 'expired@example.com',
+            role: 'freelancer',
+            is_suspended: true,
+            suspension_reason: `PENDING_DELETION:${pastDate}`,
+          },
+          {
+            id: 'active-pending',
+            email: 'pending@example.com',
+            role: 'freelancer',
+            is_suspended: true,
+            suspension_reason: `PENDING_DELETION:${futureDate}`,
+          },
+          {
+            id: 'regular-suspended',
+            email: 'regular@example.com',
+            role: 'freelancer',
+            is_suspended: true,
+            suspension_reason: 'Violation of Terms',
+          },
+        ]);
+
+        userRepository.getUserById.mockResolvedValueOnce({
+          id: 'expired-1',
+          email: 'expired@example.com',
+          role: 'freelancer',
+        });
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const count = await purgeExpiredAccountDeletions();
+        expect(count).toBe(1);
+        expect(userRepository.deleteUser).toHaveBeenCalledWith('expired-1');
+        expect(userRepository.deleteUser).not.toHaveBeenCalledWith('active-pending');
+      });
+
+      it('returns 0 when getAllUsers throws', async () => {
+        userRepository.getAllUsers.mockRejectedValueOnce(new Error('db connection lost'));
+        const count = await purgeExpiredAccountDeletions();
+        expect(count).toBe(0);
+        expect(logger.error).toHaveBeenCalledWith('Failed to purge expired account deletions', expect.any(Object));
+      });
+    });
+
+    describe('Account restoration during login (30-day grace period)', () => {
+      it('restores account and clears suspension when user logs in within 30 days', async () => {
+        const futureDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
+        const pendingUser = {
+          ...mockUser,
+          id: 'restore-user-1',
+          is_suspended: true,
+          suspension_reason: `PENDING_DELETION:${futureDate}`,
+        };
+
+        userRepository.updateUser.mockResolvedValueOnce({ ...pendingUser, is_suspended: false, suspension_reason: null });
+
+        const result = await createAuthResult(pendingUser, 'access-token', 'refresh-token');
+
+        expect(result).toMatchObject({
+          accountRestored: true,
+          message: expect.stringContaining('pending account deletion has been cancelled'),
+        });
+        expect(userRepository.updateUser).toHaveBeenCalledWith('restore-user-1', {
+          is_suspended: false,
+          suspension_reason: null,
+        });
+      });
+
+      it('permanently deletes account and returns ACCOUNT_DELETED when login occurs after 30-day grace period has expired', async () => {
+        const pastDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+        const expiredUser = {
+          ...mockUser,
+          id: 'expired-user-1',
+          is_suspended: true,
+          suspension_reason: `PENDING_DELETION:${pastDate}`,
+        };
+
+        userRepository.getUserById.mockResolvedValueOnce(expiredUser);
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const result = await createAuthResult(expiredUser, 'access-token', 'refresh-token');
+
+        expect(result).toMatchObject({
+          code: 'ACCOUNT_DELETED',
+          message: expect.stringContaining('30-day grace period'),
+        });
+        expect(userRepository.deleteUser).toHaveBeenCalledWith('expired-user-1');
       });
     });
   });
@@ -2920,9 +3122,9 @@ describe('auth-service - remaining coverage gaps', () => {
     mockEmailPreferenceRepository.findByUserId.mockRejectedValueOnce(new Error('preferences lookup failed'));
     mockFavoriteRepository.findByUser.mockRejectedValueOnce(new Error('favorites lookup failed'));
 
-    const result = await deleteUserAccount('del-fl-lookup');
+    const result = await permanentlyDeleteUserAccount('del-fl-lookup');
 
-    expect(result).toMatchObject({ success: true });
+    expect(result).toBe(true);
   });
 
   // L1483 + L1494 + L1499: cleanup delete .catch callbacks on the freelancer path
@@ -2935,9 +3137,9 @@ describe('auth-service - remaining coverage gaps', () => {
     mockFavoriteRepository.findByUser.mockResolvedValueOnce([{ id: 'fav-1' }]);
     mockFavoriteRepository.delete.mockRejectedValueOnce(new Error('favorite delete failed'));
 
-    const result = await deleteUserAccount('del-fl-delete');
+    const result = await permanentlyDeleteUserAccount('del-fl-delete');
 
-    expect(result).toMatchObject({ success: true });
+    expect(result).toBe(true);
   });
 
   // L1486: employer cleanup lookup .catch callback
@@ -2945,9 +3147,9 @@ describe('auth-service - remaining coverage gaps', () => {
     userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, id: 'del-emp-lookup', role: 'employer' });
     mockEmployerProfileRepository.getProfileByUserId.mockRejectedValueOnce(new Error('employer profile lookup failed'));
 
-    const result = await deleteUserAccount('del-emp-lookup');
+    const result = await permanentlyDeleteUserAccount('del-emp-lookup');
 
-    expect(result).toMatchObject({ success: true });
+    expect(result).toBe(true);
   });
 
   // L1488: employer cleanup delete .catch callback
@@ -2956,9 +3158,9 @@ describe('auth-service - remaining coverage gaps', () => {
     mockEmployerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'emp-profile' });
     mockEmployerProfileRepository.delete.mockRejectedValueOnce(new Error('employer profile delete failed'));
 
-    const result = await deleteUserAccount('del-emp-delete');
+    const result = await permanentlyDeleteUserAccount('del-emp-delete');
 
-    expect(result).toMatchObject({ success: true });
+    expect(result).toBe(true);
   });
 
   // L1652: deletion recipient name fallback for the Appwrite notification email

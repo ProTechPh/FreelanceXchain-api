@@ -507,6 +507,14 @@ export function initializeScheduler(): void {
     reconcileContractPayments();
   });
 
+  // Permanently purge accounts whose 30-day grace period has expired - Daily at 3 AM
+  cron.schedule('0 3 * * *', () => {
+    logger.info('Running scheduled job: Purge expired account deletions');
+    import('./auth-service.js')
+      .then(({ purgeExpiredAccountDeletions }) => purgeExpiredAccountDeletions())
+      .catch((err) => logger.error('Failed to run purgeExpiredAccountDeletions', { error: err }));
+  });
+
   logger.info('Scheduler service initialized successfully');
 }
 

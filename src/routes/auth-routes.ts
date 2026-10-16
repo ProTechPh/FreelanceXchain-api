@@ -28,6 +28,7 @@ import {
   updateUserWallet,
   disconnectUserWallet,
   deleteUserAccount,
+  checkAccountDeletionEligibility,
   requestAccountDeletion,
   verifyAccountDeletionCode,
   isAuthError,
@@ -1911,6 +1912,36 @@ router.delete('/wallet', authMiddleware, walletRateLimiter, asyncHandler(async (
 
 /**
  * @swagger
+ * /api/auth/account/deletion-eligibility:
+ *   get:
+ *     tags:
+ *       - Authentication
+ *     summary: Check account deletion eligibility
+ *     description: Checks whether the authenticated user has pending, active, or disputed contracts that prevent account deletion.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Account deletion eligibility status returned
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/account/deletion-eligibility', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const result = await checkAccountDeletionEligibility(userId);
+  sendSuccessResponse(res, 200, result, requestId);
+}));
+
+/**
+ * @swagger
  * /api/auth/account/delete-request:
  *   post:
  *     tags:
@@ -2018,8 +2049,11 @@ router.delete('/account', authMiddleware, authRateLimiter, asyncHandler(async (r
     return;
   }
 
+  clearAuthCookies(res);
+
   sendSuccessResponse(res, 200, {
     message: result.message,
+    scheduledDeletionDate: result.scheduledDeletionDate,
   }, requestId);
 }));
 

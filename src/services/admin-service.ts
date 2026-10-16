@@ -27,6 +27,7 @@ import { ADMIN_PERMISSIONS, type AdminPermission } from '../models/user.js';
 import { platformMetricsCache } from '../utils/cache.js';
 import { grantComplimentaryPro } from './subscription-service.js';
 import type { PlanTier } from '../models/subscription.js';
+import { sendUserInvitedEmail } from './email-delivery-service.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -708,13 +709,47 @@ async function createAuthUserInAppwrite(
   }
 }
 
+async function dispatchUserInvitedEmail(params: {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  temporaryPassword?: string | undefined;
+  plan: PlanTier;
+}): Promise<boolean> {
+  try {
+    const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
+    const emailRes = await sendUserInvitedEmail(params.email, {
+      recipientName: params.name,
+      email: params.email,
+      role: params.role,
+      temporaryPassword: params.temporaryPassword,
+      loginUrl: `${frontendUrl}/login`,
+      plan: params.plan,
+    });
+    if (emailRes.success) {
+      logger.info('Invite email sent to user successfully', { userId: params.userId, email: params.email });
+      return true;
+    }
+    logger.warn('Failed to send invite email to user', { userId: params.userId, email: params.email, error: emailRes.error });
+    return false;
+  } catch (emailErr) {
+    logger.warn('Error attempting to send invite email to user', {
+      userId: params.userId,
+      email: params.email,
+      error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+    });
+    return false;
+  }
+}
+
 /**
  * Create or invite a new user through Appwrite Auth and register in public database.
  */
 export async function inviteOrAddUser(
   input: InviteUserInput,
   actorId: string = 'system-admin'
-): Promise<ServiceResult<{ user: UserEntity; plan: PlanTier; temporaryPassword?: string }>> {
+): Promise<ServiceResult<{ user: UserEntity; plan: PlanTier; temporaryPassword?: string; emailSent?: boolean }>> {
   try {
     const validationError = validateInviteUserInput(input);
     if (validationError) return validationError;
@@ -784,9 +819,19 @@ export async function inviteOrAddUser(
       payload: { role: createdUser.role, email: normalizedEmail, permissions: createdUser.permissions, plan },
     });
 
+    const emailSent = await dispatchUserInvitedEmail({
+      userId: createdUser.id,
+      email: normalizedEmail,
+      name: trimmedName,
+      role: createdUser.role,
+      temporaryPassword: temporaryPasswordGenerated,
+      plan,
+    });
+
     return successResult({
       user: createdUser,
       plan,
+      emailSent,
       ...(temporaryPasswordGenerated !== undefined ? { temporaryPassword: temporaryPasswordGenerated } : {}),
     });
   } catch (error) {

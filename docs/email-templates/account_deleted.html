@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account Deleted - FreelanceXchain</title>
+    <title>Account Scheduled for Deletion - FreelanceXchain</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased;">
     <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8fafc; padding: 40px 16px;">
@@ -21,13 +21,13 @@
                                     <tr>
                                         <td style="vertical-align: middle; padding-right: 8px;">
                                             <svg width="26" height="26" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
-                                                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(45 50 50)" fill="none" stroke="#64748b" stroke-width="11" />
-                                                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(-45 50 50)" fill="none" stroke="#475569" stroke-width="11" />
+                                                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(45 50 50)" fill="none" stroke="#0f4c3d" stroke-width="11" />
+                                                <rect x="0" y="37" width="100" height="26" rx="13" transform="rotate(-45 50 50)" fill="none" stroke="#166e58" stroke-width="11" />
                                             </svg>
                                         </td>
                                         <td style="vertical-align: middle;">
                                             <span style="font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1;">
-                                                Freelance<span style="color: #64748b; font-weight: 900;">X</span>chain
+                                                Freelance<span style="color: #10b981; font-weight: 900;">X</span>chain
                                             </span>
                                         </td>
                                     </tr>
@@ -40,20 +40,20 @@
                     <tr>
                         <td align="center" style="padding: 8px 16px 28px; text-align: center;">
                             <!-- Top Pill Badge -->
-                            <div style="display: inline-block; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 6px 16px; margin-bottom: 18px;">
-                                <span style="color: #475569; font-size: 12px; font-weight: 700; letter-spacing: 0.2px;">
-                                    Account Erasure Confirmation &bull; GDPR Compliance
+                            <div style="display: inline-block; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 9999px; padding: 6px 16px; margin-bottom: 18px;">
+                                <span style="color: #991b1b; font-size: 12px; font-weight: 700; letter-spacing: 0.2px;">
+                                    Deactivation Notice &bull; 30-Day Grace Period
                                 </span>
                             </div>
 
                             <!-- Hero Headline -->
-                            <h1 style="margin: 0 0 12px; font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1.25;">
-                                Your Account Has Been Deleted
+                            <h1 style="margin: 0 0 12px; font-size: 28px; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1.25;">
+                                Your Account is Scheduled for Deletion
                             </h1>
 
                             <!-- Hero Subtitle -->
                             <p style="margin: 0 auto; max-width: 480px; font-size: 15px; color: #475569; line-height: 1.6; font-weight: 400;">
-                                Hello <strong>{{ recipientName }}</strong>, this email confirms that your FreelanceXchain account was permanently deleted on <strong>{{ deletionDate }}</strong>.
+                                Hello <strong>{{ recipientName }}</strong>, your FreelanceXchain account has been deactivated and scheduled for permanent deletion on <strong>{{ deletionDate }}</strong>.
                             </p>
                         </td>
                     </tr>
@@ -64,25 +64,38 @@
                             <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.06), 0 8px 10px -6px rgba(0, 0, 0, 0.04); overflow: hidden;">
                                 <tr>
                                     <td style="padding: 28px;">
-                                        <h3 style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #0f172a;">What was removed:</h3>
-                                        <ul style="margin: 0 0 20px; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.8;">
-                                            <li>Your user profile, biography, and custom skills</li>
-                                            <li>Portfolio items and associated uploads</li>
-                                            <li>Login credentials, sessions, and email preferences</li>
-                                            <li>Bookmarks, favorites, and saved searches</li>
+                                        
+                                        <!-- Grace Period Callout Box -->
+                                        <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: center;">
+                                            <div style="font-size: 15px; font-weight: 700; color: #065f46; margin-bottom: 8px;">
+                                                Changed your mind?
+                                            </div>
+                                            <p style="margin: 0 0 16px; font-size: 14px; color: #047857; line-height: 1.6;">
+                                                You have a <strong>30-day grace period</strong>. You can cancel this deletion request and retrieve your account at any time simply by signing back in.
+                                            </p>
+                                            <a href="https://freelancexchain.works/login" target="_blank" style="display: inline-block; padding: 12px 30px; background-color: #0f4c3d; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 9999px; box-shadow: 0 4px 12px rgba(15, 76, 61, 0.25);">
+                                                Sign In to Restore Account &rarr;
+                                            </a>
+                                        </div>
+
+                                        <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #0f172a;">What happens after 30 days:</h3>
+                                        <ul style="margin: 0 0 20px; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.8;">
+                                            <li>If you do not sign in within 30 days, your account and personal data will be permanently wiped.</li>
+                                            <li>Your user profile, portfolio items, biography, and credentials will be permanently erased.</li>
+                                            <li>Bookmarks, favorites, and email notification preferences will be removed.</li>
                                         </ul>
 
-                                        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-                                            <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                                        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                                            <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px;">
                                                 Blockchain Immutability Note:
                                             </div>
-                                            <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">
+                                            <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5;">
                                                 As specified by distributed ledger principles, past transactions, escrow contracts, and smart contract milestone settlements executed on public blockchains remain permanent and cannot be deleted by any party.
                                             </p>
                                         </div>
 
-                                        <p style="margin: 0; font-size: 13px; color: #dc2626; line-height: 1.5;">
-                                            <strong>Did you not request this deletion?</strong> If you suspect unauthorized access caused this, please contact our support team immediately at <strong>support@freelancexchain.works</strong>.
+                                        <p style="margin: 0; font-size: 12px; color: #dc2626; line-height: 1.5;">
+                                            <strong>Did you not request this deletion?</strong> If you suspect unauthorized access, please log in immediately to restore your account, change your password, or contact support at <strong>support@freelancexchain.works</strong>.
                                         </p>
                                     </td>
                                 </tr>

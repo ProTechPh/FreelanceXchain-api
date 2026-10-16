@@ -189,6 +189,7 @@ router.post('/users', authMiddleware, requirePermission('users:manage'), apiRate
   res.status(201).json({
     user: mapAdminUser(result.data.user),
     plan: result.data.plan,
+    emailSent: result.data.emailSent,
     ...(result.data.temporaryPassword !== undefined ? { temporaryPassword: result.data.temporaryPassword } : {}),
   });
 }));
