@@ -714,7 +714,7 @@ async function dispatchUserInvitedEmail(params: {
   email: string;
   name: string;
   role: string;
-  temporaryPassword?: string;
+  temporaryPassword?: string | undefined;
   plan: PlanTier;
 }): Promise<boolean> {
   try {
