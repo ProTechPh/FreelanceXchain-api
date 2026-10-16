@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
+import { requireCompleteBusinessProfile } from '../middleware/business-profile-middleware.js';
 import {
   validateAppwriteDocumentId,
   isValidSkillId,
@@ -432,7 +433,7 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(as
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validate(createProjectSchema), asyncHandler(async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, requireCompleteBusinessProfile, apiRateLimiter, validate(createProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -625,7 +626,7 @@ async function uploadProjectFiles(files: Express.Multer.File[], userId: string):
   }, []);
 }
 
-router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, fileUploadRateLimiter, uploadProjectAttachments, validate(createProjectWithAttachmentsSchema), async (req: Request, res: Response) => {
+router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, requireCompleteBusinessProfile, fileUploadRateLimiter, uploadProjectAttachments, validate(createProjectWithAttachmentsSchema), async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[];
   const userId = req.user?.userId;
   const requestId = getRequestId(req);

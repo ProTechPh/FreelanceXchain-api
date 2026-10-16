@@ -19,6 +19,16 @@ const mockGetSystemHealth = jest.fn<any>();
 const mockGetSatisfactionRate = jest.fn<any>();
 
 const mockGetAllReviews = jest.fn<any>();
+const mockListBusinessDocuments = jest.fn<any>(async () => []);
+const mockGetBusinessProfileCompleteness = jest.fn<any>();
+const mockGetEmployerProfileByUserId = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: mockListBusinessDocuments,
+  getBusinessProfileCompleteness: mockGetBusinessProfileCompleteness,
+}));
+jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
+  getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
+}));
 jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => {
   const repo = { getAllReviews: mockGetAllReviews };
   return {
@@ -82,6 +92,34 @@ describe('Admin Routes', () => {
     app = express();
     app.use(express.json());
     app.use('/api/admin', adminRouter);
+  });
+
+  describe('GET /employers/:userId/business-profile', () => {
+    it('returns the profile, documents and completeness', async () => {
+      mockGetEmployerProfileByUserId.mockResolvedValueOnce({ success: true, data: { id: 'ep-1', tin: '123-456-789' } });
+      mockListBusinessDocuments.mockResolvedValueOnce([{ id: 'doc-1', documentType: 'bir_2303' }]);
+      mockGetBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: false, missingFields: [], missingDocuments: ['mayors_permit'] } });
+      const res = await request(app).get('/api/admin/employers/emp-1/business-profile');
+      expect(res.status).toBe(200);
+      expect(res.body.profile.tin).toBe('123-456-789');
+      expect(res.body.documents).toHaveLength(1);
+      expect(res.body.completeness.missingDocuments).toEqual(['mayors_permit']);
+      expect(mockGetEmployerProfileByUserId).toHaveBeenCalledWith('emp-1');
+    });
+
+    it('returns null completeness when it cannot be computed', async () => {
+      mockGetEmployerProfileByUserId.mockResolvedValueOnce({ success: true, data: { id: 'ep-1' } });
+      mockGetBusinessProfileCompleteness.mockResolvedValueOnce({ success: false, error: { code: 'PROFILE_NOT_FOUND', message: 'x' } });
+      const res = await request(app).get('/api/admin/employers/emp-1/business-profile');
+      expect(res.status).toBe(200);
+      expect(res.body.completeness).toBeNull();
+    });
+
+    it('returns 404 when the employer has no profile', async () => {
+      mockGetEmployerProfileByUserId.mockResolvedValueOnce({ success: false, error: { code: 'PROFILE_NOT_FOUND', message: 'Employer profile not found' } });
+      const res = await request(app).get('/api/admin/employers/emp-1/business-profile');
+      expect(res.status).toBe(404);
+    });
   });
 
   describe('GET /stats', () => {

@@ -13,6 +13,15 @@ detected (HTTP 409) and skipped, so it can be re-run after every deploy to apply
 any new schema changes. Requirements: `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`,
 `APPWRITE_API_KEY`; `APPWRITE_DATABASE_ID` defaults to `freelancexchain`.
 
+Without flags the script also seeds the skill catalog and the default admin
+(updating them if they already exist). To apply schema changes only, without
+touching any existing data, use `--schema-only`, optionally limited to specific
+collections and buckets:
+
+```bash
+npx tsx scripts/setup-appwrite-db.ts --schema-only --only=employer_profiles,employer_business_documents --buckets=business-documents
+```
+
 ## Collections
 
 | Collection | Key attributes (beyond `$id`/`$createdAt`/`$updatedAt`) |
@@ -21,7 +30,8 @@ any new schema changes. Requirements: `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`
 | `skill_categories` | `name`, `description`, `is_active` |
 | `skills` | `category_id`, `name`, `description`, `is_active` |
 | `freelancer_profiles` | `user_id`, `name`, `nationality`, `bio`, `hourly_rate`, `skills` (JSON), `experience` (JSON), `availability` |
-| `employer_profiles` | `user_id`, `name`, `nationality`, `company_name`, `description`, `industry` |
+| `employer_profiles` | `user_id`, `name`, `nationality`, `company_name`, `description`, `industry`, `business_type`, `tin`, `registration_number`, `business_address`, `business_phone`, `business_email`, `website`, `year_established` |
+| `employer_business_documents` | `employer_id`, `document_type`, `label`, `file_id`, `file_url`, `file_name`, `mime_type`, `size` |
 | `projects` | `employer_id`, `title`, `description`, `required_skills` (JSON), `budget`, `deadline`, `is_rush`, `rush_fee_percentage`, `status`, `milestones` (JSON), `freelancer_limit`, `tags`, `attachments` |
 | `proposals` | `project_id`, `freelancer_id`, `cover_letter`, `attachments`, `proposed_rate`, `estimated_duration`, `status` |
 | `contracts` | `project_id`, `proposal_id`, `freelancer_id`, `employer_id`, `escrow_address`, `base_amount`, `rush_fee`, `total_amount`, `status` |

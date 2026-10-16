@@ -2,6 +2,7 @@ import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-m
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
+import type { BusinessType } from '../models/employer-profile.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
@@ -17,10 +18,18 @@ type CreateEmployerProfileFromKycInput = {
   industry?: string;
 };
 
-type UpdateEmployerProfileInput = {
+export type UpdateEmployerProfileInput = {
   companyName?: string;
   description?: string;
   industry?: string;
+  businessType?: BusinessType;
+  tin?: string;
+  registrationNumber?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  businessEmail?: string;
+  website?: string | null;
+  yearEstablished?: number;
 };
 
 type EmployerProfileServiceResult<T> = ServiceResult<T>;
@@ -114,6 +123,14 @@ export async function updateEmployerProfile(
   if (input.companyName !== undefined) updates.company_name = input.companyName;
   if (input.description !== undefined) updates.description = input.description;
   if (input.industry !== undefined) updates.industry = input.industry;
+  if (input.businessType !== undefined) updates.business_type = input.businessType;
+  if (input.tin !== undefined) updates.tin = input.tin;
+  if (input.registrationNumber !== undefined) updates.registration_number = input.registrationNumber;
+  if (input.businessAddress !== undefined) updates.business_address = input.businessAddress;
+  if (input.businessPhone !== undefined) updates.business_phone = input.businessPhone;
+  if (input.businessEmail !== undefined) updates.business_email = input.businessEmail;
+  if (input.website !== undefined) updates.website = input.website || null;
+  if (input.yearEstablished !== undefined) updates.year_established = input.yearEstablished;
 
   const updatedEntity = await employerProfileRepository.updateProfile(existingProfile.id, updates);
   if (!updatedEntity) {

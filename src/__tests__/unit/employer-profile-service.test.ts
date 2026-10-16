@@ -343,6 +343,58 @@ describe('Employer Profile Service', () => {
       }
     });
 
+    it('should update business information fields', async () => {
+      const userId = createTestUser().id;
+
+      await createEmployerProfile(userId, {
+        companyName: 'Tech Corp',
+        description: 'Original description',
+        industry: 'Technology',
+      });
+
+      const result = await updateEmployerProfile(userId, {
+        businessType: 'corporation',
+        tin: '123-456-789-000',
+        registrationNumber: 'CS201912345',
+        businessAddress: '1 Ayala Ave, Makati City',
+        businessPhone: '+63 2 8123 4567',
+        businessEmail: 'ops@techcorp.ph',
+        website: 'https://techcorp.ph',
+        yearEstablished: 2012,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toMatchObject({
+          businessType: 'corporation',
+          tin: '123-456-789-000',
+          registrationNumber: 'CS201912345',
+          businessAddress: '1 Ayala Ave, Makati City',
+          businessPhone: '+63 2 8123 4567',
+          businessEmail: 'ops@techcorp.ph',
+          website: 'https://techcorp.ph',
+          yearEstablished: 2012,
+          });
+      }
+    });
+
+    it('should store an empty website as null', async () => {
+      const userId = createTestUser().id;
+
+      await createEmployerProfile(userId, {
+        companyName: 'Tech Corp',
+        description: 'Original description',
+        industry: 'Technology',
+      });
+
+      const result = await updateEmployerProfile(userId, { website: '' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.website).toBeNull();
+      }
+    });
+
     it('should fail when profile does not exist', async () => {
       const userId = createTestUser().id;
 

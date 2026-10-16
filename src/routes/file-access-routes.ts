@@ -51,6 +51,10 @@ function valueReferencesFile(value: unknown, fileId: string): boolean {
 async function hasResourceFileAccess(bucket: BucketId, fileId: string, userId: string): Promise<boolean> {
   if (bucket === BUCKETS.PROJECT_ATTACHMENTS || bucket === BUCKETS.CONTRACT_DOCUMENTS) return true;
 
+  // Employer business documents are viewable by any signed-in user (anonymous
+  // callers are rejected before this check).
+  if (bucket === BUCKETS.BUSINESS_DOCUMENTS) return true;
+
   if (bucket === BUCKETS.PROPOSAL_ATTACHMENTS) {
     const proposals = await proposalRepository.queryAll();
     const proposal = proposals.find(item => valueReferencesFile(item.attachments, fileId));

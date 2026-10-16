@@ -38,6 +38,18 @@ const mockListOpenProjects = jest.fn(async () => ({
   },
 }));
 
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  deleteAllBusinessDocuments: jest.fn(async () => undefined),
+  getBusinessProfileCompleteness: jest.fn(async () => ({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } })),
+  getRequiredDocumentTypes: jest.fn(() => []),
+  mapBusinessDocumentFromEntity: jest.fn(),
+}));
+jest.unstable_mockModule(resolveModule('src/middleware/business-profile-middleware.ts'), () => ({
+  requireCompleteBusinessProfile: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   createProject: mockCreateProject,
   getProjectById: jest.fn(),
@@ -185,6 +197,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
   uploadProjectAttachments: [(_req: any, _res: any, next: any) => next()],
   uploadProposalAttachments: [(_req: any, _res: any, next: any) => next()],
+  uploadBusinessDocument: [(_req: any, _res: any, next: any) => next()],
 }));
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'bench-request-id',

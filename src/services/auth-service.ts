@@ -15,6 +15,7 @@ import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
 import { withLock } from '../utils/async-lock.js';
+import { deleteAllBusinessDocuments } from './employer-business-document-service.js';
 import {
   sendAccountDeletionCodeEmail,
   sendAccountDeletedEmail,
@@ -1578,6 +1579,7 @@ async function cleanupUserData(userId: string, role: string): Promise<void> {
     if (profile) {
       await employerProfileRepository.delete(profile.id).catch(() => {});
     }
+    await deleteAllBusinessDocuments(userId).catch(() => {});
   }
 
   const emailPref = await emailPreferenceRepository.findByUserId(userId).catch(() => null);

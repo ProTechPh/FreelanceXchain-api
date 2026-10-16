@@ -22,6 +22,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     PORTFOLIO_IMAGES: 'portfolio-images',
     AVATARS: 'avatars',
     ATTACHMENTS: 'attachments',
+    BUSINESS_DOCUMENTS: 'business-documents',
   },
 }));
 
@@ -134,6 +135,24 @@ describe('File Access Routes', () => {
 
       const res = await request(app).get('/api/files/access/dispute-evidence/file-1');
       expect(res.status).toBe(200);
+    });
+
+    it('allows any signed-in user to view employer business documents', async () => {
+      mockStorage.getFile.mockResolvedValue({
+        name: 'employer-9_uuid_bir-2303.pdf',
+        sizeOriginal: 2048,
+        mimeType: 'application/pdf',
+      });
+      mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('pdf-data'));
+
+      const res = await request(app).get('/api/files/access/business-documents/file-1');
+      expect(res.status).toBe(200);
+    });
+
+    it('rejects anonymous access to employer business documents', async () => {
+      mockUser = null;
+      const res = await request(app).get('/api/files/access/business-documents/file-1');
+      expect(res.status).toBe(401);
     });
 
     it('allows authenticated users to view portfolio images', async () => {

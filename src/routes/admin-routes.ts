@@ -24,6 +24,11 @@ import {
 import type { UserEntity } from '../repositories/user-repository.js';
 import { getAdminAnalytics } from '../services/analytics-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { getEmployerProfileByUserId } from '../services/employer-profile-service.js';
+import {
+  listBusinessDocuments,
+  getBusinessProfileCompleteness,
+} from '../services/employer-business-document-service.js';
 
 const router = Router();
 
@@ -542,6 +547,49 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimit
     ...result.data,
     totalPaidOut: result.data.totalTransactionVolume.toFixed(2),
     satisfactionRate,
+  });
+}));
+
+/**
+ * @swagger
+ * /api/admin/employers/{userId}/business-profile:
+ *   get:
+ *     summary: View an employer's business information and documents (read-only)
+ *     description: Documents are collected for transparency and are not checked against BIR, DTI or SEC records.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Employer business profile, documents and completeness
+ *       404:
+ *         description: Employer profile not found
+ */
+router.get('/employers/:userId/business-profile', authMiddleware, requirePermission('users:view'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const userId = req.params['userId'] ?? '';
+
+  const profileResult = await getEmployerProfileByUserId(userId);
+  if (!profileResult.success) {
+    sendErrorResponse(res, 404, profileResult.error.code, profileResult.error.message, { requestId });
+    return;
+  }
+
+  const [documents, completeness] = await Promise.all([
+    listBusinessDocuments(userId),
+    getBusinessProfileCompleteness(userId),
+  ]);
+
+  res.status(200).json({
+    profile: profileResult.data,
+    documents,
+    completeness: completeness.success ? completeness.data : null,
   });
 }));
 

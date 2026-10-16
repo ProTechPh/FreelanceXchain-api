@@ -19,6 +19,18 @@ const mockListProjectsByCategory = jest.fn<any>();
 const mockListProjectsByMultipleCategories = jest.fn<any>();
 const mockGetProjectCategoryStats = jest.fn<any>();
 
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  deleteAllBusinessDocuments: jest.fn(async () => undefined),
+  getBusinessProfileCompleteness: jest.fn(async () => ({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } })),
+  getRequiredDocumentTypes: jest.fn(() => []),
+  mapBusinessDocumentFromEntity: jest.fn(),
+}));
+jest.unstable_mockModule(resolveModule('src/middleware/business-profile-middleware.ts'), () => ({
+  requireCompleteBusinessProfile: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   createProject: mockCreateProject,
   getProjectById: mockGetProjectById,

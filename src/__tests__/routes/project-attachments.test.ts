@@ -9,6 +9,9 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 // Mock Appwrite config
 
 // Mock the auth-middleware to bypass authentication
+jest.unstable_mockModule(resolveModule('src/middleware/business-profile-middleware.ts'), () => ({
+  requireCompleteBusinessProfile: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization as string | undefined;
@@ -153,6 +156,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
       upload.array('files', 5)(req, res, next);
     }
   ],
+  uploadBusinessDocument: [upload.array('file', 1)],
   sanitizeFilename: jest.fn((filename: string) => filename),
   scanFileForViruses: jest.fn(async () => ({ clean: true })),
   MAX_FILE_SIZE: 25 * 1024 * 1024,

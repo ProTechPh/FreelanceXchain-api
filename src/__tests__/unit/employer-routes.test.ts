@@ -23,6 +23,18 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  optionalAuthMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  getBusinessProfileCompleteness: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+  uploadBusinessDocument: [(_req: any, _res: any, next: any) => next()],
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({

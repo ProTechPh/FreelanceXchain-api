@@ -3,6 +3,11 @@
  * Creates all collections and attributes for FreelanceXchain
  * 
  * Run: npx tsx scripts/setup-appwrite-db.ts
+ *
+ * Schema-only (additive, no seeding, no wipes):
+ *   npx tsx scripts/setup-appwrite-db.ts --schema-only [--only=col_a,col_b] [--buckets=bucket-a]
+ * Creates missing collections, attributes, indexes and buckets only. Existing
+ * documents, files, users and seeded records are left untouched.
  * 
  * Requirements:
  * - APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY must be set
@@ -132,9 +137,34 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'company_name', type: 'string', size: 255, required: false, default: '' },
       { name: 'description', type: 'string', size: 5000, required: false, default: '' },
       { name: 'industry', type: 'string', size: 100, required: false, default: '' },
+      { name: 'business_type', type: 'string', size: 30, required: false },
+      { name: 'tin', type: 'string', size: 20, required: false },
+      { name: 'registration_number', type: 'string', size: 50, required: false },
+      { name: 'business_address', type: 'string', size: 500, required: false },
+      { name: 'business_phone', type: 'string', size: 30, required: false },
+      { name: 'business_email', type: 'string', size: 255, required: false },
+      { name: 'website', type: 'string', size: 500, required: false },
+      { name: 'year_established', type: 'integer', required: false },
     ],
     indexes: [
       { key: 'user_id', type: DatabasesIndexType.Key, attributes: ['user_id'] },
+    ],
+  },
+  {
+    id: 'employer_business_documents',
+    name: 'Employer Business Documents',
+    attributes: [
+      { name: 'employer_id', type: 'string', size: 36, required: true },
+      { name: 'document_type', type: 'string', size: 30, required: true },
+      { name: 'label', type: 'string', size: 255, required: false },
+      { name: 'file_id', type: 'string', size: 36, required: true },
+      { name: 'file_url', type: 'string', size: 2000, required: true },
+      { name: 'file_name', type: 'string', size: 255, required: true },
+      { name: 'mime_type', type: 'string', size: 100, required: true },
+      { name: 'size', type: 'integer', required: true },
+    ],
+    indexes: [
+      { key: 'employer_id', type: DatabasesIndexType.Key, attributes: ['employer_id'] },
     ],
   },
   {
@@ -1094,6 +1124,8 @@ const DOCUMENT_EXTENSIONS = [
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
+const BUSINESS_DOCUMENT_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+
 const BUCKETS_TO_SETUP = [
   { bucketId: 'proposal-attachments', bucketName: 'Proposal Attachments', permissions: [Permission.read(Role.any())], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
   { bucketId: 'project-attachments', bucketName: 'Project Attachments', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: DOCUMENT_EXTENSIONS },
@@ -1102,14 +1134,15 @@ const BUCKETS_TO_SETUP = [
   { bucketId: 'profile-images', bucketName: 'Profile Images', permissions: [Permission.read(Role.any())], fileSecurity: false, extensions: IMAGE_EXTENSIONS },
   { bucketId: 'milestone-deliverables', bucketName: 'Milestone Deliverables', permissions: [], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
   { bucketId: 'contract-documents', bucketName: 'Contract Documents', permissions: [Permission.read(Role.any())], fileSecurity: true, extensions: DOCUMENT_EXTENSIONS },
+  { bucketId: 'business-documents', bucketName: 'Business Documents', permissions: [], fileSecurity: true, extensions: BUSINESS_DOCUMENT_EXTENSIONS },
 ];
 
-async function setupStorage(): Promise<void> {
+async function setupStorage(buckets: typeof BUCKETS_TO_SETUP = BUCKETS_TO_SETUP): Promise<void> {
   const storage = new Storage(client);
   const existing = await storage.listBuckets();
   const existingIds = new Set(existing.buckets.map((b) => b.$id));
 
-  for (const b of BUCKETS_TO_SETUP) {
+  for (const b of buckets) {
     if (existingIds.has(b.bucketId)) {
       console.log(`    ✓ Bucket '${b.bucketId}' already exists.`);
     } else {
@@ -2689,12 +2722,29 @@ async function main(): Promise<void> {
   const WIPE_AUTH = args.includes("--wipe-auth");
   const WITH_SEED = (args.includes("--seed") || args.includes("-s")) && !WIPE_ONLY;
   const ADD_MISSING_SKILLS = args.includes("--add-missing-skills");
+  const SCHEMA_ONLY = args.includes("--schema-only");
+  const listArg = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3).split(",").map((v) => v.trim()).filter(Boolean);
+  const ONLY_COLLECTIONS = listArg("only");
+  const ONLY_BUCKETS = listArg("buckets");
+
+  if (SCHEMA_ONLY && (WITH_RESET || WIPE_ONLY || WIPE_AUTH || WITH_SEED)) {
+    console.error("--schema-only cannot be combined with --reset/--wipe/--wipe-only/--wipe-auth/--seed");
+    process.exit(1);
+  }
+  const unknownCollections = (ONLY_COLLECTIONS ?? []).filter((id) => !COLLECTIONS.some((c) => c.id === id));
+  const unknownBuckets = (ONLY_BUCKETS ?? []).filter((id) => !BUCKETS_TO_SETUP.some((b) => b.bucketId === id));
+  if (unknownCollections.length > 0 || unknownBuckets.length > 0) {
+    console.error(`Unknown collection(s): ${unknownCollections.join(", ") || "none"}; unknown bucket(s): ${unknownBuckets.join(", ") || "none"}`);
+    process.exit(1);
+  }
+  const collectionsToSetup = ONLY_COLLECTIONS ? COLLECTIONS.filter((c) => ONLY_COLLECTIONS.includes(c.id)) : COLLECTIONS;
+  const bucketsToSetup = ONLY_BUCKETS ? BUCKETS_TO_SETUP.filter((b) => ONLY_BUCKETS.includes(b.bucketId)) : BUCKETS_TO_SETUP;
 
   console.log("=== FreelanceXchain — Appwrite Setup, Reset & Restore ===\n");
   console.log(`Endpoint:   ${ENDPOINT}`);
   console.log(`Project:    ${PROJECT_ID}`);
   console.log(`Database:   ${DATABASE_ID}`);
-  console.log(`Mode:       ${ADD_MISSING_SKILLS ? "ADD MISSING SKILLS" : WITH_RESET ? (WIPE_ONLY ? "WIPE ALL (Clean Slate)" : WITH_SEED ? "RESET + SEED DEMO DATA" : "RESET TO CLEAN DEFAULT") : WITH_SEED ? "SETUP + SEED" : "SETUP ONLY"}`);
+  console.log(`Mode:       ${SCHEMA_ONLY ? "SCHEMA ONLY (additive, no seeding)" : ADD_MISSING_SKILLS ? "ADD MISSING SKILLS" : WITH_RESET ? (WIPE_ONLY ? "WIPE ALL (Clean Slate)" : WITH_SEED ? "RESET + SEED DEMO DATA" : "RESET TO CLEAN DEFAULT") : WITH_SEED ? "SETUP + SEED" : "SETUP ONLY"}`);
   if (WITH_SEED) {
     console.log(`Demo Creds: [email: any demo email above, password: ${DEMO_PASSWORD}]`);
   }
@@ -2722,8 +2772,8 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`\n1. Creating/Verifying ${COLLECTIONS.length} collections, attributes, and indexes...\n`);
-  for (const colDef of COLLECTIONS) {
+  console.log(`\n1. Creating/Verifying ${collectionsToSetup.length} collections, attributes, and indexes...\n`);
+  for (const colDef of collectionsToSetup) {
     console.log(`[${colDef.id}]`);
     await createCollection(colDef);
     await createAttributes(colDef);
@@ -2731,10 +2781,12 @@ async function main(): Promise<void> {
     console.log("");
   }
 
-  console.log(`\n2. Creating/Verifying ${BUCKETS_TO_SETUP.length} storage buckets...\n`);
-  await setupStorage();
+  console.log(`\n2. Creating/Verifying ${bucketsToSetup.length} storage buckets...\n`);
+  await setupStorage(bucketsToSetup);
 
-  if (!WIPE_ONLY) {
+  if (SCHEMA_ONLY) {
+    console.log(`\n3. Schema only: no seed data inserted or updated.`);
+  } else if (!WIPE_ONLY) {
     if (WITH_SEED) {
       console.log(`\n3. Seeding full demo sample data (Users, Profiles, Projects, KYC)...`);
       await seedAllData();

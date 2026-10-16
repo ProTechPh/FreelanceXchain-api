@@ -867,6 +867,57 @@
           "industry": {
             "type": "string"
           },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationality": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessType": {
+            "type": "string",
+            "enum": [
+              "sole_proprietorship",
+              "partnership",
+              "corporation",
+              "cooperative"
+            ],
+            "nullable": true
+          },
+          "tin": {
+            "type": "string",
+            "nullable": true,
+            "description": "BIR Taxpayer Identification Number. Hidden (null) for anonymous callers of GET /api/employers/{id}."
+          },
+          "registrationNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "DTI (sole proprietorship) or SEC registration number. Hidden for anonymous callers."
+          },
+          "businessAddress": {
+            "type": "string",
+            "nullable": true,
+            "description": "Hidden for anonymous callers."
+          },
+          "businessPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "Hidden for anonymous callers."
+          },
+          "businessEmail": {
+            "type": "string",
+            "nullable": true,
+            "description": "Hidden for anonymous callers."
+          },
+          "website": {
+            "type": "string",
+            "nullable": true
+          },
+          "yearEstablished": {
+            "type": "integer",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -1876,6 +1927,83 @@
         "properties": {
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "BusinessDocument": {
+        "type": "object",
+        "description": "An employer business document kept on file. Documents are collected for transparency and are not checked against BIR, DTI or SEC records.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employerId": {
+            "type": "string"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "bir_2303",
+              "dti_certificate",
+              "sec_registration",
+              "mayors_permit",
+              "barangay_clearance",
+              "other"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Omitted for anonymous callers of GET /api/employers/{id}/documents."
+          },
+          "fileUrl": {
+            "type": "string",
+            "description": "Secure proxy URL. Omitted for anonymous callers of GET /api/employers/{id}/documents."
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BusinessProfileCompleteness": {
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "missingFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingDocuments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "bir_2303",
+                "dti_certificate",
+                "sec_registration",
+                "mayors_permit",
+                "barangay_clearance",
+                "other"
+              ]
+            }
           }
         }
       }
@@ -4011,6 +4139,46 @@
                   },
                   "industry": {
                     "type": "string"
+                  },
+                  "businessType": {
+                    "type": "string",
+                    "enum": [
+                      "sole_proprietorship",
+                      "partnership",
+                      "corporation",
+                      "cooperative"
+                    ]
+                  },
+                  "tin": {
+                    "type": "string",
+                    "example": "123-456-789-000",
+                    "description": "Format ###-###-### with optional branch code"
+                  },
+                  "registrationNumber": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 50
+                  },
+                  "businessAddress": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 500
+                  },
+                  "businessPhone": {
+                    "type": "string"
+                  },
+                  "businessEmail": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "website": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Optional http(s) URL; empty string or null clears it"
+                  },
+                  "yearEstablished": {
+                    "type": "integer",
+                    "minimum": 1800
                   }
                 }
               }
@@ -4040,10 +4208,183 @@
         }
       }
     },
+    "/api/employers/profile/completeness": {
+      "get": {
+        "summary": "Check whether the employer's business profile is complete",
+        "description": "Lists missing required business fields and documents. Posting a project requires a complete business profile. Website is optional.",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completeness result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessProfileCompleteness"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/employers/profile/documents": {
+      "get": {
+        "summary": "List the current employer's business documents",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Business documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessDocument"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload a business document",
+        "description": "Uploads one PDF or image (max 10MB). Uploading a type that already exists replaces it, except for \"other\". Documents are collected for transparency and are not checked against BIR, DTI or SEC records.",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "documentType"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "documentType": {
+                    "type": "string",
+                    "enum": [
+                      "bir_2303",
+                      "dti_certificate",
+                      "sec_registration",
+                      "mayors_permit",
+                      "barangay_clearance",
+                      "other"
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Required when documentType is \"other\" (2-255 characters)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Document uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/employers/profile/documents/{documentId}": {
+      "delete": {
+        "summary": "Delete one of the current employer's business documents",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document deleted"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not the owner"
+          },
+          "404": {
+            "description": "Document not found"
+          }
+        }
+      }
+    },
     "/api/employers/{id}": {
       "get": {
         "summary": "Get employer profile by user ID",
-        "description": "Retrieves an employer's public profile",
+        "description": "Retrieves an employer's public profile. For anonymous callers, tin, registrationNumber, businessAddress, businessPhone and businessEmail are returned as null.",
         "tags": [
           "Employers"
         ],
@@ -4075,6 +4416,46 @@
           },
           "404": {
             "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/employers/{id}/documents": {
+      "get": {
+        "summary": "List an employer's business documents",
+        "description": "Lists the business documents an employer has on file. File names and URLs are only included for signed-in users. Documents are not checked against BIR, DTI or SEC records.",
+        "tags": [
+          "Employers"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "User ID of the employer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Business documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessDocument"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5321,6 +5702,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Identity verification required (KYC_REQUIRED) or business profile incomplete (BUSINESS_PROFILE_INCOMPLETE, with missingFields and missingDocuments in error.details)"
           }
         }
       }
@@ -7134,7 +7518,7 @@
             "description": "Unauthorized"
           },
           "403": {
-            "description": "KYC verification required"
+            "description": "Identity verification required (KYC_REQUIRED) or business profile incomplete (BUSINESS_PROFILE_INCOMPLETE, with missingFields and missingDocuments in error.details)"
           }
         }
       }
@@ -7593,6 +7977,67 @@
           },
           "503": {
             "description": "Stripe webhooks are not configured"
+          }
+        }
+      }
+    },
+    "/api/admin/employers/{userId}/business-profile": {
+      "get": {
+        "summary": "View an employer's business information and documents (read-only)",
+        "description": "Documents are collected for transparency and are not checked against BIR, DTI or SEC records.",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Employer business profile, documents and completeness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profile": {
+                      "$ref": "#/components/schemas/EmployerProfile"
+                    },
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessDocument"
+                      }
+                    },
+                    "completeness": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/BusinessProfileCompleteness"
+                        }
+                      ],
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing users:view permission"
+          },
+          "404": {
+            "description": "Employer profile not found"
           }
         }
       }

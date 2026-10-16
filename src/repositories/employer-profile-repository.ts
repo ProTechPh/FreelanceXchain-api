@@ -1,4 +1,5 @@
 import { BaseRepository } from './base-repository.js';
+import type { BusinessType } from '../models/employer-profile.js';
 
 export type EmployerProfileEntity = {
   id: string;
@@ -8,6 +9,14 @@ export type EmployerProfileEntity = {
   company_name: string;
   description: string;
   industry: string;
+  business_type?: BusinessType | null;
+  tin?: string | null;
+  registration_number?: string | null;
+  business_address?: string | null;
+  business_phone?: string | null;
+  business_email?: string | null;
+  website?: string | null;
+  year_established?: number | null;
   created_at: string;
   updated_at: string;
 };
