@@ -5844,7 +5844,6 @@
                   "title",
                   "description",
                   "requiredSkills",
-                  "budget",
                   "deadline"
                 ],
                 "properties": {
@@ -5862,10 +5861,15 @@
                   },
                   "budget": {
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "deadline": {
                     "type": "string"
+                  },
+                  "freelancerLimit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
                   },
                   "tags": {
                     "type": "array",
@@ -6058,10 +6062,15 @@
                   },
                   "budget": {
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "deadline": {
                     "type": "string"
+                  },
+                  "freelancerLimit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
                   },
                   "status": {
                     "type": "string",
@@ -6071,6 +6080,7 @@
                       "in_progress",
                       "completed",
                       "cancelled",
+                      "closed",
                       "disputed"
                     ]
                   },
@@ -6400,7 +6410,7 @@
                   },
                   "proposedRate": {
                     "type": "number",
-                    "minimum": 1,
+                    "minimum": 0.0001,
                     "maximum": 1000000
                   },
                   "estimatedDuration": {
@@ -6431,7 +6441,7 @@
                   },
                   "proposedRate": {
                     "type": "number",
-                    "minimum": 1,
+                    "minimum": 0.0001,
                     "maximum": 1000000
                   },
                   "estimatedDuration": {
@@ -8018,7 +8028,6 @@
                   "title",
                   "description",
                   "requiredSkills",
-                  "budget",
                   "deadline"
                 ],
                 "properties": {
@@ -8035,10 +8044,15 @@
                   },
                   "budget": {
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "deadline": {
                     "type": "string"
+                  },
+                  "freelancerLimit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
                   },
                   "tags": {
                     "type": "string"
