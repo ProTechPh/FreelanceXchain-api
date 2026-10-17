@@ -530,7 +530,7 @@ export const createProjectSchema: RequestSchema = {
       title: { type: 'string', minLength: 5, required: true },
       description: { type: 'string', minLength: 20, required: true },
       requiredSkills: { type: 'array', minItems: 1, required: true },
-      budget: { type: 'number', exclusiveMinimum: 0, required: true },
+      budget: { type: 'number', minimum: 0 },
       deadline: { type: 'string', required: true },
       freelancerLimit: { type: 'integer', minimum: 1, maximum: 50 },
       tags: { type: 'array', maxItems: 10, items: { type: 'string' } },
@@ -557,7 +557,7 @@ export const createProjectWithAttachmentsSchema: RequestSchema = {
       // requiredSkills and tags arrive as JSON strings in multipart form-data;
       // the handler parses them (deep checks stay in the route).
       requiredSkills: { type: 'string', required: true },
-      budget: { type: 'number', exclusiveMinimum: 0, required: true },
+      budget: { type: 'number', minimum: 0 },
       deadline: { type: 'string', required: true },
       freelancerLimit: { type: 'integer', minimum: 1, maximum: 50 },
       tags: { type: 'string' },
@@ -575,7 +575,7 @@ export const updateProjectSchema: RequestSchema = {
       title: { type: 'string', minLength: 5 },
       description: { type: 'string', minLength: 20 },
       requiredSkills: { type: 'array', minItems: 1 },
-      budget: { type: 'number', exclusiveMinimum: 0 },
+      budget: { type: 'number', minimum: 0 },
       deadline: { type: 'string' },
       freelancerLimit: { type: 'integer', minimum: 1, maximum: 50 },
       status: { type: 'string', enum: ['draft', 'open', 'in_progress', 'completed', 'cancelled', 'closed', 'disputed'] },

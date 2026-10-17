@@ -697,7 +697,7 @@ describe('Project Attachments API', () => {
         .field('title', 'Hi') // Too short (needs 5+ chars)
         .field('description', 'Short desc') // Too short
         .field('requiredSkills', 'invalid json')
-        .field('budget', '0') // Invalid budget
+        .field('budget', '-1') // Negative budget
         .expect(400);
 
       // The middleware rejects the shape fields; the handler rejects the

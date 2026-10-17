@@ -398,7 +398,6 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(as
  *               - title
  *               - description
  *               - requiredSkills
- *               - budget
  *               - deadline
  *             properties:
  *               title:
@@ -417,7 +416,7 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(as
  *               budget:
  *                 type: number
  *                 minimum: 0
- *                 exclusiveMinimum: true
+ *                 description: Optional; 0 or omitted means rates are agreed per freelancer
  *               deadline:
  *                 type: string
  *                 format: date-time
@@ -504,7 +503,6 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, re
  *               - title
  *               - description
  *               - requiredSkills
- *               - budget
  *               - deadline
  *             properties:
  *               title:
@@ -519,7 +517,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, re
  *               budget:
  *                 type: number
  *                 minimum: 0
- *                 exclusiveMinimum: true
+ *                 description: Optional; 0 or omitted means rates are agreed per freelancer
  *               deadline:
  *                 type: string
  *                 format: date-time

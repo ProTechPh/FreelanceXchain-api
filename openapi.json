@@ -5844,7 +5844,6 @@
                   "title",
                   "description",
                   "requiredSkills",
-                  "budget",
                   "deadline"
                 ],
                 "properties": {
@@ -5862,7 +5861,7 @@
                   },
                   "budget": {
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "deadline": {
                     "type": "string"
@@ -6063,7 +6062,7 @@
                   },
                   "budget": {
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "deadline": {
                     "type": "string"
@@ -8029,7 +8028,6 @@
                   "title",
                   "description",
                   "requiredSkills",
-                  "budget",
                   "deadline"
                 ],
                 "properties": {
@@ -8046,7 +8044,7 @@
                   },
                   "budget": {
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "deadline": {
                     "type": "string"
