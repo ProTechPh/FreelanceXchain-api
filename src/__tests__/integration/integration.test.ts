@@ -462,6 +462,23 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
         }));
       return { items, hasMore: false };
     }),
+    getContractsByProject: jest.fn(async (projectId: string) => {
+      const items = Array.from(contractStore.values())
+        .filter(c => ((c as any).project_id || c.projectId) === projectId)
+        .map(c => ({
+          id: c.id,
+          project_id: (c as any).project_id || c.projectId,
+          proposal_id: (c as any).proposal_id || c.proposalId,
+          freelancer_id: (c as any).freelancer_id || c.freelancerId,
+          employer_id: (c as any).employer_id || c.employerId,
+          escrow_address: (c as any).escrow_address || c.escrowAddress || '',
+          total_amount: (c as any).total_amount ?? c.totalAmount,
+          status: c.status,
+          created_at: (c as any).created_at ?? c.createdAt,
+          updated_at: (c as any).updated_at ?? c.updatedAt,
+        }));
+      return { items, hasMore: false };
+    }),
   },
   ContractRepository: jest.fn(),
 }));
@@ -861,6 +878,10 @@ describe('Integration Tests - Critical Flows', () => {
    */
   describe('Flow 1: Registration → Profile → Project → Proposal → Contract', () => {
     it('should complete the full freelancer-employer workflow', async () => {
+      // Distinct Appwrite user IDs: proposing on your own project is blocked.
+      (globalThis as any).mockAppwriteUsers.create
+        .mockResolvedValueOnce({ $id: 'flow1-freelancer-id' })
+        .mockResolvedValueOnce({ $id: 'flow1-employer-id' });
       const freelancerRegResult = await register({
         email: 'freelancer@test.com',
         password: 'SecurePass123!',

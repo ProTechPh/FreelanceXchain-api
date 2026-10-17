@@ -8,6 +8,8 @@ export type WorkExperience = {
   description: string;
   startDate: string;
   endDate: string | null;
+  /** Technical and soft skill names used in this role; they feed the profile's skills. */
+  skills: string[];
 };
 
 export type FreelancerProfile = {

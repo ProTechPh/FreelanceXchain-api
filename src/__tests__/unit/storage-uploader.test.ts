@@ -952,7 +952,7 @@ describe('Storage Uploader - getFileQuota', () => {
       expect(result.percentage).toBeCloseTo((10000 / (100 * 1024 * 1024)) * 100, 5);
     }
     // One listFiles call per managed bucket
-    expect(mockListFiles).toHaveBeenCalledTimes(5);
+    expect(mockListFiles).toHaveBeenCalledTimes(6);
   });
 
   it('should fall back to the generic message when the failure carries an empty error', async () => {

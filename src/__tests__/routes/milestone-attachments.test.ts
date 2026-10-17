@@ -71,6 +71,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
   uploadProjectAttachments: [upload.array('files', 10)],
   uploadDisputeEvidence: [upload.array('files', 10)],
   uploadPortfolioImages: [upload.array('files', 10)],
+  uploadBusinessDocument: [upload.array('file', 1)],
   sanitizeFilename: jest.fn((filename: string) => filename),
   scanFileForViruses: jest.fn(async () => ({ clean: true })),
   MAX_FILE_SIZE: 10 * 1024 * 1024,

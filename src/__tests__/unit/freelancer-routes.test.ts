@@ -213,6 +213,61 @@ describe('Freelancer Routes', () => {
         .send({ title: 'A', company: 'B', description: 'Short', startDate: '2020-01-01' });
       expect(res.status).toBe(400);
     });
+
+    it('should pass trimmed work history skills to the service', async () => {
+      mockAddExperience.mockResolvedValue({ success: true, data: { id: 'fp-1', experience: [] } });
+      const res = await request(app)
+        .post('/api/freelancers/profile/experience')
+        .send({
+          title: 'Developer',
+          company: 'Corp Inc',
+          description: 'Built web applications for clients',
+          startDate: '2020-01-01',
+          skills: [' React ', 'Communication'],
+        });
+      expect(res.status).toBe(200);
+      expect(mockAddExperience).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ skills: ['React', 'Communication'] })
+      );
+    });
+
+    it('should return 409 for a duplicate entry', async () => {
+      mockAddExperience.mockResolvedValue({
+        success: false,
+        error: { code: 'DUPLICATE_EXPERIENCE', message: 'This work history entry is already on your profile' },
+      });
+      const res = await request(app)
+        .post('/api/freelancers/profile/experience')
+        .send({ title: 'Developer', company: 'Corp Inc', description: 'Built web applications for clients', startDate: '2020-01-01' });
+      expect(res.status).toBe(409);
+    });
+
+    it('should return 400 when skills is not an array of names', async () => {
+      const res = await request(app)
+        .post('/api/freelancers/profile/experience')
+        .send({
+          title: 'Developer',
+          company: 'Corp Inc',
+          description: 'Built web applications for clients',
+          startDate: '2020-01-01',
+          skills: ['React', ''],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 400 when more than 50 skills are sent', async () => {
+      const res = await request(app)
+        .post('/api/freelancers/profile/experience')
+        .send({
+          title: 'Developer',
+          company: 'Corp Inc',
+          description: 'Built web applications for clients',
+          startDate: '2020-01-01',
+          skills: Array.from({ length: 51 }, (_, index) => `Skill ${index}`),
+        });
+      expect(res.status).toBe(400);
+    });
   });
 
   describe('PATCH /profile/experience/:id', () => {
@@ -231,6 +286,26 @@ describe('Freelancer Routes', () => {
       const res = await request(app)
         .patch('/api/freelancers/profile/experience/exp-1')
         .send({});
+      expect(res.status).toBe(400);
+    });
+
+    it('should accept a skills-only update', async () => {
+      mockUpdateExperience.mockResolvedValue({ success: true, data: { id: 'fp-1', experience: [] } });
+      const res = await request(app)
+        .patch('/api/freelancers/profile/experience/exp-1')
+        .send({ skills: ['Leadership'] });
+      expect(res.status).toBe(200);
+      expect(mockUpdateExperience).toHaveBeenLastCalledWith(
+        expect.anything(),
+        'exp-1',
+        expect.objectContaining({ skills: ['Leadership'] })
+      );
+    });
+
+    it('should return 400 when skills is not an array', async () => {
+      const res = await request(app)
+        .patch('/api/freelancers/profile/experience/exp-1')
+        .send({ skills: 'React' });
       expect(res.status).toBe(400);
     });
   });

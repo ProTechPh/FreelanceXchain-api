@@ -268,7 +268,7 @@ describe('Validation Middleware - Property Tests', () => {
     it('should list all missing required fields for project creation', () => {
       fc.assert(
         fc.property(
-          fc.subarray(['title', 'description', 'requiredSkills', 'budget', 'deadline'], { minLength: 1 }),
+          fc.subarray(['title', 'description', 'requiredSkills', 'deadline'], { minLength: 1 }),
           (fieldsToOmit) => {
             const fullData: Record<string, unknown> = {
               title: 'Test Project Title',
@@ -1186,6 +1186,10 @@ describe('Validation Middleware - Extended Coverage', () => {
   describe('isValidAppwriteDocumentId', () => {
     it('should accept all supported Appwrite document ID characters', () => {
       expect(isValidAppwriteDocumentId('Conversation_1.test-id')).toBe(true);
+    });
+
+    it('should accept payout milestone IDs', () => {
+      expect(isValidAppwriteDocumentId('payout-2315faa5-6a7e-46c1-aa89-322667edd296')).toBe(true);
     });
 
     it('should reject an empty ID', () => {

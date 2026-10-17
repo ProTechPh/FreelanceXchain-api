@@ -412,16 +412,23 @@ describe('Milestone Service', () => {
       if (result.success) expect(result.data).toEqual([]);
     });
 
-    it('should return empty array when no milestones', async () => {
+    it('should return default payout milestone when project has no milestones', async () => {
       const { getContractMilestones } = await importModule();
 
-      mockContractRepository.getContractById.mockResolvedValueOnce(makeContract());
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContract({ total_amount: 1000 }));
       mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([]));
 
       const result = await getContractMilestones('c-1', 'employer-1');
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual([]);
+      if (result.success) {
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0]).toEqual(expect.objectContaining({
+          id: 'payout-c-1',
+          title: 'Agreed Deliverables & Payment',
+          contractId: 'c-1',
+        }));
+      }
     });
 
     it('should handle database errors', async () => {

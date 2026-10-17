@@ -174,6 +174,54 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
     return counts;
   }
 
+  async getAcceptedProposalCountsByProjects(projectIds: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    const uniqueProjectIds = [...new Set(projectIds)];
+    uniqueProjectIds.forEach(projectId => counts.set(projectId, 0));
+
+    if (uniqueProjectIds.length === 0) return counts;
+
+    const chunkSize = 100;
+    const pageSize = 100;
+
+    try {
+      for (let i = 0; i < uniqueProjectIds.length; i += chunkSize) {
+        const chunk = uniqueProjectIds.slice(i, i + chunkSize);
+        let lastId: string | undefined;
+
+        while (true) {
+          const queries = [
+            Query.equal('project_id', chunk),
+            Query.equal('status', 'accepted'),
+            Query.limit(pageSize),
+          ];
+          if (lastId) {
+            queries.push(Query.cursorAfter(lastId));
+          }
+
+          const response = await this.timedQuery('getAcceptedProposalCountsByProjects', () =>
+            databases.listDocuments(DATABASE_ID, COLLECTION_ID, queries)
+          );
+
+          for (const doc of response.documents) {
+            const projectId = doc['project_id'];
+            if (doc['status'] === 'accepted' && typeof projectId === 'string' && counts.has(projectId)) {
+              counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
+            }
+          }
+
+          if (response.documents.length < pageSize) break;
+          lastId = response.documents[response.documents.length - 1]?.$id;
+          if (!lastId) break;
+        }
+      }
+    } catch {
+      uniqueProjectIds.forEach(projectId => counts.set(projectId, 0));
+    }
+
+    return counts;
+  }
+
   async getExistingProposal(projectId: string, freelancerId: string): Promise<ProposalEntity | null> {
     try {
       const response = await databases.listDocuments(

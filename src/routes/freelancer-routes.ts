@@ -461,6 +461,12 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
  *                 type: string
  *                 format: date
  *                 nullable: true
+ *               skills:
+ *                 type: array
+ *                 maxItems: 50
+ *                 description: Technical and soft skill names used in this role; they are added to the profile's skills
+ *                 items:
+ *                   type: string
  *     responses:
  *       200:
  *         description: Experience added successfully
@@ -474,9 +480,24 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
  *         description: Unauthorized
  *       404:
  *         description: Profile not found
+ *       409:
+ *         description: An entry with the same position, company and dates already exists
  */
+function validateExperienceSkills(skills: unknown, errors: { field: string; message: string }[]): string[] | undefined {
+  if (skills === undefined) return undefined;
+  if (!Array.isArray(skills) || skills.length > 50) {
+    errors.push({ field: 'skills', message: 'Skills must be an array of at most 50 skill names' });
+    return undefined;
+  }
+  if (skills.some(skill => typeof skill !== 'string' || skill.trim().length < 1 || skill.trim().length > 100)) {
+    errors.push({ field: 'skills', message: 'Each skill must be between 1 and 100 characters' });
+    return undefined;
+  }
+  return skills.map(skill => (skill as string).trim());
+}
+
 router.post('/profile/experience', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { title, company, description, startDate, endDate } = req.body;
+  const { title, company, description, startDate, endDate, skills } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -500,16 +521,24 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
   if (!startDate || typeof startDate !== 'string') {
     errors.push({ field: 'startDate', message: 'Start date is required' });
   }
+  const experienceSkills = validateExperienceSkills(skills, errors);
 
   if (errors.length > 0) {
     sendValidationError(res, errors, requestId);
     return;
   }
 
-  const result = await addExperience(userId, { title, company, description, startDate, endDate });
+  const result = await addExperience(userId, {
+    title,
+    company,
+    description,
+    startDate,
+    endDate,
+    ...(experienceSkills !== undefined && { skills: experienceSkills }),
+  });
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : result.error.code === 'DUPLICATE_EXPERIENCE' ? 409 : 400;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
@@ -555,6 +584,12 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
  *                 type: string
  *                 format: date
  *                 nullable: true
+ *               skills:
+ *                 type: array
+ *                 maxItems: 50
+ *                 description: Technical and soft skill names used in this role; they are added to the profile's skills
+ *                 items:
+ *                   type: string
  *     responses:
  *       200:
  *         description: Experience updated successfully
@@ -568,6 +603,8 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
  *         description: Unauthorized
  *       404:
  *         description: Profile or experience not found
+ *       409:
+ *         description: Another entry already has the same position, company and dates
  */
 router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
@@ -580,10 +617,17 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
     return;
   }
 
-  const { title, company, description, startDate, endDate } = req.body;
+  const { title, company, description, startDate, endDate, skills } = req.body;
 
   // Validate at least one field is provided
-  if (title === undefined && company === undefined && description === undefined && startDate === undefined && endDate === undefined) {
+  if (
+    title === undefined &&
+    company === undefined &&
+    description === undefined &&
+    startDate === undefined &&
+    endDate === undefined &&
+    skills === undefined
+  ) {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'At least one field must be provided for update', { requestId });
     return;
   }
@@ -599,17 +643,29 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
   if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10)) {
     errors.push({ field: 'description', message: 'Description must be at least 10 characters' });
   }
+  const experienceSkills = validateExperienceSkills(skills, errors);
 
   if (errors.length > 0) {
     sendValidationError(res, errors, requestId);
     return;
   }
 
-  const result = await updateExperience(userId, experienceId, { title, company, description, startDate, endDate });
+  const result = await updateExperience(userId, experienceId, {
+    title,
+    company,
+    description,
+    startDate,
+    endDate,
+    ...(experienceSkills !== undefined && { skills: experienceSkills }),
+  });
 
   if (!result.success) {
     const statusCode =
-      result.error.code === 'PROFILE_NOT_FOUND' || result.error.code === 'EXPERIENCE_NOT_FOUND' ? 404 : 400;
+      result.error.code === 'PROFILE_NOT_FOUND' || result.error.code === 'EXPERIENCE_NOT_FOUND'
+        ? 404
+        : result.error.code === 'DUPLICATE_EXPERIENCE'
+          ? 409
+          : 400;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }

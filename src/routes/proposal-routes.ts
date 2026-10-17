@@ -17,6 +17,7 @@ import {
   acceptProposal,
   rejectProposal,
   withdrawProposal,
+  updateProposal,
 } from '../services/proposal-service.js';
 import { getProjectById } from '../services/project-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -273,6 +274,7 @@ async function processMultipartProposal(req: Request, res: Response) {
     let statusCode = 400;
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
+    if (result.error.code === 'CANNOT_PROPOSE_OWN_PROJECT') statusCode = 403;
     
     return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
   }
@@ -324,6 +326,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     let statusCode = 400;
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
+    if (result.error.code === 'CANNOT_PROPOSE_OWN_PROJECT') statusCode = 403;
     
     return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
   }
@@ -724,6 +727,76 @@ router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireV
     logger.error('Error withdrawing proposal', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to withdraw proposal', { requestId: getRequestId(req) });
   }
+}));
+
+/**
+ * @swagger
+ * /api/proposals/{id}:
+ *   patch:
+ *     summary: Update proposal terms
+ *     description: Update a pending proposal's rate, duration, or cover letter (freelancer only).
+ *     tags:
+ *       - Proposals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               proposedRate:
+ *                 type: number
+ *                 minimum: 0.0001
+ *               estimatedDuration:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 3650
+ *               coverLetter:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Proposal updated successfully
+ *       400:
+ *         description: Validation error or invalid state
+ *       403:
+ *         description: Unauthorized
+ *       404:
+ *         description: Proposal not found
+ */
+router.patch('/:id', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
+  const proposalId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const { proposedRate, estimatedDuration, coverLetter } = req.body;
+  const result = await updateProposal(proposalId, userId, {
+    ...(proposedRate !== undefined && { proposedRate: Number(proposedRate) }),
+    ...(estimatedDuration !== undefined && { estimatedDuration: Number(estimatedDuration) }),
+    ...(coverLetter !== undefined && { coverLetter: String(coverLetter) }),
+  });
+
+  if (!result.success) {
+    let statusCode = 400;
+    if (result.error.code === 'NOT_FOUND') statusCode = 404;
+    if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
+
+  res.status(200).json(result.data);
 }));
 
 export default router;

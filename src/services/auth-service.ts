@@ -15,6 +15,7 @@ import { getFrontendBaseUrl } from '../utils/url-helpers.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
 import { withLock } from '../utils/async-lock.js';
+import { deleteAllBusinessDocuments, getBusinessProfileCompleteness } from './employer-business-document-service.js';
 import {
   sendAccountDeletionCodeEmail,
   sendAccountDeletedEmail,
@@ -1048,6 +1049,64 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
   };
 }
 
+
+export type ParticipantRole = Extract<UserRole, 'freelancer' | 'employer'>;
+
+export type SwitchRoleResult =
+  | { success: true; user: AuthResult['user'] }
+  | {
+      success: false;
+      code: 'USER_NOT_FOUND' | 'ROLE_SWITCH_NOT_ALLOWED' | 'BUSINESS_PROFILE_INCOMPLETE' | 'UPDATE_FAILED';
+      message: string;
+      details?: { missingFields: string[]; missingDocuments: string[] };
+    };
+
+/**
+ * Switch the user's active role between freelancer and employer.
+ *
+ * `users.role` is the active role and is re-read on every request, so every
+ * existing role guard follows the switch. Both profiles are kept side by side.
+ * Acting as an employer requires a complete business profile (required fields
+ * and documents); acting as a freelancer has no upfront requirement.
+ */
+export async function switchActiveRole(userId: string, role: ParticipantRole): Promise<SwitchRoleResult> {
+  const user = await userRepository.getUserById(userId);
+  if (!user) {
+    return { success: false, code: 'USER_NOT_FOUND', message: 'User not found' };
+  }
+  if (user.role === 'admin') {
+    return { success: false, code: 'ROLE_SWITCH_NOT_ALLOWED', message: 'Admin accounts cannot switch roles' };
+  }
+
+  if (user.role !== role) {
+    if (role === 'employer') {
+      const completeness = await getBusinessProfileCompleteness(userId);
+      if (!completeness.success || !completeness.data.complete) {
+        return {
+          success: false,
+          code: 'BUSINESS_PROFILE_INCOMPLETE',
+          message: 'Complete your business information before switching to employer',
+          details: completeness.success
+            ? { missingFields: completeness.data.missingFields, missingDocuments: completeness.data.missingDocuments }
+            : { missingFields: [], missingDocuments: [] },
+        };
+      }
+    }
+
+    const updated = await userRepository.updateUser(userId, { role });
+    if (!updated) {
+      return { success: false, code: 'UPDATE_FAILED', message: 'Failed to switch role' };
+    }
+    logger.info('User switched active role', { userId, from: user.role, to: role });
+  }
+
+  const current = await getCurrentUserWithKyc(userId);
+  if ('code' in current) {
+    return { success: false, code: 'USER_NOT_FOUND', message: current.message };
+  }
+  return { success: true, user: current };
+}
+
 export async function updateUserWallet(
   userId: string,
   walletAddress: string
@@ -1567,18 +1626,21 @@ async function validateNoActiveContracts(
   }
 }
 
-async function cleanupUserData(userId: string, role: string): Promise<void> {
-  if (role === 'freelancer') {
-    const profile = await freelancerProfileRepository.getProfileByUserId(userId).catch(() => null);
-    if (profile) {
-      await freelancerProfileRepository.delete(profile.id).catch(() => {});
-    }
-  } else if (role === 'employer') {
-    const profile = await employerProfileRepository.getProfileByUserId(userId).catch(() => null);
-    if (profile) {
-      await employerProfileRepository.delete(profile.id).catch(() => {});
-    }
+/**
+ * Remove profile data for both participant roles: a user can switch between
+ * freelancer and employer, so either profile may exist regardless of the
+ * currently active role.
+ */
+async function cleanupUserData(userId: string): Promise<void> {
+  const freelancerProfile = await freelancerProfileRepository.getProfileByUserId(userId).catch(() => null);
+  if (freelancerProfile) {
+    await freelancerProfileRepository.delete(freelancerProfile.id).catch(() => {});
   }
+  const employerProfile = await employerProfileRepository.getProfileByUserId(userId).catch(() => null);
+  if (employerProfile) {
+    await employerProfileRepository.delete(employerProfile.id).catch(() => {});
+  }
+  await deleteAllBusinessDocuments(userId).catch(() => {});
 
   const emailPref = await emailPreferenceRepository.findByUserId(userId).catch(() => null);
   if (emailPref) {
@@ -1721,7 +1783,7 @@ export async function permanentlyDeleteUserAccount(userId: string): Promise<bool
     const user = await userRepository.getUserById(userId);
     if (!user) return false;
 
-    await cleanupUserData(userId, user.role);
+    await cleanupUserData(userId);
 
     try {
       await users.delete(userId);

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
+import { requireCompleteBusinessProfile } from '../middleware/business-profile-middleware.js';
 import {
   validateAppwriteDocumentId,
   isValidSkillId,
@@ -432,8 +433,8 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(as
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validate(createProjectSchema), asyncHandler(async (req: Request, res: Response) => {
-  const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
+router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, requireCompleteBusinessProfile, apiRateLimiter, validate(createProjectSchema), asyncHandler(async (req: Request, res: Response) => {
+  const { title, description, requiredSkills, budget, deadline, freelancerLimit, tags, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -467,8 +468,9 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
     title, 
     description, 
     requiredSkills, 
-    budget, 
+    budget: budget !== undefined && budget !== null && budget !== '' ? Number(budget) : 0, 
     deadline,
+    ...(freelancerLimit !== undefined && { freelancerLimit: Number(freelancerLimit) }),
     ...(isRush !== undefined && { isRush }),
     ...(rushFeePercentage !== undefined && { rushFeePercentage }),
     ...(processedTags && { tags: processedTags })
@@ -625,7 +627,7 @@ async function uploadProjectFiles(files: Express.Multer.File[], userId: string):
   }, []);
 }
 
-router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, fileUploadRateLimiter, uploadProjectAttachments, validate(createProjectWithAttachmentsSchema), async (req: Request, res: Response) => {
+router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, requireCompleteBusinessProfile, fileUploadRateLimiter, uploadProjectAttachments, validate(createProjectWithAttachmentsSchema), async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[];
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -666,14 +668,15 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
     }
   }
 
-  const { title, description, budget, deadline, isRush, rushFeePercentage } = req.body;
+  const { title, description, budget, deadline, freelancerLimit, isRush, rushFeePercentage } = req.body;
 
   const result = await createProject(userId, {
     title,
     description,
     requiredSkills: skills,
-    budget: Number(budget),
+    budget: budget !== undefined && budget !== null && budget !== '' ? Number(budget) : 0,
     deadline,
+    ...(freelancerLimit !== undefined && { freelancerLimit: Number(freelancerLimit) }),
     ...(isRush !== undefined && { isRush }),
     ...(rushFeePercentage !== undefined && { rushFeePercentage }),
     ...(parsedTags && { tags: parsedTags }),
@@ -756,7 +759,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
  */
 router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateAppwriteDocumentId(), validate(updateProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
-  const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage, attachments, tags } = req.body;
+  const { title, description, requiredSkills, budget, deadline, freelancerLimit, status, isRush, rushFeePercentage, attachments, tags } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -770,6 +773,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
   // fee bounds are enforced by the service.
   const result = await updateProject(projectId, userId, { 
     title, description, requiredSkills, budget, deadline, status,
+    ...(freelancerLimit !== undefined && { freelancerLimit: Number(freelancerLimit) }),
     ...(isRush !== undefined && { isRush }),
     ...(rushFeePercentage !== undefined && { rushFeePercentage }),
     ...(attachments !== undefined && { attachments }),

@@ -42,12 +42,20 @@ jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-reposi
   EmployerProfileEntity: {} as EmployerProfileEntity,
 }));
 
+const mockGetUserById = jest.fn(async (userId: string): Promise<{ id: string; name: string | null } | null> =>
+  userId === 'missing-user' ? null : { id: userId, name: `Account ${userId}` }
+);
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: { getUserById: mockGetUserById },
+}));
+
 // Mock the didit-kyc-service
 jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () => ({
   getProfileDataFromKyc: mockKycService.getProfileDataFromKyc,
 }));
 
 const {
+  ensureEmployerProfile,
   createEmployerProfile,
   createEmployerProfileFromKyc,
   getEmployerProfileByUserId,
@@ -151,6 +159,73 @@ describe('Employer Profile Service', () => {
       if (result.success) {
         expect(result.data.companyName).toBe(input.companyName);
       }
+    });
+  });
+
+  describe('ensureEmployerProfile', () => {
+    it('returns the existing profile without creating another', async () => {
+      const userId = createTestUser().id;
+      await createEmployerProfile(userId, { companyName: 'Acme', description: 'Existing description', industry: 'Tech' });
+
+      const result = await ensureEmployerProfile(userId);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.companyName).toBe('Acme');
+    });
+
+    it('creates a minimal profile from approved KYC data', async () => {
+      const result = await ensureEmployerProfile('user-with-kyc');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe('John Doe');
+        expect(result.data.nationality).toBe('US');
+        expect(result.data.companyName).toBe('John Doe');
+        expect(result.data.description).toBe('');
+        expect(result.data.industry).toBe('');
+      }
+    });
+
+    it('falls back to the account name without approved KYC', async () => {
+      const result = await ensureEmployerProfile('user-without-kyc');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe('Account user-without-kyc');
+        expect(result.data.companyName).toBe('Account user-without-kyc');
+        expect(result.data.nationality).toBeNull();
+      }
+    });
+
+    it('uses an empty company name when the account has no name', async () => {
+      mockGetUserById.mockResolvedValueOnce({ id: 'nameless-user', name: null });
+      const result = await ensureEmployerProfile('nameless-user');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBeNull();
+        expect(result.data.companyName).toBe('');
+      }
+    });
+
+    it('creates only one profile when called twice at the same time', async () => {
+      const [first, second] = await Promise.all([
+        ensureEmployerProfile('user-concurrent'),
+        ensureEmployerProfile('user-concurrent'),
+      ]);
+
+      expect(first.success && second.success).toBe(true);
+      if (first.success && second.success) {
+        expect(second.data.id).toBe(first.data.id);
+      }
+      const profiles = [...profileStore.values()].filter((profile: any) => profile.user_id === 'user-concurrent');
+      expect(profiles).toHaveLength(1);
+    });
+
+    it('returns USER_NOT_FOUND for an unknown user', async () => {
+      const result = await ensureEmployerProfile('missing-user');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('USER_NOT_FOUND');
     });
   });
 
@@ -340,6 +415,58 @@ describe('Employer Profile Service', () => {
         expect(result.data.companyName).toBe('New Tech Corp');
         expect(result.data.description).toBe('Original description');
         expect(result.data.industry).toBe('Technology');
+      }
+    });
+
+    it('should update business information fields', async () => {
+      const userId = createTestUser().id;
+
+      await createEmployerProfile(userId, {
+        companyName: 'Tech Corp',
+        description: 'Original description',
+        industry: 'Technology',
+      });
+
+      const result = await updateEmployerProfile(userId, {
+        businessType: 'corporation',
+        tin: '123-456-789-000',
+        registrationNumber: 'CS201912345',
+        businessAddress: '1 Ayala Ave, Makati City',
+        businessPhone: '+63 2 8123 4567',
+        businessEmail: 'ops@techcorp.ph',
+        website: 'https://techcorp.ph',
+        yearEstablished: 2012,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toMatchObject({
+          businessType: 'corporation',
+          tin: '123-456-789-000',
+          registrationNumber: 'CS201912345',
+          businessAddress: '1 Ayala Ave, Makati City',
+          businessPhone: '+63 2 8123 4567',
+          businessEmail: 'ops@techcorp.ph',
+          website: 'https://techcorp.ph',
+          yearEstablished: 2012,
+          });
+      }
+    });
+
+    it('should store an empty website as null', async () => {
+      const userId = createTestUser().id;
+
+      await createEmployerProfile(userId, {
+        companyName: 'Tech Corp',
+        description: 'Original description',
+        industry: 'Technology',
+      });
+
+      const result = await updateEmployerProfile(userId, { website: '' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.website).toBeNull();
       }
     });
 

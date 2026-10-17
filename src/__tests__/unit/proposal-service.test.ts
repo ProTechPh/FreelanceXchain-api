@@ -782,6 +782,32 @@ describe('Proposal Service - Coverage Tests', () => {
     }
   });
 
+  it('blocks a user from submitting a proposal on their own project', async () => {
+    const project = createTestProject({ employer_id: 'dual-user', status: 'open', milestones: [createTestMilestone({ amount: 1000 })] });
+    projectStore.set(project.id, project);
+
+    const result = await submitProposal('dual-user', { projectId: project.id, proposedRate: 500, estimatedDuration: 10, attachments: [] });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('CANNOT_PROPOSE_OWN_PROJECT');
+    }
+  });
+
+  it('blocks an employer from accepting their own proposal', async () => {
+    const project = createTestProject({ employer_id: 'dual-user', status: 'open', milestones: [createTestMilestone({ amount: 1000 })] });
+    projectStore.set(project.id, project);
+    const proposal = createTestProposal({ project_id: project.id, freelancer_id: 'dual-user', status: 'pending', proposed_rate: 1000 });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, 'dual-user');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('CANNOT_PROPOSE_OWN_PROJECT');
+    }
+  });
+
   it('should return UNAUTHORIZED when employer does not own project in acceptProposal (line 291)', async () => {
     const milestones = [createTestMilestone({ amount: 1000 })];
     const project = createTestProject({
@@ -806,7 +832,7 @@ describe('Proposal Service - Coverage Tests', () => {
     }
   });
 
-  it('should return NO_MILESTONES when project has no milestones (line 295)', async () => {
+  it('should succeed when project has no milestones', async () => {
     const employerId = 'employer-123';
     const project = createTestProject({
       employer_id: employerId,
@@ -824,10 +850,7 @@ describe('Proposal Service - Coverage Tests', () => {
 
     const result = await acceptProposal(proposal.id, employerId);
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('NO_MILESTONES');
-    }
+    expect(result.success).toBe(true);
   });
 
   it('should return INVALID_PROPOSAL_RATE when rate is zero (line 300)', async () => {

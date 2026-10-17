@@ -56,6 +56,26 @@ const mockProposalRepo = {
     }
     return counts;
   }),
+  getAcceptedProposalCount: jest.fn<any>(async (projectId: string) => {
+    let count = 0;
+    for (const proposal of proposalStore.values()) {
+      const p = proposal as ProposalEntity;
+      if (p.project_id === projectId && p.status === 'accepted') count++;
+    }
+    return count;
+  }),
+  getAcceptedProposalCountsByProjects: jest.fn<any>(async (projectIds: string[]) => {
+    const counts = new Map<string, number>();
+    for (const projectId of projectIds) {
+      let count = 0;
+      for (const proposal of proposalStore.values()) {
+        const p = proposal as ProposalEntity;
+        if (p.project_id === projectId && p.status === 'accepted') count++;
+      }
+      counts.set(projectId, count);
+    }
+    return counts;
+  }),
 };
 
 // Create skill repository mock

@@ -28,6 +28,15 @@ const mockAdminAccount = {
   ),
 };
 
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  deleteAllBusinessDocuments: jest.fn(async () => undefined),
+  getBusinessProfileCompleteness: jest.fn(async () => ({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } })),
+  getRequiredDocumentTypes: jest.fn(() => []),
+  mapBusinessDocumentFromEntity: jest.fn(),
+}));
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: {
     error: jest.fn(),
@@ -189,7 +198,9 @@ const {
   requestAccountDeletion,
   verifyAccountDeletionCode,
   disconnectUserWallet,
+  switchActiveRole,
 } = await import('../../services/auth-service.js');
+const { getBusinessProfileCompleteness } = await import('../../services/employer-business-document-service.js');
 
 const { userRepository } = await import('../../repositories/user-repository.js');
 const { contractRepository } = await import('../../repositories/contract-repository.js');
@@ -1293,6 +1304,89 @@ describe('auth-service comprehensive coverage', () => {
   // ----------------------------------------------------------
   // 11. getCurrentUserWithKyc (lines 425-466)
   // ----------------------------------------------------------
+  describe('switchActiveRole', () => {
+    it('returns USER_NOT_FOUND for an unknown user', async () => {
+      userRepository.getUserById.mockResolvedValueOnce(null);
+      const result = await switchActiveRole('missing', 'employer');
+      expect(result).toEqual({ success: false, code: 'USER_NOT_FOUND', message: 'User not found' });
+    });
+
+    it('does not let admins switch', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, role: 'admin' });
+      const result = await switchActiveRole('test-user-id', 'employer');
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('ROLE_SWITCH_NOT_ALLOWED');
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('treats switching to the current role as a no-op', async () => {
+      userRepository.getUserById.mockResolvedValue({ ...defaultUser, role: 'freelancer' });
+      const result = await switchActiveRole('test-user-id', 'freelancer');
+      expect(result.success).toBe(true);
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
+      userRepository.getUserById.mockResolvedValue(null);
+    });
+
+    it('switches to freelancer without any business checks', async () => {
+      userRepository.getUserById
+        .mockResolvedValueOnce({ ...defaultUser, role: 'employer' })
+        .mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      userRepository.updateUser.mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      const result = await switchActiveRole('test-user-id', 'freelancer');
+      expect(result.success).toBe(true);
+      expect(result.user.role).toBe('freelancer');
+      expect(userRepository.updateUser).toHaveBeenCalledWith('test-user-id', { role: 'freelancer' });
+      expect(getBusinessProfileCompleteness).not.toHaveBeenCalled();
+    });
+
+    it('switches to employer when the business profile is complete', async () => {
+      userRepository.getUserById
+        .mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' })
+        .mockResolvedValueOnce({ ...defaultUser, role: 'employer' });
+      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } });
+      userRepository.updateUser.mockResolvedValueOnce({ ...defaultUser, role: 'employer' });
+      const result = await switchActiveRole('test-user-id', 'employer');
+      expect(result.success).toBe(true);
+      expect(result.user.role).toBe('employer');
+      expect(userRepository.updateUser).toHaveBeenCalledWith('test-user-id', { role: 'employer' });
+    });
+
+    it('blocks switching to employer while the business profile is incomplete', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: false, missingFields: ['tin'], missingDocuments: ['bir_2303'] } });
+      const result = await switchActiveRole('test-user-id', 'employer');
+      expect(result).toMatchObject({
+        success: false,
+        code: 'BUSINESS_PROFILE_INCOMPLETE',
+        details: { missingFields: ['tin'], missingDocuments: ['bir_2303'] },
+      });
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('blocks switching to employer when there is no employer profile', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: false, error: { code: 'PROFILE_NOT_FOUND', message: 'x' } });
+      const result = await switchActiveRole('test-user-id', 'employer');
+      expect(result).toMatchObject({ code: 'BUSINESS_PROFILE_INCOMPLETE', details: { missingFields: [], missingDocuments: [] } });
+    });
+
+    it('returns UPDATE_FAILED when the role cannot be saved', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, role: 'employer' });
+      userRepository.updateUser.mockResolvedValueOnce(null);
+      const result = await switchActiveRole('test-user-id', 'freelancer');
+      expect(result).toMatchObject({ success: false, code: 'UPDATE_FAILED' });
+    });
+
+    it('returns USER_NOT_FOUND if the user disappears after switching', async () => {
+      userRepository.getUserById
+        .mockResolvedValueOnce({ ...defaultUser, role: 'employer' })
+        .mockResolvedValueOnce(null);
+      userRepository.updateUser.mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      const result = await switchActiveRole('test-user-id', 'freelancer');
+      expect(result).toMatchObject({ success: false, code: 'USER_NOT_FOUND' });
+    });
+  });
+
   describe('getCurrentUserWithKyc', () => {
     it('should return USER_NOT_FOUND when user does not exist', async () => {
       userRepository.getUserById.mockResolvedValueOnce(null);
@@ -2784,6 +2878,19 @@ describe('auth-service - updateUserWallet', () => {
         expect(mockFavoriteRepository.delete).toHaveBeenCalledTimes(2);
         expect(users.delete).toHaveBeenCalledWith('del-user-1');
         expect(userRepository.deleteUser).toHaveBeenCalledWith('del-user-1');
+      });
+
+      it('cleans both role profiles regardless of the active role', async () => {
+        userRepository.getUserById.mockResolvedValueOnce(mockUser);
+        mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'profile-f' });
+        mockEmployerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'profile-e' });
+        userRepository.deleteUser.mockResolvedValueOnce(true);
+
+        const result = await permanentlyDeleteUserAccount('del-user-1');
+
+        expect(result).toBe(true);
+        expect(mockFreelancerProfileRepository.delete).toHaveBeenCalledWith('profile-f');
+        expect(mockEmployerProfileRepository.delete).toHaveBeenCalledWith('profile-e');
       });
 
       it('cleans employer profile data', async () => {

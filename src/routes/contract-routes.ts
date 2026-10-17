@@ -504,7 +504,13 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateAppwriteDoc
   const { ethers } = await import('ethers');
   const milestones = project.milestones ?? [];
   const milestoneAmounts = fundingPlan.amounts.map(amount => ethers.parseEther(String(amount)).toString());
-  const milestoneDescriptions = milestones.map(m => m.title || `Milestone ${m.id}`);
+  const milestoneDescriptions = fundingPlan.amounts.map((_, idx) => {
+    const m = milestones[idx];
+    if (m) {
+      return m.title || `Milestone ${m.id}`;
+    }
+    return milestones.length === 0 ? 'Contract deliverable payout' : `Milestone ${idx + 1}`;
+  });
   const totalAmount = ethers.parseEther(String(contract.totalAmount ?? 0)).toString();
 
   const deploymentContext = await resolveFundDeploymentContext(

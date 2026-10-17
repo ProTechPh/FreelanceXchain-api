@@ -13,6 +13,7 @@ const mockListProjectsByEmployer = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
   getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
   updateEmployerProfile: mockUpdateEmployerProfile,
+  ensureEmployerProfile: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
@@ -23,6 +24,18 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
   requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+  optionalAuthMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  getBusinessProfileCompleteness: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+  uploadBusinessDocument: [(_req: any, _res: any, next: any) => next()],
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -173,6 +186,7 @@ const mockProjectService = { listProjectsByEmployer: mockListProjectsByEmployer 
 const mockEmployerProfileService = {
   getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
   updateEmployerProfile: mockUpdateEmployerProfile,
+  ensureEmployerProfile: jest.fn(),
 };
 
 describe('employer-routes branch coverage', () => {
@@ -257,6 +271,7 @@ describe('employer-routes.ts - Branch Coverage', () => {
     jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
       getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
       updateEmployerProfile: jest.fn(),
+      ensureEmployerProfile: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
       listProjectsByEmployer: jest.fn(),
@@ -291,6 +306,7 @@ describe('employer-routes - PATCH /profile description and industry validation',
     jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
       getEmployerProfileByUserId: jest.fn(),
       updateEmployerProfile: mockUpdateEmployerProfile,
+      ensureEmployerProfile: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
       listProjectsByEmployer: jest.fn(),
@@ -376,6 +392,7 @@ describe('employer-routes - GET /:id ?? fallback branch', () => {
     jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
       getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
       updateEmployerProfile: jest.fn(),
+      ensureEmployerProfile: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
       listProjectsByEmployer: jest.fn(),

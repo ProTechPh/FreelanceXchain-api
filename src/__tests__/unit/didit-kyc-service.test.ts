@@ -961,6 +961,57 @@ describe('didit-kyc-service', () => {
       expect(result.success).toBe(true);
       expect(mockEmployerUpdateProfile).toHaveBeenCalled();
     });
+
+    it('also syncs the name to the employer profile of a freelancer who has one', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc({ user_id: 'dual-1' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ user_id: 'dual-1', status: 'approved' }));
+      mockGetUserById.mockResolvedValue({ id: 'dual-1', name: 'Dual', role: 'freelancer' });
+      mockEmployerGetProfile.mockResolvedValueOnce({ id: 'emp-profile-dual' });
+      mockFreelancerGetProfile.mockResolvedValueOnce({ id: 'fr-profile-dual' });
+
+      const result = await processWebhook({
+        session_id: 'session-abc', status: 'Approved', timestamp: Date.now() / 1000,
+        decision: { id_verifications: [{ first_name: 'Dual', last_name: 'User', nationality: 'PH', status: 'Approved' }] },
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockEmployerUpdateProfile).toHaveBeenCalledWith('emp-profile-dual', { name: 'Dual User', nationality: 'PH' });
+      expect(mockFreelancerUpdateProfile).toHaveBeenCalledWith('fr-profile-dual', { name: 'Dual User', nationality: 'PH' });
+      expect(mockEmployerCreateProfile).not.toHaveBeenCalled();
+    });
+
+    it('also syncs the name to the freelancer profile of an employer who has one', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc({ user_id: 'dual-2' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ user_id: 'dual-2', status: 'approved' }));
+      mockGetUserById.mockResolvedValue({ id: 'dual-2', name: 'Dual', role: 'employer' });
+      mockFreelancerGetProfile.mockResolvedValueOnce({ id: 'fr-profile-dual-2' });
+      mockEmployerGetProfile.mockResolvedValueOnce({ id: 'emp-profile-dual-2' });
+
+      const result = await processWebhook({
+        session_id: 'session-abc', status: 'Approved', timestamp: Date.now() / 1000,
+        decision: { id_verifications: [{ first_name: 'Dual', last_name: 'Two', nationality: 'PH', status: 'Approved' }] },
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockFreelancerUpdateProfile).toHaveBeenCalledWith('fr-profile-dual-2', { name: 'Dual Two', nationality: 'PH' });
+      expect(mockFreelancerCreateProfile).not.toHaveBeenCalled();
+    });
+
+    it('still syncs the active profile when the other-role lookup fails', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc({ user_id: 'dual-3' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ user_id: 'dual-3', status: 'approved' }));
+      mockGetUserById.mockResolvedValue({ id: 'dual-3', name: 'Dual', role: 'employer' });
+      mockFreelancerGetProfile.mockRejectedValueOnce(new Error('db down'));
+      mockEmployerGetProfile.mockResolvedValueOnce({ id: 'emp-profile-dual-3' });
+
+      const result = await processWebhook({
+        session_id: 'session-abc', status: 'Approved', timestamp: Date.now() / 1000,
+        decision: { id_verifications: [{ first_name: 'Dual', last_name: 'Three', nationality: 'PH', status: 'Approved' }] },
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockEmployerUpdateProfile).toHaveBeenCalledWith('emp-profile-dual-3', { name: 'Dual Three', nationality: 'PH' });
+    });
   });
 
   describe('refreshVerificationStatus - additional status mappings', () => {

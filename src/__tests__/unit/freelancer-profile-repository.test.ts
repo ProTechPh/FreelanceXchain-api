@@ -70,11 +70,11 @@ describe('FreelancerProfileRepository', () => {
       const result = await repo.getProfileByUserId('u1');
 
       expect(result!.skills).toEqual([
-        { name: 'React', years_of_experience: 4 },
-        { name: 'TypeScript', years_of_experience: 3 },
-        { name: 'Node.js', years_of_experience: 2 },
-        { name: 'Rust', years_of_experience: 0 },
-        { name: 'Go', years_of_experience: 0 },
+        { name: 'React', years_of_experience: 4, added_manually: true },
+        { name: 'TypeScript', years_of_experience: 3, added_manually: true },
+        { name: 'Node.js', years_of_experience: 2, added_manually: true },
+        { name: 'Rust', years_of_experience: 0, added_manually: true },
+        { name: 'Go', years_of_experience: 0, added_manually: true },
       ]);
     });
 
@@ -96,10 +96,10 @@ describe('FreelancerProfileRepository', () => {
       const result = await repo.getProfileByUserId('u1');
 
       expect(result!.experience).toEqual([
-        { id: 'experience-1', title: 'Engineer', company: 'Current Co', description: 'Current contract', start_date: '2024-01-01', end_date: null },
-        { id: 'legacy-experience-1', title: 'Developer', company: 'Duplicate Co', description: 'Duplicate persisted id', start_date: '2022-01-01', end_date: '2023-12-31' },
-        { id: 'experience-3', title: 'Consultant', company: 'Legacy Co', description: 'Legacy identifier', start_date: '2020-01-01', end_date: null },
-        { id: 'legacy-experience-3', title: 'Intern', company: 'Old Co', description: 'Missing persisted id', start_date: '2019-01-01', end_date: '2019-12-31' },
+        { id: 'experience-1', title: 'Engineer', company: 'Current Co', description: 'Current contract', start_date: '2024-01-01', end_date: null, skills: [] },
+        { id: 'legacy-experience-1', title: 'Developer', company: 'Duplicate Co', description: 'Duplicate persisted id', start_date: '2022-01-01', end_date: '2023-12-31', skills: [] },
+        { id: 'experience-3', title: 'Consultant', company: 'Legacy Co', description: 'Legacy identifier', start_date: '2020-01-01', end_date: null, skills: [] },
+        { id: 'legacy-experience-3', title: 'Intern', company: 'Old Co', description: 'Missing persisted id', start_date: '2019-01-01', end_date: '2019-12-31', skills: [] },
       ]);
     });
 
@@ -119,9 +119,9 @@ describe('FreelancerProfileRepository', () => {
       const result = await repo.getProfileByUserId('u1');
 
       expect(result!.experience).toEqual([
-        { id: 'legacy-experience-1', title: 'First', company: 'A', description: '', start_date: '2020-01-01', end_date: '2020-12-31' },
-        { id: 'legacy-experience-1-1', title: 'Second', company: 'B', description: '', start_date: '2021-01-01', end_date: null },
-        { id: 'legacy-experience-2', title: 'Third', company: 'C', description: '', start_date: '2022-01-01', end_date: null },
+        { id: 'legacy-experience-1', title: 'First', company: 'A', description: '', start_date: '2020-01-01', end_date: '2020-12-31', skills: [] },
+        { id: 'legacy-experience-1-1', title: 'Second', company: 'B', description: '', start_date: '2021-01-01', end_date: null, skills: [] },
+        { id: 'legacy-experience-2', title: 'Third', company: 'C', description: '', start_date: '2022-01-01', end_date: null, skills: [] },
       ]);
     });
 
@@ -202,7 +202,7 @@ describe('FreelancerProfileRepository', () => {
       const result = await repo.searchBySkills(['React']);
 
       expect(result.items).toHaveLength(1);
-      expect(result.items[0]!.skills).toEqual([{ name: 'React', years_of_experience: 2 }]);
+      expect(result.items[0]!.skills).toEqual([{ name: 'React', years_of_experience: 2, added_manually: true }]);
     });
 
     it('should match only canonical Node.js skills without broad JavaScript or Node leakage', async () => {
@@ -402,7 +402,7 @@ describe('FreelancerProfileRepository - mapProfile experience parsing', () => {
 
   it('should parse experience from JSON string to array', async () => {
     const experienceArr = [
-      { id: 'e1', title: 'Senior Dev', company: 'ACME', description: 'Work', start_date: '2020-01-01', end_date: null },
+      { id: 'e1', title: 'Senior Dev', company: 'ACME', description: 'Work', start_date: '2020-01-01', end_date: null, skills: ['React', 'Communication'] },
     ];
     mockDatabases.listDocuments.mockResolvedValueOnce({
       documents: [{
@@ -426,7 +426,7 @@ describe('FreelancerProfileRepository - mapProfile experience parsing', () => {
 
   it('should parse experience from JSON string via searchBySkills', async () => {
     const experienceArr = [
-      { id: 'e2', title: 'Dev', company: 'XYZ', description: 'Code', start_date: '2021-01-01', end_date: '2023-01-01' },
+      { id: 'e2', title: 'Dev', company: 'XYZ', description: 'Code', start_date: '2021-01-01', end_date: '2023-01-01', skills: [] },
     ];
     mockDatabases.listDocuments.mockResolvedValueOnce({
       documents: [{
@@ -448,7 +448,7 @@ describe('FreelancerProfileRepository - mapProfile experience parsing', () => {
   });
 
   it('should leave experience as-is when it is already an array', async () => {
-    const experienceArr = [{ id: 'e3', title: 'Lead', company: 'ABC', description: 'Lead dev', start_date: '2019-01-01', end_date: null }];
+    const experienceArr = [{ id: 'e3', title: 'Lead', company: 'ABC', description: 'Lead dev', start_date: '2019-01-01', end_date: null, skills: ['Leadership'] }];
     mockDatabases.listDocuments.mockResolvedValueOnce({
       documents: [{
         $id: 'fp3',

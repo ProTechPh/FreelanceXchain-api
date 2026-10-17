@@ -97,7 +97,7 @@ async function loadWeeklyDigestSnapshot(): Promise<WeeklyDigestSnapshot> {
   const totalEscrow = allProjects
     .filter(p => p.status === 'open' || p.status === 'in_progress')
     .reduce((sum, p) => sum + (Number(p.budget) || 0), 0);
-  const formattedTotalEscrow = totalEscrow > 0 ? `$${totalEscrow.toLocaleString()}` : '$25,000+';
+  const formattedTotalEscrow = totalEscrow > 0 ? `₱${totalEscrow.toLocaleString()}` : '₱500,000+';
 
   const frontendUrl = process.env['FRONTEND_URL'] || 'https://freelancexchain.works';
   const topProjects = allProjects
@@ -106,7 +106,7 @@ async function loadWeeklyDigestSnapshot(): Promise<WeeklyDigestSnapshot> {
     .slice(0, 5)
     .map((p, index) => ({
       title: p.title,
-      budget: `$${Number(p.budget).toLocaleString()}`,
+      budget: `₱${Number(p.budget).toLocaleString()}`,
       url: `${frontendUrl}/projects/${p.id}`,
       matchRate: `${Math.max(88, 98 - index * 2)}%`,
     }));

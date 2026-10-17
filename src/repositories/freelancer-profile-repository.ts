@@ -9,8 +9,16 @@ export type FreelancerProfileEntity = {
   nationality: string | null;
   bio: string;
   hourly_rate: number;
-  skills: { name: string; years_of_experience: number }[];
-  experience: { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null }[];
+  skills: { name: string; years_of_experience: number; added_manually: boolean }[];
+  experience: {
+    id: string;
+    title: string;
+    company: string;
+    description: string;
+    start_date: string;
+    end_date: string | null;
+    skills: string[];
+  }[];
   availability: 'available' | 'busy' | 'unavailable';
   created_at: string;
   updated_at: string;
@@ -24,7 +32,7 @@ function normalizeSkills(value: unknown): FreelancerProfileEntity['skills'] {
   return value.flatMap((candidate) => {
     if (typeof candidate === 'string') {
       const name = candidate.trim();
-      return name ? [{ name, years_of_experience: 0 }] : [];
+      return name ? [{ name, years_of_experience: 0, added_manually: true }] : [];
     }
     if (!candidate || typeof candidate !== 'object') return [];
 
@@ -37,7 +45,13 @@ function normalizeSkills(value: unknown): FreelancerProfileEntity['skills'] {
     const years = typeof yearsValue === 'number' && Number.isFinite(yearsValue) && yearsValue >= 0
       ? yearsValue
       : 0;
-    return [{ name: canonicalizeSkillDisplayName(nameValue), years_of_experience: years }];
+    // Skills saved before work history fed the skill list were all picked by hand.
+    const manualValue = skill.added_manually ?? skill.addedManually;
+    return [{
+      name: canonicalizeSkillDisplayName(nameValue),
+      years_of_experience: years,
+      added_manually: typeof manualValue === 'boolean' ? manualValue : true,
+    }];
   });
 }
 
@@ -76,6 +90,18 @@ function uniqueExperienceId(
   return id;
 }
 
+function normalizeExperienceSkills(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((item) => {
+    if (typeof item !== 'string' || !item.trim()) return [];
+    const key = normalizeSkillSearchKey(item);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [canonicalizeSkillDisplayName(item)];
+  });
+}
+
 function normalizeExperience(value: unknown): FreelancerProfileEntity['experience'] {
   if (!Array.isArray(value)) return [];
 
@@ -91,6 +117,7 @@ function normalizeExperience(value: unknown): FreelancerProfileEntity['experienc
       description: stringValue(experience.description),
       start_date: stringValue(experience.start_date ?? experience.startDate),
       end_date: nullableStringValue(experience.end_date, experience.endDate),
+      skills: normalizeExperienceSkills(experience.skills),
     }];
   });
 }

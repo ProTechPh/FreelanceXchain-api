@@ -29,10 +29,16 @@ export async function createPaymentRecord(params: {
   }
   try {
     const paymentId = generateId();
+    // Appwrite collection attribute for milestone_id has max length 36.
+    // If milestoneId exceeds 36 chars (e.g. payout-<contractId>), truncate to 36 chars.
+    const safeMilestoneId = params.milestoneId && params.milestoneId.length > 36
+      ? params.milestoneId.slice(0, 36)
+      : params.milestoneId;
+
     await paymentRepository.create({
       id: paymentId,
       contract_id: params.contractId,
-      milestone_id: params.milestoneId,
+      milestone_id: safeMilestoneId,
       payer_id: params.payerId,
       payee_id: params.payeeId,
       amount: params.amount,
@@ -46,7 +52,7 @@ export async function createPaymentRecord(params: {
       await transactionRepository.create({
         id: paymentId,
         contract_id: params.contractId,
-        milestone_id: params.milestoneId || undefined,
+        milestone_id: safeMilestoneId || undefined,
         from_user_id: params.payerId,
         to_user_id: params.payeeId,
         amount: params.amount,

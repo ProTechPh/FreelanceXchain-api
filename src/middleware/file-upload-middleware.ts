@@ -461,6 +461,28 @@ export const uploadPortfolioImages = createFileUploadMiddleware('files', {
   validateMagicNumbers: true,
 });
 
+export const BUSINESS_DOCUMENT_MIME_TYPES = {
+  'application/pdf': true,
+  'image/png': true,
+  'image/jpeg': true,
+  'image/jpg': true,
+  'image/webp': true,
+} as const;
+
+export const BUSINESS_DOCUMENT_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'];
+
+/**
+ * Middleware for employer business documents (exactly 1 PDF or image, max 10MB)
+ */
+export const uploadBusinessDocument = createFileUploadMiddleware('file', {
+  minFiles: 1,
+  maxFiles: 1,
+  maxTotalSize: MAX_FILE_SIZE,
+  allowedMimeTypes: BUSINESS_DOCUMENT_MIME_TYPES,
+  allowedExtensions: BUSINESS_DOCUMENT_EXTENSIONS,
+  validateMagicNumbers: true,
+});
+
 /**
  * Lightweight signature-based malware scan.
  * This is a baseline defense layer and can be augmented with an external AV service.

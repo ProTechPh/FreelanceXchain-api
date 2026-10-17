@@ -13,6 +13,7 @@ const mockGetProposalsByFreelancer = jest.fn<any>();
 const mockAcceptProposal = jest.fn<any>();
 const mockRejectProposal = jest.fn<any>();
 const mockWithdrawProposal = jest.fn<any>();
+const mockUpdateProposal = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
   submitProposal: mockSubmitProposal,
@@ -22,6 +23,7 @@ jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () =
   acceptProposal: mockAcceptProposal,
   rejectProposal: mockRejectProposal,
   withdrawProposal: mockWithdrawProposal,
+  updateProposal: mockUpdateProposal,
 }));
 
 const mockGetProjectById = jest.fn<any>();
@@ -312,6 +314,53 @@ describe('Proposal Routes', () => {
       });
       const res = await request(app).post('/api/proposals/prop-1/withdraw');
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /:id', () => {
+    it('should update proposal terms on success', async () => {
+      mockUpdateProposal.mockResolvedValue({
+        success: true,
+        data: { id: 'prop-1', proposedRate: 8, estimatedDuration: 10, coverLetter: 'updated' },
+      });
+      const res = await request(app)
+        .patch('/api/proposals/prop-1')
+        .send({ proposedRate: 8, estimatedDuration: 10, coverLetter: 'updated' });
+      expect(res.status).toBe(200);
+      expect(res.body.proposedRate).toBe(8);
+    });
+
+    it('should return 404 when proposal not found', async () => {
+      mockUpdateProposal.mockResolvedValue({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Proposal not found' },
+      });
+      const res = await request(app)
+        .patch('/api/proposals/prop-1')
+        .send({ proposedRate: 8 });
+      expect(res.status).toBe(404);
+    });
+
+    it('should return 403 when unauthorized', async () => {
+      mockUpdateProposal.mockResolvedValue({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Not your proposal' },
+      });
+      const res = await request(app)
+        .patch('/api/proposals/prop-1')
+        .send({ proposedRate: 8 });
+      expect(res.status).toBe(403);
+    });
+
+    it('should return 400 when invalid status', async () => {
+      mockUpdateProposal.mockResolvedValue({
+        success: false,
+        error: { code: 'INVALID_STATUS', message: 'Proposal is already accepted' },
+      });
+      const res = await request(app)
+        .patch('/api/proposals/prop-1')
+        .send({ proposedRate: 8 });
+      expect(res.status).toBe(400);
     });
   });
 });

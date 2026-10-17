@@ -62,6 +62,18 @@ async function findMilestoneContext(
     const project = await projectRepository.findProjectById(contract.project_id);
     if (!project) continue;
 
+    if ((!project.milestones || project.milestones.length === 0) && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
+      const milestone: MilestoneEntity = {
+        id: milestoneId,
+        title: 'Agreed Deliverables & Payment',
+        description: 'Payment release upon satisfactory completion of agreed project work.',
+        amount: contract.total_amount,
+        due_date: project.deadline || '',
+        status: contract.status === 'completed' ? 'completed' : 'in_progress',
+      };
+      return { contract, project, milestone, milestoneIndex: 0 };
+    }
+
     const milestoneIndex = (project.milestones ?? []).findIndex((m) => m.id === milestoneId);
     if (milestoneIndex === -1) continue;
 
@@ -276,6 +288,23 @@ export async function findFreelancerMilestoneContext(
     const project = await projectRepository.findProjectById(contract.project_id);
     if (!project) continue;
 
+    if ((!project.milestones || project.milestones.length === 0) && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
+      const milestone: MilestoneEntity = {
+        id: milestoneId,
+        title: 'Agreed Deliverables & Payment',
+        description: 'Payment release upon satisfactory completion of agreed project work.',
+        amount: contract.total_amount,
+        due_date: project.deadline || '',
+        status: contract.status === 'completed' ? 'completed' : 'in_progress',
+      };
+      return {
+        contractId: contract.id,
+        project,
+        milestone,
+        milestoneIndex: 0,
+      };
+    }
+
     const milestoneIndex = (project.milestones || []).findIndex((m) => m.id === milestoneId);
     if (milestoneIndex === -1) continue;
 
@@ -420,6 +449,9 @@ export async function findEmployerMilestoneContractId(
   const contractsResult = await contractRepository.getContractsByEmployer(employerId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
 
   for (const contract of contractsResult.items) {
+    if (milestoneId === `payout-${contract.id}` || milestoneId === contract.id) {
+      return contract.id;
+    }
     const project = await projectRepository.findProjectById(contract.project_id);
     if (!project) continue;
     const found = (project.milestones || []).some((m) => m.id === milestoneId);
@@ -454,6 +486,25 @@ export async function getContractMilestones(
     const project = await projectRepository.findProjectById(contract.project_id);
     if (!project) {
       return successResult([]);
+    }
+
+    if (!project.milestones || project.milestones.length === 0) {
+      const payoutStatus = contract.status === 'completed'
+        ? ('completed' as const)
+        : contract.status === 'active'
+        ? ('in_progress' as const)
+        : ('pending' as const);
+
+      const contractMilestone = {
+        id: `payout-${contract.id}`,
+        title: 'Agreed Deliverables & Payment',
+        description: 'Payment release upon satisfactory completion of agreed project work.',
+        amount: contract.total_amount ?? (contract as any).totalAmount ?? 0,
+        dueDate: project.deadline || '',
+        status: payoutStatus,
+        contractId: contract.id,
+      };
+      return successResult([contractMilestone as any]);
     }
 
     const milestones = (project.milestones || []).map((m) => {

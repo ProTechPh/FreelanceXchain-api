@@ -3,7 +3,7 @@ import type { ProjectSkillReference } from './skill.js';
 import type { FileAttachment, MilestoneStatus } from './milestone.js';
 
 export type { MilestoneStatus } from './milestone.js';
-export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'disputed';
+export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'closed' | 'disputed';
 
 export type Milestone = {
   id: string;
@@ -39,6 +39,7 @@ export type Project = {
   tags: string[];
   attachments: FileAttachment[];
   proposalCount?: number;
+  hiredCount?: number;
   employer?: {
     id: string;
     userId?: string;

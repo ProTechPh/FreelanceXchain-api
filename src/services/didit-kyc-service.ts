@@ -568,6 +568,29 @@ async function autoCreateProfile(
  * Sync KYC name to users table and profiles
  * Shared logic for webhook and admin approval flows
  */
+async function syncNameToOtherRoleProfile(
+  userId: string,
+  activeRole: string,
+  fullName: string,
+  nationality: string | null
+): Promise<void> {
+  try {
+    if (activeRole === 'freelancer') {
+      const employerProfile = await employerProfileRepository.getProfileByUserId(userId);
+      if (employerProfile) {
+        await employerProfileRepository.updateProfile(employerProfile.id, { name: fullName, nationality });
+      }
+    } else if (activeRole === 'employer') {
+      const freelancerProfile = await freelancerProfileRepository.getProfileByUserId(userId);
+      if (freelancerProfile) {
+        await freelancerProfileRepository.updateProfile(freelancerProfile.id, { name: fullName, nationality });
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to sync KYC name to the other role profile', { userId, error });
+  }
+}
+
 async function syncKycNameToUserAndProfiles(
   userId: string,
   firstName: string | null,
@@ -589,6 +612,10 @@ async function syncKycNameToUserAndProfiles(
       await userRepository.updateUserName(userId, fullName);
       logger.info('Synced KYC name to users table', { userId });
     }
+
+    // A user can switch between freelancer and employer, so the profile for the
+    // other role may exist too. Keep its name in sync; never create it here.
+    await syncNameToOtherRoleProfile(userId, user.role, fullName, nationality);
 
     if (user.role === 'freelancer') {
       const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);

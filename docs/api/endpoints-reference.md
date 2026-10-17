@@ -71,10 +71,10 @@ All routes are mounted under the `/api` prefix. JWT auth = `Authorization: Beare
 | GET | `/api/freelancers/profile` | JWT | Get own freelancer profile |
 | PATCH | `/api/freelancers/profile` | JWT (freelancer) | Update the freelancer profile |
 | POST | `/api/freelancers/profile/skills` | JWT (freelancer) | Add profile skills |
-| DELETE | `/api/freelancers/profile/skills/:name` | JWT (freelancer) | Remove a profile skill |
-| POST | `/api/freelancers/profile/experience` | JWT (freelancer) | Add experience entry |
-| PATCH | `/api/freelancers/profile/experience/:id` | JWT (freelancer) | Update experience entry |
-| DELETE | `/api/freelancers/profile/experience/:id` | JWT (freelancer) | Delete experience entry |
+| DELETE | `/api/freelancers/profile/skills/:name` | JWT (freelancer) | Remove a directly picked skill (kept while a work history entry still uses it) |
+| POST | `/api/freelancers/profile/experience` | JWT (freelancer) | Add a work history entry; its `skills` are added to the profile's skills |
+| PATCH | `/api/freelancers/profile/experience/:id` | JWT (freelancer) | Update a work history entry and resync the profile's skills |
+| DELETE | `/api/freelancers/profile/experience/:id` | JWT (freelancer) | Delete a work history entry and drop skills only it used |
 | GET | `/api/freelancers/:id` | No | Get a public freelancer profile |
 | GET | `/api/employers/projects` | JWT (employer) | List the employer's projects |
 | GET | `/api/employers/profile` | JWT (employer) | Get the employer profile |

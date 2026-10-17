@@ -24,6 +24,14 @@ import {
 import type { UserEntity } from '../repositories/user-repository.js';
 import { getAdminAnalytics } from '../services/analytics-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { getEmployerProfileByUserId } from '../services/employer-profile-service.js';
+import {
+  listBusinessDocuments,
+  getBusinessProfileCompleteness,
+  listBusinessProfilesForAdmin,
+  ADMIN_BUSINESS_PROFILE_STATUSES,
+  type AdminBusinessProfileStatus,
+} from '../services/employer-business-document-service.js';
 
 const router = Router();
 
@@ -542,6 +550,81 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimit
     ...result.data,
     totalPaidOut: result.data.totalTransactionVolume.toFixed(2),
     satisfactionRate,
+  });
+}));
+
+/**
+ * @swagger
+ * /api/admin/employers/business-profiles:
+ *   get:
+ *     summary: List employer business profiles and documents on file (read-only)
+ *     description: Every employer profile with completeness and document counts, including users currently acting as freelancers. Documents are not checked against BIR, DTI or SEC records.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Business profile summaries and filter counts
+ *       400:
+ *         description: Invalid status filter
+ */
+router.get('/employers/business-profiles', authMiddleware, requirePermission('users:view'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const status = typeof req.query['status'] === 'string' ? req.query['status'] : 'all';
+  const search = typeof req.query['search'] === 'string' ? req.query['search'].trim().slice(0, 100) : '';
+
+  if (!(ADMIN_BUSINESS_PROFILE_STATUSES as readonly string[]).includes(status)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', `Status must be one of: ${ADMIN_BUSINESS_PROFILE_STATUSES.join(', ')}`, { requestId });
+    return;
+  }
+
+  const result = await listBusinessProfilesForAdmin({
+    status: status as AdminBusinessProfileStatus,
+    ...(search ? { search } : {}),
+  });
+  res.status(200).json(result);
+}));
+
+/**
+ * @swagger
+ * /api/admin/employers/{userId}/business-profile:
+ *   get:
+ *     summary: View an employer's business information and documents (read-only)
+ *     description: Documents are collected for transparency and are not checked against BIR, DTI or SEC records.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Employer business profile, documents and completeness
+ *       404:
+ *         description: Employer profile not found
+ */
+router.get('/employers/:userId/business-profile', authMiddleware, requirePermission('users:view'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const userId = req.params['userId'] ?? '';
+
+  const profileResult = await getEmployerProfileByUserId(userId);
+  if (!profileResult.success) {
+    sendErrorResponse(res, 404, profileResult.error.code, profileResult.error.message, { requestId });
+    return;
+  }
+
+  const [documents, completeness] = await Promise.all([
+    listBusinessDocuments(userId),
+    getBusinessProfileCompleteness(userId),
+  ]);
+
+  res.status(200).json({
+    profile: profileResult.data,
+    documents,
+    completeness: completeness.success ? completeness.data : null,
   });
 }));
 

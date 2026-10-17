@@ -4,6 +4,15 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  deleteAllBusinessDocuments: jest.fn(async () => undefined),
+  getBusinessProfileCompleteness: jest.fn(async () => ({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } })),
+  getRequiredDocumentTypes: jest.fn(() => []),
+  mapBusinessDocumentFromEntity: jest.fn(),
+}));
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: {
     error: jest.fn(),

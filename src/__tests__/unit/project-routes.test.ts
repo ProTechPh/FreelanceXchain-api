@@ -19,6 +19,18 @@ const mockListProjectsByCategory = jest.fn<any>();
 const mockListProjectsByMultipleCategories = jest.fn<any>();
 const mockGetProjectCategoryStats = jest.fn<any>();
 
+jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
+  listBusinessDocuments: jest.fn(async () => []),
+  uploadBusinessDocument: jest.fn(),
+  deleteBusinessDocument: jest.fn(),
+  deleteAllBusinessDocuments: jest.fn(async () => undefined),
+  getBusinessProfileCompleteness: jest.fn(async () => ({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } })),
+  getRequiredDocumentTypes: jest.fn(() => []),
+  mapBusinessDocumentFromEntity: jest.fn(),
+}));
+jest.unstable_mockModule(resolveModule('src/middleware/business-profile-middleware.ts'), () => ({
+  requireCompleteBusinessProfile: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   createProject: mockCreateProject,
   getProjectById: mockGetProjectById,
@@ -817,8 +829,8 @@ describe('project-routes - additional line coverage', () => {
       );
     });
 
-    it('returns 400 when budget is zero', async () => {
-      const res = await request(app).patch('/api/projects/p1').send({ budget: 0 });
+    it('returns 400 when budget is negative', async () => {
+      const res = await request(app).patch('/api/projects/p1').send({ budget: -1 });
       expect(res.status).toBe(400);
       expect(res.body.error.details).toEqual(
         expect.arrayContaining([expect.objectContaining({ field: 'budget' })])
@@ -971,7 +983,7 @@ describe('project-routes - additional line coverage', () => {
         title: 'Valid Title Here',
         description: 'A valid description that is long enough for the project',
         requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
-        budget: 0,
+        budget: -10,
         deadline: '2026-12-31',
       });
       expect(res.status).toBe(400);

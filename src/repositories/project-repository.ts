@@ -32,7 +32,7 @@ export type MilestoneEntity = {
   notes?: string;
 };
 
-export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'disputed';
+export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'closed' | 'disputed';
 
 export type ProjectEntity = {
   id: string;

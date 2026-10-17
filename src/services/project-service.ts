@@ -29,8 +29,8 @@ type CreateProjectInput = {
   title: string;
   description: string;
   requiredSkills: { skillId: string }[];
-  budget: number;
-  deadline: string;
+  budget?: number;
+  deadline?: string;
   isRush?: boolean;
   rushFeePercentage?: number;
   freelancerLimit?: number;
@@ -70,6 +70,7 @@ type EmployerSummary = {
 
 type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
+  hiredCount?: number;
   employer?: EmployerSummary;
 };
 
@@ -79,9 +80,12 @@ async function addProposalCounts(
   const projectIds = result.items.map(project => project.id);
   const employerIds = [...new Set(result.items.map(project => project.employer_id).filter(Boolean))];
 
-  const [proposalCounts, users] = await Promise.all([
+  const [proposalCounts, hiredCounts, users] = await Promise.all([
     projectIds.length > 0
       ? proposalRepository.getProposalCountsByProjects(projectIds)
+      : new Map<string, number>(),
+    projectIds.length > 0 && typeof proposalRepository.getAcceptedProposalCountsByProjects === 'function'
+      ? proposalRepository.getAcceptedProposalCountsByProjects(projectIds)
       : new Map<string, number>(),
     employerIds.length > 0
       ? userRepository.getUsersByIds(employerIds).catch(() => [])
@@ -98,6 +102,7 @@ async function addProposalCounts(
       return {
         ...project,
         proposalCount: proposalCounts.get(project.id) ?? 0,
+        hiredCount: hiredCounts.get(project.id) ?? 0,
         employer: {
           id: project.employer_id,
           userId: project.employer_id,
@@ -192,11 +197,12 @@ function validateFreelancerLimit(limit?: number): ServiceResult<never> | null {
 }
 
 const PROJECT_STATUS_TRANSITIONS: Record<string, string[]> = {
-  draft: ['open', 'cancelled'],
-  open: ['draft', 'in_progress', 'cancelled'],
-  in_progress: ['completed', 'cancelled'],
+  draft: ['open', 'cancelled', 'closed'],
+  open: ['draft', 'in_progress', 'cancelled', 'completed', 'closed'],
+  in_progress: ['completed', 'cancelled', 'closed'],
   completed: [],        // Terminal state - no transitions allowed
   cancelled: [],        // Terminal state - no transitions allowed
+  closed: ['open'],     // Allow reopening if needed
   disputed: [],
   in_review: [],
 };
@@ -245,8 +251,8 @@ export async function createProject(
     title: input.title,
     description: input.description,
     required_skills: skillRefs,
-    budget: input.budget,
-    deadline: input.deadline,
+    budget: input.budget ?? 0,
+    deadline: input.deadline || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     is_rush: input.isRush ?? false,
     rush_fee_percentage: input.rushFeePercentage ?? 25,
     freelancer_limit: input.freelancerLimit ?? 1,
@@ -324,8 +330,11 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
   if (!project) {
     return errorResult('NOT_FOUND', 'Project not found');
   }
-  const [proposalCount, employerProfile, employerUser] = await Promise.all([
+  const [proposalCount, hiredCount, employerProfile, employerUser] = await Promise.all([
     proposalRepository.getProposalCountByProject(projectId),
+    typeof proposalRepository.getAcceptedProposalCount === 'function'
+      ? proposalRepository.getAcceptedProposalCount(projectId)
+      : Promise.resolve(0),
     project.employer_id ? employerProfileRepository.getProfileByUserId(project.employer_id).catch(() => null) : null,
     project.employer_id ? userRepository.getUserById(project.employer_id).catch(() => null) : null,
   ]);
@@ -340,7 +349,7 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
     industry: employerProfile?.industry || '',
   } : undefined;
 
-  const data: ProjectWithProposalCount = { ...project, proposalCount, ...(employer ? { employer } : {}) };
+  const data: ProjectWithProposalCount = { ...project, proposalCount, hiredCount, ...(employer ? { employer } : {}) };
   if (!isTestEnv()) {
     projectCache.set(cacheKey, data, 30_000);
   }

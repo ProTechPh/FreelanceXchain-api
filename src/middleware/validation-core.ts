@@ -29,7 +29,7 @@ export function isValidSkillId(value: string): boolean {
 }
 
 export function isValidAppwriteDocumentId(value: string): boolean {
-  return APPWRITE_DOCUMENT_ID_PATTERN.test(value);
+  return APPWRITE_DOCUMENT_ID_PATTERN.test(value) || /^payout-[A-Za-z0-9._-]{1,50}$/.test(value);
 }
 
 export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
@@ -532,6 +532,7 @@ export const createProjectSchema: RequestSchema = {
       requiredSkills: { type: 'array', minItems: 1, required: true },
       budget: { type: 'number', exclusiveMinimum: 0, required: true },
       deadline: { type: 'string', required: true },
+      freelancerLimit: { type: 'integer', minimum: 1, maximum: 50 },
       tags: { type: 'array', maxItems: 10, items: { type: 'string' } },
       isRush: { type: 'boolean' },
       rushFeePercentage: { type: 'number', exclusiveMinimum: 0, maximum: 100 },
@@ -558,6 +559,7 @@ export const createProjectWithAttachmentsSchema: RequestSchema = {
       requiredSkills: { type: 'string', required: true },
       budget: { type: 'number', exclusiveMinimum: 0, required: true },
       deadline: { type: 'string', required: true },
+      freelancerLimit: { type: 'integer', minimum: 1, maximum: 50 },
       tags: { type: 'string' },
       isRush: { type: 'boolean' },
       rushFeePercentage: { type: 'number', exclusiveMinimum: 0, maximum: 100 },
@@ -575,7 +577,8 @@ export const updateProjectSchema: RequestSchema = {
       requiredSkills: { type: 'array', minItems: 1 },
       budget: { type: 'number', exclusiveMinimum: 0 },
       deadline: { type: 'string' },
-      status: { type: 'string', enum: ['draft', 'open', 'in_progress', 'completed', 'cancelled', 'disputed'] },
+      freelancerLimit: { type: 'integer', minimum: 1, maximum: 50 },
+      status: { type: 'string', enum: ['draft', 'open', 'in_progress', 'completed', 'cancelled', 'closed', 'disputed'] },
       isRush: { type: 'boolean' },
       rushFeePercentage: { type: 'number', exclusiveMinimum: 0, maximum: 100 },
       attachments: {
@@ -627,7 +630,7 @@ export const submitProposalSchema: RequestSchema = {
     properties: {
       projectId: { type: 'string', required: true },
       attachments: { type: 'array', minItems: 1, required: true },
-      proposedRate: { type: 'number', minimum: 1, maximum: 1_000_000, required: true },
+      proposedRate: { type: 'number', minimum: 0.0001, maximum: 1_000_000, required: true },
       estimatedDuration: { type: 'number', minimum: 1, maximum: 3650, required: true },
       coverLetter: { type: 'string', maxLength: 10000 },
     },
@@ -648,7 +651,7 @@ export const submitProposalMultipartSchema: RequestSchema = {
     properties: {
       projectId: { type: 'string', required: true },
       // Attachments arrive as files (req.files), not body fields.
-      proposedRate: { type: 'number', minimum: 1, maximum: 1_000_000, required: true },
+      proposedRate: { type: 'number', minimum: 0.0001, maximum: 1_000_000, required: true },
       estimatedDuration: { type: 'number', minimum: 1, maximum: 3650, required: true },
       coverLetter: { type: 'string', maxLength: 10000 },
     },
