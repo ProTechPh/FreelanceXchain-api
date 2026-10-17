@@ -80,6 +80,7 @@ jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () =
   acceptProposal: jest.fn(),
   rejectProposal: jest.fn(),
   withdrawProposal: jest.fn(),
+  updateProposal: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({

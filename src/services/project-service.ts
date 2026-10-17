@@ -84,7 +84,7 @@ async function addProposalCounts(
     projectIds.length > 0
       ? proposalRepository.getProposalCountsByProjects(projectIds)
       : new Map<string, number>(),
-    projectIds.length > 0
+    projectIds.length > 0 && typeof proposalRepository.getAcceptedProposalCountsByProjects === 'function'
       ? proposalRepository.getAcceptedProposalCountsByProjects(projectIds)
       : new Map<string, number>(),
     employerIds.length > 0
@@ -332,7 +332,9 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
   }
   const [proposalCount, hiredCount, employerProfile, employerUser] = await Promise.all([
     proposalRepository.getProposalCountByProject(projectId),
-    proposalRepository.getAcceptedProposalCount(projectId),
+    typeof proposalRepository.getAcceptedProposalCount === 'function'
+      ? proposalRepository.getAcceptedProposalCount(projectId)
+      : Promise.resolve(0),
     project.employer_id ? employerProfileRepository.getProfileByUserId(project.employer_id).catch(() => null) : null,
     project.employer_id ? userRepository.getUserById(project.employer_id).catch(() => null) : null,
   ]);

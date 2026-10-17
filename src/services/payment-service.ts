@@ -748,9 +748,13 @@ async function completeContractIfAllMilestonesDone(input: CompleteContractInput)
   // or until the employer manually closes the project.
   try {
     const maxFreelancers = project.freelancerLimit ?? 1;
-    const projectContracts = await contractRepository.getContractsByProject(project.id);
-    const contractsList = Array.isArray(projectContracts) ? projectContracts : ((projectContracts as any).items || []);
-    const remainingActive = contractsList.filter((c: any) => c.id !== contractId && (c.status === 'active' || c.status === 'pending'));
+    let remainingActive: any[] = [];
+    let contractsList: any[] = [];
+    if (typeof contractRepository.getContractsByProject === 'function') {
+      const projectContracts = await contractRepository.getContractsByProject(project.id);
+      contractsList = Array.isArray(projectContracts) ? projectContracts : ((projectContracts as any)?.items || []);
+      remainingActive = contractsList.filter((c: any) => c.id !== contractId && (c.status === 'active' || c.status === 'pending'));
+    }
 
     if (maxFreelancers <= 1 && remainingActive.length === 0) {
       await projectRepository.updateProject(project.id, { status: 'completed' });

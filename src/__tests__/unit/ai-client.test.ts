@@ -630,7 +630,7 @@ describe('AI Client - Extended Tests', () => {
 
     it('rounds a fractional duration and rate to values the proposal endpoint accepts', async () => {
       const { generateAIProposal } = await importModule();
-      respondWith({ proposedRate: 2399.999, estimatedDuration: 10.5 });
+      respondWith({ proposedRate: 2399.9999999, estimatedDuration: 10.5 });
       const result = await generateAIProposal(request) as any;
       expect(result.estimatedDuration).toBe(11);
       expect(result.proposedRate).toBe(2400);
@@ -638,9 +638,9 @@ describe('AI Client - Extended Tests', () => {
 
     it('clamps out-of-range terms into the accepted bounds', async () => {
       const { generateAIProposal } = await importModule();
-      respondWith({ proposedRate: 0.4, estimatedDuration: 9000 });
+      respondWith({ proposedRate: 0.00001, estimatedDuration: 9000 });
       const result = await generateAIProposal(request) as any;
-      expect(result.proposedRate).toBe(1);
+      expect(result.proposedRate).toBe(0.0001);
       expect(result.estimatedDuration).toBe(3650);
     });
   });

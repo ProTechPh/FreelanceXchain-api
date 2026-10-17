@@ -499,7 +499,7 @@ export async function getContractMilestones(
         id: `payout-${contract.id}`,
         title: 'Agreed Deliverables & Payment',
         description: 'Payment release upon satisfactory completion of agreed project work.',
-        amount: contract.total_amount,
+        amount: contract.total_amount ?? (contract as any).totalAmount ?? 0,
         dueDate: project.deadline || '',
         status: payoutStatus,
         contractId: contract.id,

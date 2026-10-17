@@ -283,10 +283,6 @@ async function validateProposalAcceptance(
     return { error: errorResult('CANNOT_PROPOSE_OWN_PROJECT', 'You cannot hire yourself on your own project.') };
   }
 
-  if (!project.milestones || project.milestones.length === 0) {
-    return { error: errorResult('NO_MILESTONES', 'Add at least one milestone to this project before accepting a proposal.') };
-  }
-
   const proposalRate = proposalEntity.proposed_rate;
   if (proposalRate === null || proposalRate === undefined || proposalRate <= 0) {
     return { error: errorResult('INVALID_PROPOSAL_RATE', 'Accepted proposal must have a valid positive rate') };
