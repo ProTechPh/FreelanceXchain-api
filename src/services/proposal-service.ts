@@ -623,8 +623,9 @@ export async function acceptProposal(
 
     // Fold negotiated rates and rush fees into project milestones before contract creation so
     // that the contract escrow and smart contract agree on milestone totals.
-    const milestoneTotal = project.milestones.reduce((sum, m) => sum + m.amount, 0);
-    const needsScaling = Math.abs(milestoneTotal - proposalRate) > 0.01 || (isRush && rushFee > 0);
+    const projectMilestones = project.milestones || [];
+    const milestoneTotal = projectMilestones.reduce((sum, m) => sum + m.amount, 0);
+    const needsScaling = projectMilestones.length > 0 && (Math.abs(milestoneTotal - proposalRate) > 0.01 || (isRush && rushFee > 0));
     const activeProject = needsScaling
       ? await applyProposalMilestoneScaling(project, proposalRate, isRush ? rushFee : 0)
       : project;
@@ -776,6 +777,81 @@ export async function withdrawProposal(
 
   if (!updatedProposalEntity) {
     return errorResult('UPDATE_FAILED', 'Failed to withdraw proposal');
+  }
+
+  return successResult(mapProposalFromEntity(updatedProposalEntity));
+}
+
+export type UpdateProposalInput = {
+  proposedRate?: number;
+  estimatedDuration?: number;
+  coverLetter?: string;
+};
+
+// Update a proposal's terms (by freelancer, while pending)
+export async function updateProposal(
+  proposalId: string,
+  freelancerId: string,
+  input: UpdateProposalInput
+): Promise<ServiceResult<Proposal>> {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
+    return errorResult('NOT_FOUND', 'Proposal not found');
+  }
+
+  // Verify freelancer owns the proposal
+  if (proposalEntity.freelancer_id !== freelancerId) {
+    return errorResult('UNAUTHORIZED', 'You are not authorized to update this proposal');
+  }
+
+  // Check if proposal can be edited
+  if (proposalEntity.status !== 'pending') {
+    return errorResult('INVALID_STATUS', `You can only edit proposals that are still pending. This proposal is currently: ${proposalEntity.status}.`);
+  }
+
+  if (input.proposedRate !== undefined) {
+    if (typeof input.proposedRate !== 'number' || !Number.isFinite(input.proposedRate) || input.proposedRate <= 0) {
+      return errorResult('VALIDATION_ERROR', 'Proposed rate must be greater than 0');
+    }
+  }
+
+  if (input.estimatedDuration !== undefined) {
+    if (typeof input.estimatedDuration !== 'number' || !Number.isInteger(input.estimatedDuration) || input.estimatedDuration < 1 || input.estimatedDuration > 3650) {
+      return errorResult('VALIDATION_ERROR', 'Estimated duration must be an integer between 1 and 3650 days');
+    }
+  }
+
+  const updates: Partial<ProposalEntity> = {
+    ...(input.proposedRate !== undefined && { proposed_rate: input.proposedRate }),
+    ...(input.estimatedDuration !== undefined && { estimated_duration: input.estimatedDuration }),
+    ...(input.coverLetter !== undefined && { cover_letter: input.coverLetter }),
+  };
+
+  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, updates);
+  if (!updatedProposalEntity) {
+    return errorResult('UPDATE_FAILED', 'Failed to update proposal');
+  }
+
+  const project = await projectRepository.findProjectById(proposalEntity.project_id);
+  if (project) {
+    try {
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: project.employer_id,
+        type: 'proposal_received',
+        title: 'Proposal Terms Updated',
+        message: `Freelancer has updated their proposal terms for "${project.title}" to ${input.proposedRate ?? proposalEntity.proposed_rate} ETH.`,
+        data: {
+          proposalId,
+          projectId: project.id,
+          projectTitle: project.title,
+          freelancerId,
+        },
+        is_read: false,
+      });
+    } catch {
+      // Continue - notification is secondary
+    }
   }
 
   return successResult(mapProposalFromEntity(updatedProposalEntity));

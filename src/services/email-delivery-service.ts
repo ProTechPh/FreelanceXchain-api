@@ -169,13 +169,13 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     const reason = data.reason ?? data.disputeReason ?? '';
     const feedback = data.feedback ?? data.reviewFeedback ?? data.comment ?? '';
     const newProjectsCount = data.newProjectsCount ?? data.newProjects ?? 0;
-    const totalEscrowValue = data.totalEscrowValue ?? '$25,000+';
+    const totalEscrowValue = data.totalEscrowValue ?? '₱500,000+';
     const topMatchRate = data.topMatchRate ?? '98%';
 
     const rawTopProjects = Array.isArray(data.topProjects) ? data.topProjects : [];
     const topProjects = rawTopProjects.map((item: any, idx: number) => ({
       title: item.title ?? `Featured Project #${idx + 1}`,
-      budget: item.budget ?? '$5,000',
+      budget: item.budget ?? '₱100,000',
       url: item.url ?? 'https://freelancexchain.works/projects',
       matchRate: item.matchRate ?? '95%',
     }));
@@ -419,7 +419,7 @@ export async function sendWeeklyDigestEmail(
       recipientName,
       userName: data.userName ?? recipientName,
       newProjectsCount: data.newProjectsCount ?? data.newProjects ?? 0,
-      totalEscrowValue: data.totalEscrowValue ?? '$0',
+      totalEscrowValue: data.totalEscrowValue ?? '₱0',
       topMatchRate: data.topMatchRate ?? '95%',
       topProjects: data.topProjects ?? [],
     },

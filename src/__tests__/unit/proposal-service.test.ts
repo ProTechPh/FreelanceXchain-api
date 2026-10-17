@@ -832,7 +832,7 @@ describe('Proposal Service - Coverage Tests', () => {
     }
   });
 
-  it('should return NO_MILESTONES when project has no milestones (line 295)', async () => {
+  it('should succeed when project has no milestones', async () => {
     const employerId = 'employer-123';
     const project = createTestProject({
       employer_id: employerId,
@@ -850,10 +850,7 @@ describe('Proposal Service - Coverage Tests', () => {
 
     const result = await acceptProposal(proposal.id, employerId);
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('NO_MILESTONES');
-    }
+    expect(result.success).toBe(true);
   });
 
   it('should return INVALID_PROPOSAL_RATE when rate is zero (line 300)', async () => {

@@ -147,7 +147,7 @@ Winning Proposal Strategy Guidelines:
    - **Client Assurance & Escrow De-risking**: Reassure the client that all funds remain securely protected in smart contract escrow and are only released upon their explicit review and approval of each completed milestone.
    - **Clear Call to Action**: Welcome a conversation to align on technical details, then end with "Best regards," and the freelancer's name on its own line.
 3. Pricing & Timeline:
-   - Recommend a realistic proposed rate (numeric USD) aligned with the project budget; do not exceed the budget.
+   - Recommend a realistic proposed rate aligned with the project budget; do not exceed the budget.
    - Recommend a realistic estimated delivery duration (numeric whole days).
    - Provide structured proposed milestone deliverables whose amounts add up exactly to the proposed rate.
 4. Highlights (3-4 crisp selling badges):
@@ -1083,14 +1083,14 @@ export function keywordExtractSkills(
 // A drafted proposal is only useful if it can be submitted as-is, so its terms
 // are held to the same bounds as submitProposalSchema: rate 1-1,000,000 (cents
 // precision) and a whole number of days, 1-3650. Models happily return 10.5 days.
-const MIN_RATE = 1;
+const MIN_RATE = 0.0001;
 const MAX_RATE = 1_000_000;
 const MIN_DURATION_DAYS = 1;
 const MAX_DURATION_DAYS = 3650;
 
 function toSubmittableRate(value: unknown, fallback: number): number {
   const rate = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
-  return Math.min(MAX_RATE, Math.max(MIN_RATE, Math.round(rate * 100) / 100));
+  return Math.min(MAX_RATE, Math.max(MIN_RATE, Math.round(rate * 1000000) / 1000000));
 }
 
 function toSubmittableDuration(value: unknown, fallback: number): number {

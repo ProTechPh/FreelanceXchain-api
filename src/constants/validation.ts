@@ -43,7 +43,7 @@ export const PASSWORD_HISTORY_ERROR_PATTERNS = [
 /**
  * Proposal constraints
  */
-export const MIN_PROPOSED_RATE = 1;
+export const MIN_PROPOSED_RATE = 0.0001;
 export const MAX_PROPOSED_RATE = 1_000_000;
 export const MAX_ESTIMATED_DURATION_DAYS = 3650;
 export const MAX_REVISIONS_DEFAULT = 5;

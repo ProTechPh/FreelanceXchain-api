@@ -131,8 +131,22 @@ async function validateMilestoneSubmission(
   }
   const project = mapProjectFromEntity(projectEntity);
 
-  const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
-  const milestone = project.milestones.find(m => m.id === milestoneId);
+  let milestoneIndex = (projectEntity.milestones || []).findIndex(m => m.id === milestoneId);
+  let milestone = (project.milestones || []).find(m => m.id === milestoneId);
+  const isNoMilestonesProject = (!projectEntity.milestones || projectEntity.milestones.length === 0);
+
+  if (isNoMilestonesProject && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
+    milestoneIndex = 0;
+    milestone = {
+      id: milestoneId,
+      title: 'Agreed Deliverables & Payment',
+      description: 'Agreed project work payment release',
+      amount: contract.totalAmount,
+      dueDate: contract.endDate || project.deadline || '',
+      status: 'in_progress',
+    };
+  }
+
   if (!milestone || milestoneIndex === -1) {
     return { error: errorResult('NOT_FOUND', 'Milestone not found') };
   }
@@ -227,7 +241,7 @@ async function ensureMilestoneSubmittedOnChain(
     return { error: errorResult('ESCROW_STATE_MISMATCH', 'The escrow could not be synchronized on the blockchain before release. Please contact support.') };
   }
 
-  if (status === 'submitted') {
+  if (status === 'submitted' || status === 'approved') {
     return {};
   }
   if (status === 'pending') {
@@ -334,16 +348,20 @@ export async function requestMilestoneCompletion(
     await submitMilestoneToBlockchainRegistry({ contract, milestone, milestoneId, contractId, freelancerId });
     await submitMilestoneOnChainIfReal({ contract, milestoneIndex });
 
-    const updatedMilestones = buildSubmittedMilestones(
-      projectEntity,
-      milestoneIndex,
-      milestone,
-      { metadata, submittedAt: new Date().toISOString() },
-    );
+    const isNoMilestonesProject = (!projectEntity.milestones || projectEntity.milestones.length === 0);
 
-    await projectRepository.updateProject(project.id, {
-      milestones: updatedMilestones,
-    });
+    if (!isNoMilestonesProject) {
+      const updatedMilestones = buildSubmittedMilestones(
+        projectEntity,
+        milestoneIndex,
+        milestone,
+        { metadata, submittedAt: new Date().toISOString() },
+      );
+
+      await projectRepository.updateProject(project.id, {
+        milestones: updatedMilestones,
+      });
+    }
 
     await notifyMilestoneSubmitted({
       employerId: contract.employerId,
@@ -403,13 +421,27 @@ async function validateMilestoneApproval(
   }
   const project = mapProjectFromEntity(projectEntity);
 
-  const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
-  const milestone = project.milestones.find(m => m.id === milestoneId);
+  let milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
+  let milestone = project.milestones.find(m => m.id === milestoneId);
+  const isNoMilestonesProject = (!projectEntity.milestones || projectEntity.milestones.length === 0);
+
+  if (isNoMilestonesProject && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
+    milestoneIndex = 0;
+    milestone = {
+      id: milestoneId,
+      title: 'Agreed Deliverables & Payment',
+      description: 'Agreed project work payment release',
+      amount: contract.totalAmount,
+      dueDate: contract.endDate || project.deadline || '',
+      status: 'submitted',
+    };
+  }
+
   if (!milestone || milestoneIndex === -1) {
     return { error: errorResult('NOT_FOUND', 'Milestone not found') };
   }
 
-  if (milestone.status !== 'submitted') {
+  if (!isNoMilestonesProject && milestone.status !== 'submitted') {
     const statusMsg = milestone.status === 'approved'
       ? 'Milestone already approved'
       : milestone.status === 'disputed'
@@ -430,12 +462,14 @@ async function validateMilestoneApproval(
   if (!freshProject) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
-  const freshStatus = freshProject.milestones[milestoneIndex]?.status;
-  if (freshStatus !== 'submitted') {
-    const msg = freshStatus === 'releasing'
-      ? 'Milestone payment is already being processed'
-      : `Milestone status changed concurrently (current: ${freshStatus ?? 'unknown'})`;
-    return { error: errorResult('INVALID_STATUS', msg) };
+  if (!isNoMilestonesProject) {
+    const freshStatus = freshProject.milestones[milestoneIndex]?.status;
+    if (freshStatus !== 'submitted') {
+      const msg = freshStatus === 'releasing'
+        ? 'Milestone payment is already being processed'
+        : `Milestone status changed concurrently (current: ${freshStatus ?? 'unknown'})`;
+      return { error: errorResult('INVALID_STATUS', msg) };
+    }
   }
 
   return { contract, project, milestone, milestoneIndex, employer: { wallet_address: employer.wallet_address }, freshProject: project, projectEntity, freshProjectEntity: freshProject };
@@ -465,7 +499,26 @@ async function releaseOnBlockchain(
       return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow contract address found on this contract.'), rollbackSafe: true };
     }
     try {
-      const onChainResult = await approveOnChainMilestone(input.contract.escrowAddress, input.milestoneIndex);
+      let onChainResult: { transactionHash: string } | null = null;
+      try {
+        const onChainStatus = await getMilestoneStatus(input.contract.escrowAddress, input.milestoneIndex);
+        if (onChainStatus === 'approved') {
+          logger.info('On-chain milestone already approved, reconciling ledger', {
+            escrowAddress: input.contract.escrowAddress,
+            milestoneIndex: input.milestoneIndex,
+          });
+          const { ethers } = await import('ethers');
+          onChainResult = {
+            transactionHash: ethers.id(`${input.contract.escrowAddress}-${input.milestoneIndex}-reconciled`),
+          };
+        }
+      } catch (statusErr) {
+        logger.debug('Could not check milestone status before approval, proceeding to approve', { error: statusErr });
+      }
+
+      if (!onChainResult) {
+        onChainResult = await approveOnChainMilestone(input.contract.escrowAddress, input.milestoneIndex);
+      }
       logger.info('Real blockchain milestone release tx', { transactionHash: onChainResult.transactionHash });
       return { transactionHash: onChainResult.transactionHash };
     } catch (error) {
@@ -685,11 +738,32 @@ type CompleteContractInput = {
 async function completeContractIfAllMilestonesDone(input: CompleteContractInput): Promise<boolean> {
   const { contractId, project, employerId, updatedMilestones } = input;
 
-  const allApproved = updatedMilestones.every(m => m.status === 'approved' || m.status === 'refunded');
+  const allApproved = updatedMilestones.length === 0 || updatedMilestones.every(m => m.status === 'approved' || m.status === 'refunded');
   if (!allApproved) return false;
 
   await contractRepository.updateContract(contractId, { status: 'completed' });
-  await projectRepository.updateProject(project.id, { status: 'completed' });
+
+  // Only complete the project if it's a single-freelancer project and has no remaining active contracts.
+  // Multi-freelancer projects stay open/active so the employer can hire up to the required freelancerLimit,
+  // or until the employer manually closes the project.
+  try {
+    const maxFreelancers = project.freelancerLimit ?? 1;
+    const projectContracts = await contractRepository.getContractsByProject(project.id);
+    const contractsList = Array.isArray(projectContracts) ? projectContracts : ((projectContracts as any).items || []);
+    const remainingActive = contractsList.filter((c: any) => c.id !== contractId && (c.status === 'active' || c.status === 'pending'));
+
+    if (maxFreelancers <= 1 && remainingActive.length === 0) {
+      await projectRepository.updateProject(project.id, { status: 'completed' });
+    } else if (maxFreelancers > 1) {
+      // If there are still unfilled slots, keep the project open so more freelancers can join
+      const nonCancelledCount = contractsList.filter((c: any) => c.status !== 'cancelled').length;
+      if (nonCancelledCount < maxFreelancers && remainingActive.length === 0) {
+        await projectRepository.updateProject(project.id, { status: 'open' });
+      }
+    }
+  } catch (err) {
+    logger.debug('Failed to check remaining project contracts during contract completion', { error: err });
+  }
 
   try {
     const employer = await userRepository.getUserById(employerId);
@@ -736,15 +810,18 @@ async function finalizeMilestoneApproval(
   const { contractId, contract, project, milestoneId, milestone, milestoneIndex, employerId, releasingBaseEntity, transactionHash } = input;
 
   const nowIso = new Date().toISOString();
-  const updatedMilestones = releasingBaseEntity.milestones.map((m, i) =>
-    i === milestoneIndex ? {
-      ...m,
-      status: 'approved' as const,
-      approved_at: nowIso,
-      completed_at: nowIso,
-    } : m
-  );
-  await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
+  let updatedMilestones: ProjectEntity['milestones'] = [];
+  if (releasingBaseEntity.milestones && releasingBaseEntity.milestones.length > 0) {
+    updatedMilestones = releasingBaseEntity.milestones.map((m, i) =>
+      i === milestoneIndex ? {
+        ...m,
+        status: 'approved' as const,
+        approved_at: nowIso,
+        completed_at: nowIso,
+      } : m
+    );
+    await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
+  }
 
   await approveMilestoneOnBlockchainRegistry(milestoneId, employerId);
 
@@ -919,13 +996,33 @@ export async function getContractPaymentStatus(
   const project = mapProjectFromEntity(projectEntity);
 
   const totalAmount = contract.totalAmount;
-  const releasedAmount = project.milestones
+  let releasedAmount = project.milestones
     .filter(m => m.status === 'approved')
     .reduce((sum, m) => sum + m.amount, 0);
-  const refundedAmount = project.milestones
+  let refundedAmount = project.milestones
     .filter(m => m.status === 'refunded')
     .reduce((sum, m) => sum + m.amount, 0);
+
+  if (project.milestones.length === 0 && contract.status === 'completed') {
+    releasedAmount = totalAmount;
+    refundedAmount = 0;
+  }
+
   const pendingAmount = Math.max(totalAmount - releasedAmount - refundedAmount, 0);
+
+  const milestonesList = project.milestones.length === 0
+    ? [{
+        id: `payout-${contract.id}`,
+        title: 'Agreed Deliverables & Escrow Payout',
+        amount: contract.totalAmount,
+        status: contract.status === 'completed' ? ('approved' as const) : ('pending' as const),
+      }]
+    : project.milestones.map(m => ({
+        id: m.id,
+        title: m.title,
+        amount: m.amount,
+        status: m.status,
+      }));
 
   return successResult({
     contractId,
@@ -933,12 +1030,7 @@ export async function getContractPaymentStatus(
     totalAmount,
     releasedAmount,
     pendingAmount,
-    milestones: project.milestones.map(m => ({
-    id: m.id,
-    title: m.title,
-    amount: m.amount,
-    status: m.status,
-    })),
+    milestones: milestonesList,
     contractStatus: contract.status,
   });
   }
@@ -1186,6 +1278,19 @@ export function buildEscrowMilestones(project: Project, contract: Contract): {
   amounts: number[];
   scaled: boolean;
 } {
+  if (!project.milestones || project.milestones.length === 0) {
+    const singleAmount = contract.totalAmount;
+    return {
+      milestones: [{
+        id: `payout-${contract.id}`,
+        amount: toWei(singleAmount),
+        status: 'pending' as const,
+      }],
+      amounts: [singleAmount],
+      scaled: false,
+    };
+  }
+
   const baseAmounts = project.milestones.map(m => m.amount ?? 0);
 
   // CRITICAL-2: Validate milestone amounts before building escrow

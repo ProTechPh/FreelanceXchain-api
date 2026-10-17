@@ -238,6 +238,7 @@ export function mapProjectFromEntity(entity: ProjectEntity & { proposalCount?: n
     tags: entity.tags || [],
     attachments: entity.attachments || [],
     ...(entity.proposalCount !== undefined ? { proposalCount: entity.proposalCount } : {}),
+    ...((entity as any).hiredCount !== undefined ? { hiredCount: (entity as any).hiredCount } : {}),
     ...(entity.employer !== undefined ? { employer: entity.employer } : {}),
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
