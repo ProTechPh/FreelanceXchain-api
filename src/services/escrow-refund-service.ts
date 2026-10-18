@@ -12,15 +12,16 @@ import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
 import { refundRequestRepository, type RefundRequestEntity } from '../repositories/refund-request-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository, type MilestoneEntity } from '../repositories/project-repository.js';
+import { type MilestoneEntity } from '../repositories/project-repository.js';
+import { loadMilestoneProject, saveMilestones } from './contract-milestone-store.js';
 import { getBlockchainAdapter } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { createPaymentRecord } from '../utils/payment-records.js';
 import { paymentSummaryCache } from '../utils/cache.js';
 
-async function computeRemainingEscrow(projectId: string, totalAmount: number): Promise<number | null> {
-  const project = await projectRepository.findProjectById(projectId);
+async function computeRemainingEscrow(contract: ContractEntity, totalAmount: number): Promise<number | null> {
+  const project = await loadMilestoneProject(contract);
   // Fail closed: without the milestone ledger we cannot prove how much escrow
   // is still unsettled, so the caller must reject the request.
   if (!project) return null;
@@ -61,7 +62,7 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
   if (existingRefund) {
     return { error: errorResult('DUPLICATE_REQUEST', 'There is already a pending refund request for this contract') };
   }
-  const remainingEscrow = await computeRemainingEscrow(contract.project_id, contract.total_amount);
+  const remainingEscrow = await computeRemainingEscrow(contract, contract.total_amount);
   if (remainingEscrow === null) {
     return { error: errorResult('PROJECT_NOT_FOUND', 'Project milestones could not be verified') };
   }
@@ -74,7 +75,7 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
     }
   }
   const requestedAmount = input.amount ?? remainingEscrow;
-  const project = await projectRepository.findProjectById(contract.project_id);
+  const project = await loadMilestoneProject(contract);
   if (!project) {
     return { error: errorResult('PROJECT_NOT_FOUND', 'Project milestones could not be verified') };
   }
@@ -120,7 +121,7 @@ export async function createRefundRequest(input: CreateRefundRequestInput): Prom
       const { contract, requestedAmount, isPartial } = validated;
       let milestoneLockIds: string[] = [];
       try {
-        const project = await projectRepository.findProjectById(contract.project_id);
+        const project = await loadMilestoneProject(contract);
         milestoneLockIds = (project?.milestones ?? [])
           .map(m => m.id)
           .filter((id): id is string => typeof id === 'string' && id.length > 0);
@@ -189,9 +190,9 @@ async function validateRefundApproval(input: ApproveRefundInput): Promise<
 
 type MilestoneLockContext = { milestoneLockIds: string[] };
 
-async function loadMilestoneLockIds(projectId: string, refundId: string): Promise<MilestoneLockContext> {
+async function loadMilestoneLockIds(contract: ContractEntity, refundId: string): Promise<MilestoneLockContext> {
   try {
-    const project = await projectRepository.findProjectById(projectId);
+    const project = await loadMilestoneProject(contract);
     const milestoneLockIds = (project?.milestones ?? [])
       .map(m => m.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
@@ -207,11 +208,11 @@ type MilestoneValidation = {
   pendingMilestones: Array<Record<string, unknown> & { index: number }>;
 };
 
-async function validateMilestonesForRefund(projectId: string, refundId: string): Promise<ServiceResult<MilestoneValidation>> {
+async function validateMilestonesForRefund(contract: ContractEntity, refundId: string): Promise<ServiceResult<MilestoneValidation>> {
   let projectMilestones: MilestoneEntity[] = [];
   let pendingMilestones: Array<Record<string, unknown> & { index: number }> = [];
   try {
-    const project = await projectRepository.findProjectById(projectId);
+    const project = await loadMilestoneProject(contract);
     projectMilestones = project?.milestones ?? [];
     pendingMilestones = projectMilestones.reduce<Array<Record<string, unknown> & { index: number }>>((acc, m, index) => {
       if (m.status !== 'approved' && m.status !== 'refunded' && m.status !== 'releasing') acc.push({ ...m, index });
@@ -292,6 +293,7 @@ async function executeBlockchainRefund(
 }
 
 interface UpdateRefundedMilestonesOptions {
+  contract: ContractEntity;
   projectId: string;
   milestones: MilestoneEntity[];
   refundTargets: RefundTarget[];
@@ -302,13 +304,13 @@ interface UpdateRefundedMilestonesOptions {
 async function updateRefundedMilestones(
   options: UpdateRefundedMilestonesOptions
 ): Promise<void> {
-  const { projectId, milestones, refundTargets, refundsAllPending, contractId } = options;
+  const { contract, projectId, milestones, refundTargets, refundsAllPending, contractId } = options;
   const refundedAt = new Date().toISOString();
   const refundedIndices = new Set(refundTargets.map(t => t.index));
   const updatedMilestones = milestones.map((m, i) =>
     refundedIndices.has(i) ? { ...m, status: 'refunded' as const, refunded_at: refundedAt } : m
   );
-  await projectRepository.updateProject(projectId, { milestones: updatedMilestones });
+  await saveMilestones(contract, projectId, updatedMilestones);
   if (refundsAllPending) {
     await contractRepository.updateContract(contractId, { status: 'cancelled' });
   }
@@ -412,10 +414,10 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
         return errorResult('ESCROW_NOT_FOUND', 'Contract has no escrow address. Refund cannot be processed.');
       }
 
-      const { milestoneLockIds } = await loadMilestoneLockIds(contract.project_id, input.refundId);
+      const { milestoneLockIds } = await loadMilestoneLockIds(contract, input.refundId);
 
       return await withMilestoneLocks(milestoneLockIds, async () => {
-        const validationResult = await validateMilestonesForRefund(contract.project_id, input.refundId);
+        const validationResult = await validateMilestonesForRefund(contract, input.refundId);
         if (!validationResult.success) return validationResult;
 
         const { projectMilestones, pendingMilestones } = validationResult.data;
@@ -441,6 +443,7 @@ export async function approveRefund(input: ApproveRefundInput): Promise<ServiceR
         if (!blockchainResult.success) return blockchainResult;
 
         await updateRefundedMilestones({
+          contract,
           projectId: contract.project_id,
           milestones: projectMilestones,
           refundTargets,

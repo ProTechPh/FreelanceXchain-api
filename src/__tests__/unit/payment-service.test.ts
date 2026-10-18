@@ -48,7 +48,7 @@ const mockDisputeRepo = {
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
 jest.unstable_mockModule(resolveModule('src/services/contract-abis.ts'), () => ({
-  FreelanceEscrowABI: [],
+  FreelanceEscrowABI: ['event MilestoneApproved(uint256 indexed milestoneIndex, uint256 amount)'],
   FreelanceEscrowBytecode: '0x',
   FreelanceEscrowDeployedBytecode: '0x',
   FreelanceReputationABI: [],
@@ -793,6 +793,99 @@ describe('Payment Service - Unit Tests', () => {
       expect(mockEscrowApproveMilestone).not.toHaveBeenCalled();
     });
 
+    describe('employer-funded escrows', () => {
+      const ESCROW = '0x' + 'c'.repeat(40);
+      const EMPLOYER_WALLET = '0x' + 'b'.repeat(40);
+      const TX = '0x' + 'e'.repeat(64);
+
+      const approvalLog = async (index: number) => {
+        const { Interface } = await import('ethers');
+        const iface = new Interface(['event MilestoneApproved(uint256 indexed milestoneIndex, uint256 amount)']);
+        const encoded = iface.encodeEventLog('MilestoneApproved', [index, 1000n]);
+        return { address: ESCROW, topics: encoded.topics, data: encoded.data };
+      };
+
+      const useProvider = async (overrides: { from?: string; to?: string; status?: number; index?: number } = {}) => {
+        const log = await approvalLog(overrides.index ?? 0);
+        isWeb3Mock.getProvider.mockReturnValue({
+          getTransaction: jest.fn<any>().mockResolvedValue({ to: overrides.to ?? ESCROW, from: overrides.from ?? EMPLOYER_WALLET }),
+          getTransactionReceipt: jest.fn<any>().mockResolvedValue({ status: overrides.status ?? 1, logs: [log] }),
+        });
+      };
+
+      beforeEach(() => {
+        isWeb3Mock.getWallet.mockReturnValue({ address: '0x' + '9'.repeat(40) });
+        mockEscrowGetEscrowInfo.mockResolvedValue({ employer: EMPLOYER_WALLET });
+        mockEscrowApproveMilestone.mockClear();
+        (mockPaymentRepository as any).findByTxHash = jest.fn<any>().mockResolvedValue(null);
+      });
+
+      afterEach(() => {
+        isWeb3Mock.getWallet.mockReturnValue(undefined);
+        mockEscrowGetEscrowInfo.mockReset();
+      });
+
+      it('asks for the employer wallet signature instead of sending a platform release', async () => {
+        mockEscrowGetMilestoneStatus.mockResolvedValue('submitted');
+        const { contractId, milestoneId, employerId } = await seedRealContract();
+        const result = await approveMilestone(contractId, milestoneId, employerId);
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error.code).toBe('EMPLOYER_SIGNATURE_REQUIRED');
+        expect(mockEscrowApproveMilestone).not.toHaveBeenCalled();
+        const project = [...projectStore.values()].find((p: any) => p.milestones?.[0]?.id === milestoneId) as any;
+        expect(project.milestones[0].status).toBe('submitted');
+      });
+
+      it('records the employer-signed release after verifying its transaction', async () => {
+        mockEscrowGetMilestoneStatus.mockResolvedValue('approved');
+        await useProvider();
+        const { contractId, milestoneId, employerId } = await seedRealContract();
+        const result = await approveMilestone(contractId, milestoneId, employerId, { transactionHash: TX });
+        expect(result.success).toBe(true);
+        if (result.success) expect(result.data.transactionHash).toBe(TX);
+        expect(mockEscrowApproveMilestone).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['sent by another wallet', { from: '0x' + '7'.repeat(40) }],
+        ['sent to another contract', { to: '0x' + '6'.repeat(40) }],
+        ['failed on chain', { status: 0 }],
+        ['for another milestone', { index: 3 }],
+      ])('rejects a release transaction %s', async (_label, overrides) => {
+        mockEscrowGetMilestoneStatus.mockResolvedValue('approved');
+        await useProvider(overrides);
+        const { contractId, milestoneId, employerId } = await seedRealContract();
+        const result = await approveMilestone(contractId, milestoneId, employerId, { transactionHash: TX });
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error.code).toBe('INVALID_RELEASE_TRANSACTION');
+      });
+
+      it('rejects a release transaction that was already recorded or cannot be read', async () => {
+        mockEscrowGetMilestoneStatus.mockResolvedValue('approved');
+        await useProvider();
+        (mockPaymentRepository as any).findByTxHash = jest.fn<any>().mockResolvedValue({ id: 'p1' });
+        const first = await seedRealContract();
+        const reused = await approveMilestone(first.contractId, first.milestoneId, first.employerId, { transactionHash: TX });
+        expect(reused.success).toBe(false);
+
+        (mockPaymentRepository as any).findByTxHash = jest.fn<any>().mockRejectedValue(new Error('rpc'));
+        const second = await seedRealContract();
+        const unreadable = await approveMilestone(second.contractId, second.milestoneId, second.employerId, { transactionHash: TX });
+        expect(unreadable.success).toBe(false);
+        if (!unreadable.success) expect(unreadable.error.code).toBe('INVALID_RELEASE_TRANSACTION');
+        expect(mockEscrowApproveMilestone).not.toHaveBeenCalled();
+      });
+
+      it('tells the employer the freelancer must confirm when the platform cannot submit', async () => {
+        mockEscrowGetMilestoneStatus.mockResolvedValue('pending');
+        mockEscrowSubmitMilestone.mockRejectedValueOnce(new Error('OnlyFreelancer'));
+        const { contractId, milestoneId, employerId } = await seedRealContract();
+        const result = await approveMilestone(contractId, milestoneId, employerId);
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error.code).toBe('FREELANCER_CHAIN_SUBMISSION_REQUIRED');
+      });
+    });
+
     it('advances the on-chain milestone when a submitted milestone is created', async () => {
       mockEscrowGetMilestoneStatus.mockResolvedValue('pending');
       mockEscrowSubmitMilestone.mockResolvedValue({ transactionHash: '0x' + 'd'.repeat(64), receipt: {} });
@@ -1193,5 +1286,18 @@ describe('getPaymentSummary - caching', () => {
     const retry = await getPaymentSummary('user-1');
     expect(retry.success).toBe(true);
     expect(mockPaymentRepository.getTotalEarnings).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('buildEscrowMilestones - negotiated contracts', () => {
+  it('never rescales contract-scoped milestones even with a rush fee', async () => {
+    const { buildEscrowMilestones } = await import('../../services/payment-service.js');
+    const plan = buildEscrowMilestones(
+      { milestones: [{ id: 'm1', amount: 1, title: 'A', status: 'pending' }, { id: 'm2', amount: 1.1, title: 'B', status: 'pending' }] } as any,
+      { id: 'c1', baseAmount: 2, rushFee: 0.1, totalAmount: 2.1, milestoneSource: 'contract' } as any,
+    );
+    expect(plan.scaled).toBe(false);
+    expect(plan.amounts).toEqual([1, 1.1]);
   });
 });

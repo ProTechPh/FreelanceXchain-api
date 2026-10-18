@@ -491,6 +491,24 @@ describe('Email Delivery Service', () => {
     });
   });
 
+  describe('sendContractActionEmail', () => {
+    it('sends the contract action email with the title as subject', async () => {
+      mockReadFile.mockResolvedValue('<html>{{ title }} {{ message }} {{ ctaUrl }}</html>');
+      mockSend.mockResolvedValue({ id: 'msg-action' });
+
+      await importService();
+      const result = await emailService.sendContractActionEmail('user@test.com', {
+        recipientName: 'Dave',
+        title: 'Please sign the contract',
+        message: 'Terms are locked',
+        ctaUrl: 'https://example.com/dashboard/freelancer/contracts/c1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ to: 'user@test.com', subject: 'Please sign the contract' }));
+    });
+  });
+
   describe('sendContractCreatedEmail', () => {
     it('should send contract created email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ projectTitle }}</html>');

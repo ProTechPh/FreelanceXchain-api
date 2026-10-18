@@ -1,8 +1,9 @@
 /**
  * Milestone Service
  *
- * Milestone state lives in the project document's embedded `milestones` array —
- * the single source of truth written by the payment/dispute/rush flows.
+ * Milestone state lives either on the contract (negotiated, per-freelancer terms)
+ * or, for legacy contracts, in the project document's embedded `milestones`
+ * array. contract-milestone-store resolves which one governs a contract.
  * (The standalone `milestones` Appwrite collection is write-orphaned and is not
  * used here; reading it produced stale/empty results and broke reject/refund flows.)
  */
@@ -27,6 +28,7 @@ import { requestMilestoneCompletion } from './payment-service.js';
 import { generateId } from '../utils/id.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { loadMilestoneProject, saveMilestones, usesContractMilestones } from './contract-milestone-store.js';
 
 type MilestoneWithContract = {
   milestone: MilestoneEntity & {
@@ -59,10 +61,10 @@ async function findMilestoneContext(
   const contractsResult = await contractRepository.getUserContracts(userId, { limit: Number.MAX_SAFE_INTEGER, offset: 0 });
 
   for (const contract of contractsResult.items) {
-    const project = await projectRepository.findProjectById(contract.project_id);
+    const project = await loadMilestoneProject(contract);
     if (!project) continue;
 
-    if ((!project.milestones || project.milestones.length === 0) && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
+    if (!usesContractMilestones(contract) && (!project.milestones || project.milestones.length === 0) && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
       const milestone: MilestoneEntity = {
         id: milestoneId,
         title: 'Agreed Deliverables & Payment',
@@ -181,7 +183,7 @@ export async function rejectMilestone(
           : m
       );
 
-      const updatedProject = await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
+      const updatedProject = await saveMilestones(contract, project.id, updatedMilestones);
       if (!updatedProject) {
         throw new Error('Failed to update milestone');
       }
@@ -260,6 +262,7 @@ export type MilestoneDeliverable = { filename: string; url: string; size: number
 
 export type FreelancerMilestoneContext = {
   contractId: string;
+  contract?: ContractEntity;
   project: ProjectEntity;
   milestone: MilestoneEntity;
   milestoneIndex: number;
@@ -285,10 +288,10 @@ export async function findFreelancerMilestoneContext(
   });
 
   for (const contract of contracts) {
-    const project = await projectRepository.findProjectById(contract.project_id);
+    const project = await loadMilestoneProject(contract);
     if (!project) continue;
 
-    if ((!project.milestones || project.milestones.length === 0) && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
+    if (!usesContractMilestones(contract) && (!project.milestones || project.milestones.length === 0) && (milestoneId === `payout-${contract.id}` || milestoneId === contract.id)) {
       const milestone: MilestoneEntity = {
         id: milestoneId,
         title: 'Agreed Deliverables & Payment',
@@ -299,6 +302,7 @@ export async function findFreelancerMilestoneContext(
       };
       return {
         contractId: contract.id,
+        contract,
         project,
         milestone,
         milestoneIndex: 0,
@@ -313,6 +317,7 @@ export async function findFreelancerMilestoneContext(
 
     return {
       contractId: contract.id,
+      contract,
       project,
       milestone,
       milestoneIndex,
@@ -395,7 +400,9 @@ export async function submitMilestoneFromProjectContext(
       return { success: false, error: completionError };
     }
 
-    const updatedProject = await projectRepository.findProjectById(context.project.id);
+    const updatedProject = context.contract
+      ? await loadMilestoneProject(context.contract)
+      : await projectRepository.findProjectById(context.project.id);
     if (!updatedProject) {
       return {
         success: false,
@@ -452,7 +459,7 @@ export async function findEmployerMilestoneContractId(
     if (milestoneId === `payout-${contract.id}` || milestoneId === contract.id) {
       return contract.id;
     }
-    const project = await projectRepository.findProjectById(contract.project_id);
+    const project = await loadMilestoneProject(contract);
     if (!project) continue;
     const found = (project.milestones || []).some((m) => m.id === milestoneId);
     if (found) {
@@ -483,8 +490,13 @@ export async function getContractMilestones(
       return errorResult('UNAUTHORIZED', 'You are not authorized to view these milestones');
     }
 
-    const project = await projectRepository.findProjectById(contract.project_id);
+    const project = await loadMilestoneProject(contract);
     if (!project) {
+      return successResult([]);
+    }
+
+    // Negotiated contracts have no milestones until terms are locked.
+    if (usesContractMilestones(contract) && project.milestones.length === 0) {
       return successResult([]);
     }
 

@@ -3,7 +3,9 @@ import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDo
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { safeJsonParse, parseField } from '../utils/index.js';
 
-export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'resolved' | 'cancelled';
+import type { ContractStatus, MilestoneSource } from '../models/contract.js';
+import type { MilestoneEntity } from './project-repository.js';
+export type { ContractStatus } from '../models/contract.js';
 
 export type ContractEntity = {
   id: string;
@@ -17,9 +19,33 @@ export type ContractEntity = {
   total_amount: number;
   currency?: string;
   status: ContractStatus;
+  // Negotiated-terms fields (absent on legacy contracts)
+  milestone_source?: MilestoneSource | null;
+  milestones?: MilestoneEntity[] | string | null;
+  additional_pay?: number | null;
+  rush_fee_percentage?: number | null;
+  deadline?: string | null;
+  accepted_offer_id?: string | null;
+  terms_hash?: string | null;
+  terms_snapshot?: Record<string, unknown> | string | null;
+  terms_locked_at?: string | null;
+  fully_signed_at?: string | null;
+  funding_deadline?: string | null;
+  funded_at?: string | null;
+  funding_reminder_sent_at?: string | null;
+  cancel_reason?: string | null;
+  cancelled_by?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Statuses that hold a project slot (everything except cancelled). */
+export const SLOT_HOLDING_STATUSES: ContractStatus[] = [
+  'negotiating', 'awaiting_signatures', 'awaiting_funding', 'pending', 'active', 'completed', 'disputed', 'resolved',
+];
+
+/** Statuses reached only after the escrow was funded. */
+export const FUNDED_STATUSES: ContractStatus[] = ['active', 'completed', 'disputed', 'resolved'];
 
 const COLLECTION_ID = 'contracts';
 export type ContractProjectRef = Pick<ContractEntity, 'id' | 'project_id'>;
@@ -347,6 +373,45 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     }
 
     return contractsByFreelancer;
+  }
+
+  /**
+   * Contracts holding one of the project's freelancer slots (any non-cancelled
+   * status, including ones still negotiating, signing or awaiting funding).
+   */
+  async countReservedSlots(projectId: string): Promise<number> {
+    return this.countWithQueries([
+      Query.equal('project_id', projectId),
+      Query.equal('status', SLOT_HOLDING_STATUSES),
+    ]);
+  }
+
+  /** Contracts on the project whose escrow has been funded. */
+  async countFundedContracts(projectId: string): Promise<number> {
+    return this.countWithQueries([
+      Query.equal('project_id', projectId),
+      Query.equal('status', FUNDED_STATUSES),
+    ]);
+  }
+
+  /**
+   * Active contracts that carry their own (negotiated) milestones, with just the
+   * fields the stuck-'releasing' recovery job needs. Errors propagate (scheduler job).
+   */
+  async findActiveContractScopedMilestones(): Promise<Array<Pick<ContractEntity, 'id' | 'project_id' | 'milestone_source' | 'milestones'>>> {
+    return this.fetchAll([
+      Query.equal('status', 'active'),
+      Query.equal('milestone_source', 'contract'),
+      Query.select(['$id', 'project_id', 'milestone_source', 'milestones']),
+    ]);
+  }
+
+  /** Contracts awaiting funding whose deadline is before `cutoffIso`. Errors propagate (scheduler job). */
+  async findAwaitingFundingBefore(cutoffIso: string): Promise<ContractEntity[]> {
+    return this.fetchAll([
+      Query.equal('status', 'awaiting_funding'),
+      Query.lessThan('funding_deadline', cutoffIso),
+    ]);
   }
 
   /**

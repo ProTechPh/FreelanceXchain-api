@@ -9,6 +9,7 @@ import { ContractEntity } from '../repositories/contract-repository.js';
 import { DisputeEntity, EvidenceEntity } from '../repositories/dispute-repository.js';
 import { SkillEntity, SkillCategoryEntity } from '../repositories/skill-repository.js';
 import { NotificationEntity } from '../repositories/notification-repository.js';
+import { parseField } from './index.js';
 import { RushUpgradeRequestEntity } from '../repositories/rush-upgrade-request-repository.js';
 
 // Import domain types from models
@@ -264,6 +265,27 @@ export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
   };
 }
 
+/**
+ * Negotiated-terms fields only exist on contracts created by the negotiation
+ * flow; omit them entirely for legacy contracts so their API shape is unchanged.
+ */
+function mapNegotiatedContractFields(entity: ContractEntity): Partial<Contract> {
+  const fields: Partial<Contract> = {};
+  if (entity.milestone_source) fields.milestoneSource = entity.milestone_source;
+  if (entity.additional_pay != null) fields.additionalPay = entity.additional_pay;
+  if (entity.rush_fee_percentage != null) fields.rushFeePercentage = entity.rush_fee_percentage;
+  if (entity.deadline) fields.deadline = entity.deadline;
+  if (entity.accepted_offer_id) fields.acceptedOfferId = entity.accepted_offer_id;
+  if (entity.terms_hash) fields.termsHash = entity.terms_hash;
+  if (entity.terms_locked_at) fields.termsLockedAt = entity.terms_locked_at;
+  if (entity.fully_signed_at) fields.fullySignedAt = entity.fully_signed_at;
+  if (entity.funding_deadline) fields.fundingDeadline = entity.funding_deadline;
+  if (entity.funded_at) fields.fundedAt = entity.funded_at;
+  if (entity.cancel_reason) fields.cancelReason = entity.cancel_reason;
+  if (entity.cancelled_by) fields.cancelledBy = entity.cancelled_by;
+  return fields;
+}
+
 // Contract mapping functions
 export function mapContractFromEntity(entity: ContractEntity & ContractRelations): Contract {
   if (!entity) {
@@ -302,11 +324,18 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
     ...(entity.project?.title !== undefined ? { title: entity.project.title } : {}),
     ...(entity.project?.description !== undefined ? { description: entity.project.description } : {}),
     startDate: entity.created_at,
-    ...(entity.project?.deadline !== undefined ? { endDate: entity.project.deadline } : {}),
+    ...(entity.deadline
+      ? { endDate: entity.deadline }
+      : entity.project?.deadline !== undefined ? { endDate: entity.project.deadline } : {}),
     // Project milestones are the project-flavored Milestone (no canonical
     // createdAt/updatedAt); the Contract model uses the canonical milestone
-    // shape. Populated by withProjectMilestones in contract-service.ts.
-    milestones: (entity.project?.milestones ?? []).map(mapMilestoneFromEntity) as unknown as NonNullable<Contract['milestones']>,
+    // shape. Contract-scoped (negotiated) milestones win over the project template.
+    // Populated by withProjectMilestones in contract-service.ts.
+    milestones: (entity.milestone_source === 'contract'
+      ? parseField<MilestoneEntity[]>(entity.milestones, [])
+      : (entity.project?.milestones ?? [])
+    ).map(mapMilestoneFromEntity) as unknown as NonNullable<Contract['milestones']>,
+    ...mapNegotiatedContractFields(entity),
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
     ...(entity.project !== undefined ? { project: entity.project } : {}),

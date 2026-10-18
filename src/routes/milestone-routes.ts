@@ -472,8 +472,15 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateApp
       return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found in any of your contracts', { requestId: getRequestId(req) });
     }
 
+    // Employer-deployed escrows are released by the employer's own wallet; the
+    // client then submits that transaction hash for verification.
+    const transactionHash = typeof req.body?.transactionHash === 'string' ? req.body.transactionHash : undefined;
+    if (transactionHash !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) {
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'transactionHash must be a 0x-prefixed 32-byte hash', { requestId: getRequestId(req) });
+    }
+
     // Use payment-service approveMilestone which handles blockchain escrow release + project milestone update
-    const result = await approveMilestoneWithPayment(contractId, milestoneId, userId);
+    const result = await approveMilestoneWithPayment(contractId, milestoneId, userId, transactionHash ? { transactionHash } : {});
 
     if (!result.success) {
       const message = 'error' in result ? result.error.message : 'Failed to approve milestone';

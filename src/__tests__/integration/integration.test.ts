@@ -376,6 +376,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
+    countReservedSlots: jest.fn(async (projectId: string) => {
+      return [...contractStore.values()].filter((c: any) =>
+        ((c as any).project_id || c.projectId) === projectId && c.status !== 'cancelled').length;
+    }),
     create: jest.fn(async (contract: any) => {
       contractStore.set(contract.id, contract as any);
       return contract;
@@ -815,6 +819,8 @@ jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), ()
   createAgreementOnBlockchain: jest.fn(),
   signAgreement: jest.fn(),
   disputeAgreement: jest.fn(),
+  lockAgreementTerms: jest.fn(),
+  cancelAgreement: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), () => ({
@@ -981,7 +987,8 @@ describe('Integration Tests - Critical Flows', () => {
       expect(contract.freelancerId).toBe(freelancerId);
       expect(contract.employerId).toBe(employerId);
       expect(contract.projectId).toBe(project.id);
-      expect(contract.status).toBe('pending');
+      // Accepting starts negotiation; the contract is not fundable until both sign.
+      expect(contract.status).toBe('negotiating');
       expect(contractStore.has(contract.id)).toBe(true);
     });
   });

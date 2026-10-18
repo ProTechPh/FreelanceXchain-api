@@ -75,7 +75,12 @@ async function hasResourceFileAccess(bucket: BucketId, fileId: string, userId: s
   if (bucket === BUCKETS.MILESTONE_DELIVERABLES) {
     const projects = await projectRepository.queryAll();
     const project = projects.find(item => valueReferencesFile(item.milestones, fileId));
-    if (!project) return false;
+    if (!project) {
+      // Negotiated contracts keep their milestones (and deliverables) on the contract.
+      const contracts = await contractRepository.queryAll();
+      const owner = contracts.find(item => item.milestone_source === 'contract' && valueReferencesFile(item.milestones, fileId));
+      return !!owner && (owner.employer_id === userId || owner.freelancer_id === userId);
+    }
     const contracts = await contractRepository.getContractsByProject(project.id);
     return contracts.some(contract => contract.employer_id === userId || contract.freelancer_id === userId);
   }

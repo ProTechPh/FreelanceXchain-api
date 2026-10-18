@@ -23,7 +23,8 @@ type EmailTemplate =
   | 'account_deletion_code'
   | 'account_deleted'
   | 'login_alert'
-  | 'user_invited';
+  | 'user_invited'
+  | 'contract_action_required';
 
 type EmailData = {
   to: string;
@@ -329,6 +330,19 @@ export async function sendContractCreatedEmail(
     to,
     subject: 'New contract created',
     template: 'contract_created',
+    data,
+  });
+}
+
+/** Hiring-flow nudges: offer received, ready to sign, awaiting funding, activated, expired. */
+export async function sendContractActionEmail(
+  to: string,
+  data: { recipientName: string; title: string; message: string; ctaUrl: string; projectTitle?: string }
+): Promise<ServiceResult<{ messageId: string }>> {
+  return sendEmail({
+    to,
+    subject: data.title,
+    template: 'contract_action_required',
     data,
   });
 }

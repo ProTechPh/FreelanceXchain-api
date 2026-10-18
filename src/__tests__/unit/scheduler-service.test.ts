@@ -1224,8 +1224,45 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
     callback?.();
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+    // 2 legacy batch queries + 1 scan for negotiated (contract-scoped) milestones
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(3);
     expect(mockDatabases.getDocument).not.toHaveBeenCalled();
+  });
+
+  it('recovers stuck releasing milestones stored on negotiated contracts', async () => {
+    const { initializeScheduler } = await importScheduler();
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+    const stale = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    mockDatabases.listDocuments
+      // legacy active contract refs: none
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // contract-scoped active contracts
+      .mockResolvedValueOnce({
+        documents: [{
+          $id: 'neg-1',
+          project_id: 'p-neg',
+          milestone_source: 'contract',
+          milestones: JSON.stringify([
+            { id: 'm1', status: 'releasing', updated_at: stale, amount: 1 },
+            { id: 'm2', status: 'pending', amount: 1 },
+          ]),
+        }],
+        total: 1,
+      });
+    mockDatabases.updateDocument.mockResolvedValue({ $id: 'neg-1', milestone_source: 'contract', milestones: '[]' });
+    mockDatabases.getDocument.mockResolvedValue({ $id: 'p-neg', milestones: '[]' });
+
+    callback?.();
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(mockDatabases.updateDocument).toHaveBeenCalledWith(
+      expect.any(String),
+      'contracts',
+      'neg-1',
+      expect.objectContaining({ milestones: expect.stringContaining('"status":"submitted"') }),
+    );
   });
 
   it('should handle milestones as object (not JSON string)', async () => {

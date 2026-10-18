@@ -1151,3 +1151,68 @@ describe('Agreement Contract - Branch Coverage (signed_at fields)', () => {
     expect(result[0]?.freelancerSignedAt).toBe(now + 1000);
   });
 });
+
+describe('Agreement Contract - negotiation flow', () => {
+  const importModule = async () => import('../../services/agreement-contract.js');
+  const lockInput = {
+    contractId: 'contract-neg',
+    employerWallet: '0xAbC0000000000000000000000000000000000001',
+    freelancerWallet: '0xaBc0000000000000000000000000000000000002',
+    totalAmount: 2.5,
+    milestoneCount: 2,
+    termsHash: `0x${'9'.repeat(64)}`,
+    terms: { projectTitle: 'P', description: 'D', milestones: [{ title: 'M', amount: 2.5 }], deadline: '2099-01-01' },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSubmitTransaction.mockResolvedValue({ id: 'tx-1' });
+    mockConfirmTransaction.mockResolvedValue({ hash: '0xhash', blockNumber: 7, gasUsed: 1n });
+    mockBlockchainAgreementRepository.createAgreement.mockResolvedValue({} as any);
+    mockBlockchainAgreementRepository.updateAgreement.mockResolvedValue({} as any);
+  });
+
+  it('creates the agreement without auto-signing the employer and with the EIP-712 hash', async () => {
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValue(null);
+    const { lockAgreementTerms } = await importModule();
+    await lockAgreementTerms(lockInput);
+    const created = mockBlockchainAgreementRepository.createAgreement.mock.calls[0][0];
+    expect(created.terms_hash).toBe(lockInput.termsHash);
+    expect(created.employer_signed_at).toBeUndefined();
+  });
+
+  it('resets an existing pending agreement and refuses once signed', async () => {
+    const { lockAgreementTerms } = await importModule();
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({ id: 'ag-1', status: 'pending' });
+    await lockAgreementTerms(lockInput);
+    expect(mockBlockchainAgreementRepository.updateAgreement).toHaveBeenCalledWith('ag-1', expect.objectContaining({
+      terms_hash: lockInput.termsHash, status: 'pending', employer_signed_at: null, freelancer_signed_at: null,
+    }));
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({ id: 'ag-1', status: 'signed' });
+    await expect(lockAgreementTerms(lockInput)).rejects.toThrow('terms can no longer change');
+  });
+
+  it('cancels agreements that are still open', async () => {
+    const { cancelAgreement } = await importModule();
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce(null);
+    await cancelAgreement('c');
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({ id: 'ag', status: 'completed' });
+    await cancelAgreement('c');
+    expect(mockBlockchainAgreementRepository.updateAgreement).not.toHaveBeenCalled();
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({ id: 'ag', status: 'pending' });
+    await cancelAgreement('c');
+    expect(mockBlockchainAgreementRepository.updateAgreement).toHaveBeenCalledWith('ag', { status: 'cancelled' });
+  });
+
+  it('matches signer wallets case-insensitively', async () => {
+    const { signAgreement } = await importModule();
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValue({
+      id: 'ag', contract_id_hash: 'h', terms_hash: 't', status: 'pending',
+      employer_wallet: lockInput.employerWallet, freelancer_wallet: lockInput.freelancerWallet,
+      total_amount: 1, milestone_count: 1, created_at_ts: 1, transaction_hash: '0x', block_number: 1,
+    });
+    const result = await signAgreement('contract-neg', lockInput.freelancerWallet.toLowerCase());
+    expect(result.agreement.freelancerSignedAt).not.toBeNull();
+    expect(result.agreement.employerSignedAt).toBeNull();
+  });
+});

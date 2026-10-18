@@ -1,7 +1,20 @@
 // Contract domain types
 import type { Milestone } from './milestone.js';
 
-export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'resolved' | 'cancelled';
+// Hiring flow: negotiating → awaiting_signatures → awaiting_funding → active.
+// 'pending' is the legacy pre-negotiation status (accept → fund directly).
+export type ContractStatus =
+  | 'negotiating'
+  | 'awaiting_signatures'
+  | 'awaiting_funding'
+  | 'pending'
+  | 'active'
+  | 'completed'
+  | 'disputed'
+  | 'resolved'
+  | 'cancelled';
+
+export type MilestoneSource = 'project' | 'contract';
 
 export type Contract = {
   id: string;
@@ -20,6 +33,18 @@ export type Contract = {
   startDate?: string;
   endDate?: string;
   milestones?: Milestone[];
+  milestoneSource?: MilestoneSource;
+  additionalPay?: number;
+  rushFeePercentage?: number;
+  deadline?: string;
+  acceptedOfferId?: string;
+  termsHash?: string;
+  termsLockedAt?: string;
+  fullySignedAt?: string;
+  fundingDeadline?: string;
+  fundedAt?: string;
+  cancelReason?: string;
+  cancelledBy?: string;
   createdAt: string;
   updatedAt: string;
   // Extended relational fields populated by getContractByIdWithRelations;

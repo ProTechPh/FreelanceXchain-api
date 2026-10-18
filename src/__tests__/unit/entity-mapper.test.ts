@@ -397,3 +397,37 @@ describe('Entity Mapper - Extended Coverage (null/undefined fields)', () => {
     });
   });
 });
+
+
+describe('Entity Mapper - negotiated contracts', () => {
+  const base = {
+    id: 'c1', project_id: 'p1', proposal_id: 'pr1', freelancer_id: 'f1', employer_id: 'e1', escrow_address: '',
+    base_amount: 2, rush_fee: 0.2, total_amount: 2.7, status: 'awaiting_funding', created_at: now, updated_at: now,
+  };
+
+  it('maps negotiated fields and prefers contract milestones and deadline', () => {
+    const result = mapContractFromEntity({
+      ...base,
+      milestone_source: 'contract',
+      milestones: JSON.stringify([{ id: 'm1', title: 'Own', amount: 2.7, status: 'pending', due_date: '2099-01-01' }]),
+      additional_pay: 0.5, rush_fee_percentage: 10, deadline: '2099-02-01', accepted_offer_id: 'o1',
+      terms_hash: '0xabc', terms_locked_at: now, fully_signed_at: now, funding_deadline: now, funded_at: now,
+      cancel_reason: 'funding_expired', cancelled_by: 'e1',
+      project: { id: 'p1', title: 'T', deadline: '2098-01-01', milestones: [{ id: 'pm', title: 'Template', amount: 9, status: 'pending', due_date: '2098-01-01' }] },
+    } as any);
+    expect(result.milestones).toHaveLength(1);
+    expect(result.milestones[0].title).toBe('Own');
+    expect(result.endDate).toBe('2099-02-01');
+    expect(result).toMatchObject({
+      milestoneSource: 'contract', additionalPay: 0.5, rushFeePercentage: 10, deadline: '2099-02-01', acceptedOfferId: 'o1',
+      termsHash: '0xabc', fundingDeadline: now, fundedAt: now, cancelReason: 'funding_expired', cancelledBy: 'e1',
+    });
+  });
+
+  it('omits negotiated fields for legacy contracts', () => {
+    const result = mapContractFromEntity({ ...base, status: 'pending' } as any);
+    expect(result).not.toHaveProperty('milestoneSource');
+    expect(result).not.toHaveProperty('termsHash');
+    expect(result.milestones).toEqual([]);
+  });
+});

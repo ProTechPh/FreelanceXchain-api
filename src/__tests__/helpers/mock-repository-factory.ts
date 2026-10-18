@@ -298,6 +298,15 @@ export function createMockContractRepository(store: Map<string, any>) {
     getAllContracts: jest.fn(async () => {
       return Array.from(store.values());
     }),
+    countReservedSlots: jest.fn(async (projectId: string) => {
+      return Array.from(store.values()).filter(c => c.project_id === projectId && c.status !== 'cancelled').length;
+    }),
+    countFundedContracts: jest.fn(async (projectId: string) => {
+      return Array.from(store.values()).filter(c => c.project_id === projectId && ['active', 'completed', 'disputed', 'resolved'].includes(c.status)).length;
+    }),
+    findAwaitingFundingBefore: jest.fn(async (cutoffIso: string) => {
+      return Array.from(store.values()).filter(c => c.status === 'awaiting_funding' && c.funding_deadline && c.funding_deadline < cutoffIso);
+    }),
   };
 }
 

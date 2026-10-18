@@ -52,6 +52,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
+// Negotiation-flow side effects (slot release, lazy funding expiry)
+const mockReleaseContractSlot = jest.fn<any>().mockResolvedValue({ success: true, data: {} });
+const mockExpireIfOverdue = jest.fn<any>().mockResolvedValue(false);
+jest.unstable_mockModule(resolveModule('src/services/contract-lifecycle-service.ts'), () => ({
+  releaseContractSlot: mockReleaseContractSlot,
+  expireIfOverdue: mockExpireIfOverdue,
+}));
+
+const mockUpdateProposal = jest.fn<any>().mockResolvedValue({});
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: { updateProposal: mockUpdateProposal },
+}));
+
 const {
   getContractById,
   getUserContracts,
@@ -786,5 +799,77 @@ describe('contract-service.ts - Remaining coverage gaps', () => {
         totalAmount: null,
       }),
     }));
+  });
+});
+
+
+describe('Contract Service - negotiation flow', () => {
+  beforeEach(() => {
+    mockContractRepo.clear();
+    jest.clearAllMocks();
+  });
+
+  it('cancelling a negotiating contract releases the slot through the lifecycle service', async () => {
+    const contract = createTestContract({ id: 'neg-c', status: 'negotiating', employer_id: 'emp-1', freelancer_id: 'fl-1' });
+    contractStore.set(contract.id, contract);
+    const result = await cancelPendingContract(contract.id, 'fl-1');
+    expect(result.success).toBe(true);
+    expect(mockReleaseContractSlot).toHaveBeenCalledWith({ contractId: 'neg-c', actorId: 'fl-1', actor: 'freelancer', reason: 'cancelled_by_party' });
+
+    mockReleaseContractSlot.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'moved' } });
+    const failed = await cancelPendingContract(contract.id, 'emp-1');
+    expect(failed).toEqual({ success: false, error: { code: 'INVALID_STATUS', message: 'moved' } });
+  });
+
+  it('cancelling a legacy pending contract frees the proposal', async () => {
+    const contract = createTestContract({ id: 'pend-c', status: 'pending', employer_id: 'emp-1', freelancer_id: 'fl-1', proposal_id: 'prop-1' });
+    contractStore.set(contract.id, contract);
+    await cancelPendingContract(contract.id, 'emp-1');
+    expect(mockUpdateProposal).toHaveBeenCalledWith('prop-1', { status: 'rejected' });
+
+    const other = createTestContract({ id: 'pend-d', status: 'pending', employer_id: 'emp-1', freelancer_id: 'fl-1', proposal_id: 'prop-2' });
+    contractStore.set(other.id, other);
+    mockUpdateProposal.mockRejectedValueOnce(new Error('db'));
+    expect((await cancelPendingContract(other.id, 'fl-1')).success).toBe(true);
+  });
+
+  it('refuses to cancel funded contracts', async () => {
+    const contract = createTestContract({ id: 'act-c', status: 'active', employer_id: 'emp-1' });
+    contractStore.set(contract.id, contract);
+    const result = await cancelPendingContract(contract.id, 'emp-1');
+    expect(result.error.code).toBe('INVALID_STATUS');
+    expect(result.error.message).toContain('before it is funded');
+  });
+
+  it('getContractById expires an overdue awaiting_funding contract before returning it', async () => {
+    const contract = createTestContract({ id: 'af-c', status: 'awaiting_funding', funding_deadline: '2020-01-01T00:00:00Z' });
+    contractStore.set(contract.id, contract);
+    mockExpireIfOverdue.mockImplementationOnce(async () => {
+      contractStore.set(contract.id, { ...contract, status: 'cancelled' });
+      return true;
+    });
+    const result = await getContractById(contract.id);
+    expect(result.data.status).toBe('cancelled');
+  });
+
+  it('generic status updates cannot perform system transitions', async () => {
+    const contract = createTestContract({ id: 'sys-c', status: 'negotiating', employer_id: 'emp-1' });
+    contractStore.set(contract.id, contract);
+    const result = await updateContractStatus(contract.id, 'awaiting_signatures', 'emp-1');
+    expect(result.error.code).toBe('INVALID_STATUS_TRANSITION');
+    const funded = createTestContract({ id: 'af-d', status: 'awaiting_funding', employer_id: 'emp-1' });
+    contractStore.set(funded.id, funded);
+    expect((await updateContractStatus(funded.id, 'active', 'emp-1')).success).toBe(true);
+  });
+
+  it('lists negotiated contracts with their own milestones', async () => {
+    const contract = createTestContract({
+      id: 'list-c', status: 'awaiting_signatures', employer_id: 'emp-9', freelancer_id: 'fl-9',
+      milestone_source: 'contract', milestones: [{ id: 'm1', title: 'Own', amount: 1, status: 'pending', due_date: '2099-01-01' }],
+    });
+    contractStore.set(contract.id, contract);
+    const result = await getUserContracts('emp-9');
+    expect(result.data.items[0].milestones[0].title).toBe('Own');
+    expect(result.data.items[0].milestoneSource).toBe('contract');
   });
 });

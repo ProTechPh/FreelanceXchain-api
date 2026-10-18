@@ -35,8 +35,9 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: { queryAll: jest.fn().mockResolvedValue([]) },
 }));
+const mockContractQueryAll = jest.fn<any>().mockResolvedValue([]);
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
-  contractRepository: { getContractById: jest.fn().mockResolvedValue(null), getContractsByProject: jest.fn().mockResolvedValue([]) },
+  contractRepository: { getContractById: jest.fn().mockResolvedValue(null), getContractsByProject: jest.fn().mockResolvedValue([]), queryAll: mockContractQueryAll },
 }));
 
 let mockUser: any = { userId: 'user-1', role: 'user' };
@@ -319,5 +320,35 @@ describe('File Access Routes - coverage gap branches', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.error.code).toBe('INTERNAL_ERROR');
+  });
+});
+
+
+describe('File Access Routes - negotiated contract deliverables', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUser = { userId: 'freelancer-9', role: 'user' };
+  });
+
+  it('allows contract parties to read deliverables stored on contract-scoped milestones', async () => {
+    mockStorage.getFile.mockResolvedValue({ name: 'someone_uuid_work.pdf', sizeOriginal: 10, mimeType: 'application/pdf' });
+    mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('work'));
+    mockContractQueryAll.mockResolvedValueOnce([{
+      id: 'c9', employer_id: 'employer-9', freelancer_id: 'freelancer-9', milestone_source: 'contract',
+      milestones: [{ id: 'm1', deliverable_files: [{ url: '/api/files/access/milestone-deliverables/file-9' }] }],
+    }]);
+    const res = await request(app).get('/api/files/access/milestone-deliverables/file-9');
+    expect(res.status).toBe(200);
+  });
+
+  it('denies outsiders', async () => {
+    mockUser = { userId: 'outsider', role: 'user' };
+    mockStorage.getFile.mockResolvedValue({ name: 'someone_uuid_work.pdf', sizeOriginal: 10, mimeType: 'application/pdf' });
+    mockContractQueryAll.mockResolvedValueOnce([{
+      id: 'c9', employer_id: 'employer-9', freelancer_id: 'freelancer-9', milestone_source: 'contract',
+      milestones: [{ id: 'm1', deliverable_files: [{ url: '/api/files/access/milestone-deliverables/file-9' }] }],
+    }]);
+    const res = await request(app).get('/api/files/access/milestone-deliverables/file-9');
+    expect(res.status).toBe(403);
   });
 });
