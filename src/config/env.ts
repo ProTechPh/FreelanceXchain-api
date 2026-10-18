@@ -126,6 +126,15 @@ export const config = {
     arbiterAddress: getEnvVarOptional('PLATFORM_ARBITER_ADDRESS'),
     arbiterPrivateKey: getEnvVarOptional('PLATFORM_ARBITER_PRIVATE_KEY'),
   },
+  // Hiring flow: negotiation → dual e-signature → funding deadline.
+  contracts: {
+    fundingDeadlineHours: getEnvVarNumber('CONTRACT_FUNDING_DEADLINE_HOURS', 72),
+    fundingGraceMinutes: getEnvVarNumber('CONTRACT_FUNDING_GRACE_MINUTES', 30),
+    // EIP-712 chainId used when BLOCKCHAIN_MODE=simulated (no provider to ask).
+    signingChainId: getEnvVarNumber('CONTRACT_SIGNING_CHAIN_ID', 1337),
+    maxMilestones: getEnvVarNumber('CONTRACT_MAX_MILESTONES', 20),
+    maxNegotiationRounds: getEnvVarNumber('CONTRACT_MAX_NEGOTIATION_ROUNDS', 30),
+  },
   redis: {
     url: getEnvVarOptional('REDIS_URL'),
     host: getEnvVar('REDIS_HOST', 'localhost'),

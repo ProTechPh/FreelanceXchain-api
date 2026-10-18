@@ -181,6 +181,16 @@ Blockchain settings are configured through environment variables:
 - `PLATFORM_ARBITER_ADDRESS` / `PLATFORM_ARBITER_PRIVATE_KEY`: On-chain dispute arbiter (real mode)
 - Per-network contract addresses: `HARDHAT_*`, `AMOY_*`, `POLYGON_*`, `MAINNET_*` (see `.env.example`)
 
+### Hiring Flow Settings
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CONTRACT_FUNDING_DEADLINE_HOURS` | `72` | Hours the employer has to fund the escrow after both parties sign |
+| `CONTRACT_FUNDING_GRACE_MINUTES` | `30` | Grace period before an unfunded contract is cancelled |
+| `CONTRACT_SIGNING_CHAIN_ID` | `1337` | EIP-712 chain id used for contract signatures in simulated mode |
+| `CONTRACT_MAX_MILESTONES` | `20` | Maximum milestones per negotiation offer |
+| `CONTRACT_MAX_NEGOTIATION_ROUNDS` | `30` | Maximum offers per contract negotiation |
+
 (`POLYGON_API_KEY`/`POLYGON_RPC_URL`/`AMOY_RPC_URL` are consumed by `hardhat.config.cjs` only, not by the API runtime.)
 
 The `hardhat.config.cjs` file defines network configurations for deployment scripts, including Sepolia, Polygon mainnet, and Amoy (Polygon testnet). The production deploy scripts (`deploy:contracts:prod`, `deploy:reputation`, `deploy:escrow`) target Amoy.

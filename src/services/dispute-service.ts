@@ -2,7 +2,8 @@ import { Dispute, Contract, Project, mapDisputeFromEntity } from '../utils/entit
 import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository.js';
 import { disputeEvidenceRepository } from '../repositories/dispute-evidence-repository.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
-import { projectRepository, ProjectEntity, MilestoneEntity } from '../repositories/project-repository.js';
+import { loadMilestoneProject, saveMilestones, type ContractMilestoneRef } from './contract-milestone-store.js';
+import type { ProjectEntity, MilestoneEntity } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
 import { generateId } from '../utils/id.js';
@@ -97,7 +98,7 @@ async function validateCreateDispute(input: CreateDisputeInput): Promise<
     return { error: errorResult('UNAUTHORIZED', 'Only contract parties can create disputes') };
   }
 
-  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  const projectEntity = await loadMilestoneProject(contract);
   if (!projectEntity) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
@@ -217,18 +218,17 @@ async function markMilestoneDisputedOnEscrow(input: {
 
 type MarkDisputeStatesInput = {
   contractId: string;
+  contract: ContractMilestoneRef;
   project: Project;
   projectEntity: ProjectEntity;
   milestoneEntity: MilestoneEntity;
 };
 
 async function markDisputeStates(input: MarkDisputeStatesInput): Promise<void> {
-  const { contractId, project, projectEntity, milestoneEntity } = input;
+  const { contractId, contract, project, projectEntity, milestoneEntity } = input;
 
   milestoneEntity.status = 'disputed';
-  await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
-  });
+  await saveMilestones(contract, project.id, projectEntity.milestones);
 
   await contractRepository.updateContract(contractId, { status: 'disputed' });
 }
@@ -326,7 +326,7 @@ export async function createDispute(
 
   await recordDisputeOnBlockchain({ dispute: createdDispute, contract, milestone, milestoneId: input.milestoneId, contractId: input.contractId });
   await markMilestoneDisputedOnEscrow({ contractEntity, projectEntity, milestoneId: input.milestoneId, disputeId: createdDispute.id, contractId: input.contractId });
-  await markDisputeStates({ contractId: input.contractId, project, projectEntity, milestoneEntity });
+  await markDisputeStates({ contractId: input.contractId, contract, project, projectEntity, milestoneEntity });
   await notifyDisputeParties({ contract, disputeId: createdDispute.id, milestoneId: input.milestoneId, milestone, project, contractId: input.contractId, reason: input.reason });
 
   return successResult(createdDispute);
@@ -440,7 +440,7 @@ async function validateDisputeResolution(
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
+  const projectEntity = await loadMilestoneProject(contractEntity);
   if (!projectEntity) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
@@ -648,10 +648,8 @@ async function updateDisputeStatuses(
 > {
   const { disputeId, disputeEntity, decision, reasoning, resolvedBy, contract, project, projectEntity, milestone, resolutionEntity } = input;
 
-  // Update milestone status in project
-  await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
-  });
+  // Update milestone status (contract-scoped or legacy project milestones)
+  await saveMilestones(contract, project.id, projectEntity.milestones);
 
   const hasOtherDisputes = projectEntity.milestones.some(
     (m) => m.status === 'disputed' && m.id !== disputeEntity.milestone_id

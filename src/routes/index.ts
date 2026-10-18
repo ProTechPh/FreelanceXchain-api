@@ -10,6 +10,7 @@ import searchRoutes from './search-routes.js';
 import matchingRoutes from './matching-routes.js';
 import proposalRoutes from './proposal-routes.js';
 import contractRoutes from './contract-routes.js';
+import contractNegotiationRoutes from './contract-negotiation-routes.js';
 import notificationRoutes from './notification-routes.js';
 import paymentRoutes from './payment-routes.js';
 import reputationRoutes from './reputation-routes.js';
@@ -72,6 +73,7 @@ router.use('/proposals', proposalRoutes);
 
 // Contract routes
 router.use('/contracts', contractRoutes);
+router.use('/contracts', contractNegotiationRoutes);
 
 // Notification routes
 router.use('/notifications', notificationRoutes);

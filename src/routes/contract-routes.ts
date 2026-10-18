@@ -23,6 +23,44 @@ import { disputeRepository } from '../repositories/dispute-repository.js';
 import { withLock } from '../utils/async-lock.js';
 import type { Contract } from '../utils/entity-mapper.js';
 import { mapProjectFromEntity } from '../utils/entity-mapper.js';
+import type { ProjectEntity } from '../repositories/project-repository.js';
+import { loadMilestoneProject, usesContractMilestones } from '../services/contract-milestone-store.js';
+import { onContractActivated } from '../services/contract-lifecycle-service.js';
+
+/** Statuses from which the employer may fund the escrow. */
+const FUNDABLE_STATUSES = new Set(['pending', 'awaiting_funding']);
+
+function fundingDeadlinePassed(contract: Contract): boolean {
+  if (contract.status !== 'awaiting_funding' || !contract.fundingDeadline) return false;
+  const deadline = Date.parse(contract.fundingDeadline);
+  return !Number.isNaN(deadline) && Date.now() > deadline;
+}
+
+/** Sends the error and returns true when the contract cannot be funded right now. */
+function rejectUnfundableContract(contract: Contract, res: Response, requestId: string): boolean {
+  if (!FUNDABLE_STATUSES.has(contract.status)) {
+    const message = ['negotiating', 'awaiting_signatures'].includes(contract.status)
+      ? 'Both parties must agree on terms and sign the contract before it can be funded'
+      : `Contract is already '${contract.status}', cannot fund`;
+    sendErrorResponse(res, 400, 'INVALID_STATUS', message, { requestId });
+    return true;
+  }
+  if (fundingDeadlinePassed(contract) && !contract.escrowAddress) {
+    sendErrorResponse(res, 409, 'FUNDING_DEADLINE_PASSED', 'The funding deadline for this contract has passed', { requestId });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Project view whose milestones govern the escrow: the negotiated contract
+ * milestones when the contract owns them, otherwise the project's (legacy).
+ */
+async function getFundingProject(contract: Contract): Promise<ProjectEntity | null> {
+  if (usesContractMilestones(contract)) return loadMilestoneProject(contract);
+  const projectResult = await getProjectById(contract.projectId);
+  return projectResult.success ? projectResult.data : null;
+}
 
 
 // Type definition for ensureContractEscrow return value
@@ -260,8 +298,8 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(),
  * Deploy the escrow server-side for a contract that has none yet.
  */
 async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowResult> {
-  const projectResult = await getProjectById(contract.projectId);
-  if (!projectResult.success) {
+  const projectEntity = await getFundingProject(contract);
+  if (!projectEntity) {
     return { error: { statusCode: 400, code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' } };
   }
 
@@ -272,7 +310,7 @@ async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowRes
 
   const { employerWallet, freelancerWallet } = walletResult.data;
   const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
-  const project = mapProjectFromEntity(projectResult.data);
+  const project = mapProjectFromEntity(projectEntity);
 
   const escrowResult = await initializeContractEscrow(
     contract,
@@ -325,10 +363,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
       return;
     }
 
-    if (contract.status !== 'pending') {
-      sendErrorResponse(res, 400, 'INVALID_STATUS', `Contract is already '${contract.status}', cannot fund`, { requestId });
-      return;
-    }
+    if (rejectUnfundableContract(contract, res, requestId)) return;
 
     let escrowAddress = contract.escrowAddress;
 
@@ -342,14 +377,14 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
           return;
         }
         const walletResult = await getContractWalletAddresses(contractId);
-        const projectResult = await getProjectById(contract.projectId);
-        if (!walletResult.success || !projectResult.success) {
+        const fundingProject = await getFundingProject(contract);
+        if (!walletResult.success || !fundingProject) {
           sendErrorResponse(res, 400, 'FUNDING_CONTEXT_INVALID', 'Contract wallets or project milestones could not be verified', { requestId });
           return;
         }
         const verified = await registerEmployerFundedEscrow({
           contract,
-          project: mapProjectFromEntity(projectResult.data),
+          project: mapProjectFromEntity(fundingProject),
           employerWalletAddress: walletResult.data.employerWallet,
           freelancerWalletAddress: walletResult.data.freelancerWallet,
           escrowAddress: submittedAddress,
@@ -388,6 +423,8 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
       sendErrorResponse(res, 500, 'ACTIVATION_FAILED', 'Escrow funded but contract activation failed', { requestId });
       return;
     }
+
+    await onContractActivated(contractId);
 
     sendSuccessResponse(res, 200, {
       message: 'Contract funded and activated',
@@ -440,7 +477,7 @@ async function resolveFundDeploymentContext(
       const provider = getProvider();
       const network = await provider.getNetwork();
       chainId = `0x${network.chainId.toString(16)}`;
-      if (contract.status === 'pending' && !contract.escrowAddress && employerWallet) {
+      if (FUNDABLE_STATUSES.has(contract.status) && !contract.escrowAddress && employerWallet) {
         const { findExistingOnChainEscrowDeployment } = await import('../services/escrow-bytecode-validator.js');
         existingDeployment = await findExistingOnChainEscrowDeployment(
           provider,
@@ -486,19 +523,29 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateAppwriteDoc
     return;
   }
 
+  if (['negotiating', 'awaiting_signatures'].includes(contract.status)) {
+    sendErrorResponse(res, 409, 'NOT_FUNDABLE', 'Both parties must agree on terms and sign before funding', { requestId });
+    return;
+  }
+
+  if (fundingDeadlinePassed(contract) && !contract.escrowAddress) {
+    sendErrorResponse(res, 409, 'FUNDING_DEADLINE_PASSED', 'The funding deadline for this contract has passed', { requestId });
+    return;
+  }
+
   const walletResult = await getContractWalletAddresses(contractId);
   if (!walletResult.success) {
     sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
     return;
   }
 
-  const projectResult = await getProjectById(contract.projectId);
-  if (!projectResult.success) {
+  const fundingProject = await getFundingProject(contract);
+  if (!fundingProject) {
     sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', { requestId });
     return;
   }
 
-  const project = mapProjectFromEntity(projectResult.data);
+  const project = mapProjectFromEntity(fundingProject);
   const fundingPlan = buildEscrowMilestones(project, contract);
 
   const { ethers } = await import('ethers');
@@ -531,6 +578,7 @@ router.get('/:id/fund-info', authMiddleware, apiRateLimiter, validateAppwriteDoc
     abi: deploymentContext.FreelanceEscrowABI,
     bytecode: deploymentContext.FreelanceEscrowBytecode,
     chainId: deploymentContext.chainId,
+    ...(contract.fundingDeadline ? { fundingDeadline: contract.fundingDeadline } : {}),
     ...(deploymentContext.existingDeployment ? { existingDeployment: deploymentContext.existingDeployment } : {}),
   });
 }));

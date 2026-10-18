@@ -1,6 +1,6 @@
 # Proposals API
 
-The Proposals API enables freelancers to submit proposals for open projects and employers to review, accept, or reject them. Accepting a proposal automatically creates a contract and initiates blockchain escrow. All endpoints require a valid JWT Bearer token in the `Authorization` header.
+The Proposals API enables freelancers to submit proposals for open projects and employers to review, accept, or reject them. Accepting a proposal reserves a hiring slot and creates a contract in `negotiating`, where both parties agree on terms, sign, and the employer funds the escrow (see the [Contract API](contracts.md#negotiation-and-e-signature-endpoints)). All endpoints require a valid JWT Bearer token in the `Authorization` header.
 
 ## Table of Contents
 
@@ -134,7 +134,7 @@ List all proposals for a project. Only the project owner (employer) can access t
 
 ### POST /api/proposals/{id}/accept
 
-Accept a pending proposal. Creates a contract and attempts to create a blockchain agreement (best-effort). Updates the project status to `in_progress`.
+Accept a pending proposal. Creates a contract in `negotiating` and reserves one of the project's hiring slots. The project stays `open` until every slot has a funded contract.
 
 | | |
 | --- | --- |
@@ -152,7 +152,7 @@ Accept a pending proposal. Creates a contract and attempts to create a blockchai
 | Status | Description |
 | --- | --- |
 | 200 | `{ proposal: Proposal, contract: Contract }` |
-| 400 | Invalid UUID or proposal is not in `pending` status |
+| 400 | Invalid UUID, proposal is not in `pending` status, or all hiring slots are reserved (`FREELANCER_LIMIT_REACHED`) |
 | 401 | Missing or invalid token |
 | 403 | Caller is not the project owner |
 | 404 | Proposal not found |
@@ -160,12 +160,13 @@ Accept a pending proposal. Creates a contract and attempts to create a blockchai
 **Behavior**
 
 1. Validates proposal status is `pending`
-2. Verifies employer owns the associated project
+2. Verifies employer owns the associated project and a hiring slot is free (contracts that are negotiating, awaiting signatures, awaiting funding or active all hold a slot)
 3. Updates proposal status to `accepted`
-4. Creates a [Contract](#contract) linked to the proposal and project
-5. Attempts to create and sign a blockchain agreement (employer creates, freelancer auto-signs)
-6. Updates project status to `in_progress`
-7. Sends notification to the freelancer
+4. Creates a [Contract](#contract) in `negotiating` linked to the proposal and project, with the proposed rate as the minimum base amount
+5. Creates a round-1 offer from the project posting (milestones rescaled to the proposed rate plus any rush fee) that the freelancer can accept as-is or counter
+6. Sends a notification and email to the freelancer
+
+The remaining pending proposals are rejected automatically only after every hiring slot has a funded contract.
 
 ---
 
@@ -277,8 +278,8 @@ Created when a proposal is accepted.
 | `freelancerId` | string (UUID) | Freelancer |
 | `employerId` | string (UUID) | Employer |
 | `escrowAddress` | string | Blockchain escrow address (initially empty) |
-| `totalAmount` | number | Contract total from project budget |
-| `status` | string | `active`, `completed`, `disputed`, or `cancelled` |
+| `totalAmount` | number | Contract total: proposed rate plus rush fee until terms are negotiated |
+| `status` | string | `negotiating` after acceptance; see the [contract lifecycle](contracts.md#contract-status-lifecycle) |
 | `createdAt` | string (ISO 8601) | Creation timestamp |
 | `updatedAt` | string (ISO 8601) | Last update timestamp |
 
@@ -303,11 +304,11 @@ pending  -->  withdrawn  (freelancer withdraws)
 ```
 
 - `pending` -- initial state after submission
-- `accepted` -- employer accepted; contract created
+- `accepted` -- employer accepted; contract created in `negotiating`. If the contract is cancelled before funding (negotiation ended, cancelled, or funding deadline passed), the proposal becomes `rejected`, or `withdrawn` when the freelancer ended it, and the slot is released
 - `rejected` -- employer rejected
 - `withdrawn` -- freelancer withdrew
 
-All terminal states (`accepted`, `rejected`, `withdrawn`) are final.
+`rejected` and `withdrawn` are final.
 
 ## Error Codes
 

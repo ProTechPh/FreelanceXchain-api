@@ -136,6 +136,12 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendContractCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
+// Negotiation: accepting seeds a round-1 offer (exercised in contract-negotiation-service tests)
+const mockCreateSeedOffer = jest.fn<any>().mockResolvedValue({ id: 'seed-offer' });
+jest.unstable_mockModule(resolveModule('src/services/contract-negotiation-service.ts'), () => ({
+  createSeedOffer: mockCreateSeedOffer,
+}));
+
 const {
   submitProposal,
   getProposalById,
@@ -274,13 +280,19 @@ describe('Proposal Service - Property-Based Tests', () => {
       expect(result.data.contract.employerId).toBe(employerId);
     }
     
+    // Accepting starts negotiation: the contract is not active yet, the project
+    // stays open and the other applicants are only rejected once the slot is funded.
+    if (result.success) {
+      expect(result.data.contract.status).toBe('negotiating');
+      expect(mockCreateSeedOffer).toHaveBeenCalled();
+    }
     const updatedProject = projectStore.get(projectId) as any;
-    expect(updatedProject?.status).toBe('in_progress');
-    
+    expect(updatedProject?.status).toBe('open');
+
     const otherProposal1Updated = proposalStore.get(otherProposal1.id) as any;
     const otherProposal2Updated = proposalStore.get(otherProposal2.id) as any;
-    expect(otherProposal1Updated?.status).toBe('rejected');
-    expect(otherProposal2Updated?.status).toBe('rejected');
+    expect(otherProposal1Updated?.status).toBe('pending');
+    expect(otherProposal2Updated?.status).toBe('pending');
   });
 
   /**
@@ -601,7 +613,8 @@ describe('Proposal Service - Unit Tests', () => {
       
       // Refetch contract to get status after creation (pending until employer funds escrow)
       const updatedContractEntity = await mockContractRepo.getContractById(result.data.contract.id);
-      expect(updatedContractEntity?.status).toBe('pending');
+      expect(updatedContractEntity?.status).toBe('negotiating');
+      expect(updatedContractEntity?.milestone_source).toBe('contract');
     }
 
     // BLF-12.2: contract creation is audited with the employer as actor and freelancer as target
@@ -878,7 +891,7 @@ describe('Proposal Service - Coverage Tests', () => {
     }
   });
 
-  it('should automatically adjust project milestones and budget when proposed rate differs from milestone total', async () => {
+  it('keeps the project template unchanged when the proposed rate differs from the milestone total', async () => {
     const employerId = 'employer-123';
     const milestones = [createTestMilestone({ amount: 500 })];
     const project = createTestProject({
@@ -900,9 +913,11 @@ describe('Proposal Service - Coverage Tests', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.contract.baseAmount).toBe(1000);
+      // Per-freelancer terms are negotiated on the contract (seed offer), so the
+      // shared project template is never rescaled.
       const updatedProject = projectStore.get(project.id);
-      expect(updatedProject?.budget).toBe(1000);
-      expect(updatedProject?.milestones[0]?.amount).toBe(1000);
+      expect(updatedProject?.budget).toBe(project.budget);
+      expect(updatedProject?.milestones[0]?.amount).toBe(500);
     }
   });
 
@@ -924,6 +939,10 @@ describe('Proposal Service - Coverage Tests', () => {
       proposed_rate: 1000,
     });
     proposalStore.set(acceptedProposal.id, acceptedProposal);
+    // The slot is held by a contract still in negotiation.
+    contractStore.set('holding-contract', createTestContract({
+      id: 'holding-contract', project_id: project.id, proposal_id: acceptedProposal.id, status: 'negotiating',
+    }));
 
     const proposal = createTestProposal({
       project_id: project.id,
@@ -1004,7 +1023,24 @@ describe('Proposal Service - Coverage Tests', () => {
     
   });
 
-  it('should return UPDATE_FAILED when contract creation returns null (line 382)', async () => {
+  it('reverts the proposal to pending when contract creation throws (e.g. schema not applied)', async () => {
+    const employerId = 'employer-throw';
+    const project = createTestProject({ employer_id: employerId, status: 'open', freelancer_limit: 1 });
+    projectStore.set(project.id, project);
+    const proposal = createTestProposal({ project_id: project.id, freelancer_id: 'freelancer-throw', status: 'pending', proposed_rate: 0.15 });
+    proposalStore.set(proposal.id, proposal);
+
+    originalMocks['mockContractRepo.create'] = mockContractRepo.create;
+    mockContractRepo.create = jest.fn<any>().mockRejectedValue(new Error('Invalid document structure: Unknown attribute: "milestone_source"'));
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('CONTRACT_CREATION_FAILED');
+    expect((proposalStore.get(proposal.id) as any).status).toBe('pending');
+  });
+
+  it('should fail and keep the proposal pending when contract creation returns null (line 382)', async () => {
     const employerId = 'employer-123';
     const freelancerId = 'freelancer-123';
     const milestones = [createTestMilestone({ amount: 1000 })];
@@ -1031,9 +1067,9 @@ describe('Proposal Service - Coverage Tests', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.code).toBe('UPDATE_FAILED');
+      expect(result.error.code).toBe('CONTRACT_CREATION_FAILED');
     }
-    
+    expect((proposalStore.get(proposal.id) as any).status).toBe('pending');
   });
 
   it('should handle blockchain initialization failure gracefully (line 442)', async () => {
@@ -1126,7 +1162,7 @@ describe('Proposal Service - Coverage Tests', () => {
     expect(otherAfter?.status).toBe('pending');
   });
 
-  it('should reject other pending proposals once the final slot is filled', async () => {
+  it('keeps other pending proposals open until the reserved slot is funded', async () => {
     const employerId = 'employer-slots-full';
     const milestones = [createTestMilestone({ id: 'ms-sf-1', title: 'M1', amount: 800, status: 'pending' })];
     const project = createTestProject({
@@ -1150,9 +1186,10 @@ describe('Proposal Service - Coverage Tests', () => {
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    // Limit 1 reached → the remaining pending proposal is rejected
+    // The slot is reserved but not funded: negotiation may still fail, so the
+    // other applicant stays pending (rejected later by onContractActivated).
     const otherAfter = proposalStore.get(otherProposal.id) as any;
-    expect(otherAfter?.status).toBe('rejected');
+    expect(otherAfter?.status).toBe('pending');
   });
 
   // --- rejectProposal error paths ---
@@ -1436,7 +1473,7 @@ describe('Proposal Service - Additional Branch Coverage', () => {
     }
   });
 
-  it('folds the rush fee into project milestone amounts at contract creation', async () => {
+  it('includes the rush fee in the contract total without rescaling the project template', async () => {
     const employerId = 'employer-rush-scale';
     const freelancerId = 'freelancer-rush-scale';
 
@@ -1478,12 +1515,14 @@ describe('Proposal Service - Additional Branch Coverage', () => {
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    // Milestones must be scaled to base + fee (1300) so the escrow deployed from
-    // them passes validateEscrowAmounts and the read model matches the ledger.
+    if (result.success) {
+      expect(result.data.contract.rushFee).toBe(300);
+      expect(result.data.contract.totalAmount).toBe(1300);
+    }
+    // The seed offer carries the fee-inclusive milestones; the template is untouched.
     const storedProject = projectStore.get(project.id) as any;
-    expect(storedProject.milestones[0].amount).toBe(780); // 600 * 1.3
-    expect(storedProject.milestones[1].amount).toBe(520); // remainder: 1300 - 780
-    expect(storedProject.milestones[0].amount + storedProject.milestones[1].amount).toBe(1300);
+    expect(storedProject.milestones[0].amount).toBe(600);
+    expect(storedProject.milestones[1].amount).toBe(400);
   });
 
   it('rush fee defaults and isRush false via acceptProposal (lines 308-310, 415-418)', async () => {
@@ -1661,9 +1700,12 @@ describe('Proposal Service - Additional Branch Coverage', () => {
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    // freelancer_limit defaults to 1 via mapper, limit reached with 1 acceptance
-    const updatedProject = projectStore.get(project.id) as any;
-    expect(updatedProject?.status).toBe('in_progress');
+    // freelancer_limit defaults to 1: a second accept is refused while the slot is reserved
+    const second = createTestProposal({ project_id: project.id, freelancer_id: 'freelancer-fl-2', proposed_rate: 600, status: 'pending' });
+    proposalStore.set(second.id, second);
+    const secondResult = await acceptProposal(second.id, employerId);
+    expect(secondResult.success).toBe(false);
+    if (!secondResult.success) expect(secondResult.error.code).toBe('FREELANCER_LIMIT_REACHED');
   });
 });
 
@@ -1930,10 +1972,9 @@ describe('Proposal Service - Integration Coverage', () => {
     const result = await acceptProposal(proposal.id, employerId);
 
     expect(result.success).toBe(true);
-    // With freelancerLimit defaulting to 1 and 1 accepted proposal,
-    // project should transition to in_progress
+    // The project only moves to in_progress once the slot is funded.
     const updatedProject = projectStore.get(project.id) as any;
-    expect(updatedProject?.status).toBe('in_progress');
+    expect(updatedProject?.status).toBe('open');
   });
   it('acceptProposal catches error when persistAuditEntry fails (line 478)', async () => {
     const employerId = 'employer-audit-fail';
@@ -2050,6 +2091,9 @@ describe('proposal-service.ts - Remaining coverage gaps', () => {
         status: 'accepted',
       });
       proposalStore.set(accepted.id, accepted);
+      contractStore.set(`c-${freelancerId}`, createTestContract({
+        id: `c-${freelancerId}`, project_id: project.id, proposal_id: accepted.id, status: 'awaiting_funding',
+      }));
     }
 
     const proposal = createTestProposal({
@@ -2071,7 +2115,7 @@ describe('proposal-service.ts - Remaining coverage gaps', () => {
 
   // ST95 / line 374: updateProjectAfterAcceptance returns early when the
   // project vanished between validation and the post-acceptance update.
-  it('acceptProposal succeeds but skips the project update when the project disappears', async () => {
+  it('acceptProposal succeeds without touching the project after validation', async () => {
     const employerId = 'employer-vanished';
     const freelancerId = 'freelancer-vanished';
 
@@ -2111,9 +2155,9 @@ describe('proposal-service.ts - Remaining coverage gaps', () => {
       const result = await acceptProposal(proposal.id, employerId);
 
       expect(result.success).toBe(true);
-      // The post-acceptance update bailed out, so the status was never advanced.
+      // Accepting no longer advances the project; it only reads it for validation.
       expect((projectStore.get(project.id) as any)?.status).toBe('open');
-      expect(calls).toBeGreaterThanOrEqual(2);
+      expect(calls).toBeGreaterThanOrEqual(1);
     } finally {
       mockProjectRepo.findProjectById.mockImplementation(
         originalFind ?? (async (id: string) => projectStore.get(id) ?? null),
@@ -2176,7 +2220,7 @@ describe('proposal-service.ts - Remaining coverage gaps', () => {
       expect(sendContractCreatedEmail).toHaveBeenCalledWith(
         'test@example.com',
         expect.objectContaining({
-          contractUrl: expect.stringMatching(/^http:\/\/localhost:3000\/contracts\//),
+          contractUrl: expect.stringMatching(/^http:\/\/localhost:3000\/dashboard\/freelancer\/contracts\//),
         }),
       );
     } finally {

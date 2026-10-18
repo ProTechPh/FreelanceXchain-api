@@ -64,7 +64,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Hiring Flow: Negotiate → E-Sign → Fund (2026-10-19)
+
+- **Negotiation**: Accepting a proposal now creates the contract in `negotiating` and reserves a hiring slot. Both parties exchange structured offers (milestones, additional pay, deadline, rush fee); the freelancer's proposed rate is the minimum base amount. New endpoints: `GET /api/contracts/{id}/negotiation`, `POST /api/contracts/{id}/offers`, `POST /api/contracts/{id}/offers/{offerId}/{accept|decline|withdraw}`, `POST /api/contracts/{id}/negotiation/reopen`
+- **Per-contract milestones**: Accepted terms are stored on the contract (`milestone_source = 'contract'`), so freelancers on a multi-slot project no longer share milestone state. Older contracts keep using the project's milestones
+- **Dual e-signature**: Drawn or typed signature plus an EIP-712 wallet signature over the canonical terms; the freelancer signs first. New endpoints: `GET /api/contracts/{id}/signing-payload`, `GET|POST /api/contracts/{id}/signatures`. New collections `contract_offers` and `contract_signatures`
+- **Funding deadline**: After both signatures the contract is `awaiting_funding` for `CONTRACT_FUNDING_DEADLINE_HOURS` (default 72); expired contracts are cancelled and the slot released (cron every 5 minutes plus a check on read), with a reminder 24 hours before the deadline
+- **Slot release**: Cancelling any unfunded contract moves the proposal out of `accepted`, so the slot can be filled again
+
 ### Changed
+
+- `POST /api/contracts/{id}/fund` accepts `awaiting_funding` (and legacy `pending`) contracts and returns `409 FUNDING_DEADLINE_PASSED` after the deadline; `fund-info` returns `409 NOT_FUNDABLE` before signing
+- Remaining pending proposals are rejected once every hiring slot has a funded contract, instead of on acceptance
+- Rush upgrades are not available on negotiated contracts, because the rush fee is part of the signed terms
 
 #### Documentation Consistency Fixes (2026-03-22)
 

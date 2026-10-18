@@ -2,20 +2,18 @@ import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper.js';
 import { Contract, Project, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
 import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
 import { contractRepository, type ContractEntity } from '../repositories/contract-repository.js';
-import { projectRepository, type MilestoneEntity, type MilestoneStatus, type ProjectEntity } from '../repositories/project-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
+import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 
-import { createAgreementOnBlockchain } from './agreement-contract.js';
+import { createSeedOffer } from './contract-negotiation-service.js';
 import { FileAttachment, validateAttachments, validateStoredAttachmentOwnership } from '../utils/file-validator.js';
 import { BUCKETS } from '../config/appwrite.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
-import { rescaleMilestoneAmounts } from '../utils/milestone-amounts.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendProposalAcceptedEmail, sendContractCreatedEmail } from './email-delivery-service.js';
 
@@ -296,34 +294,14 @@ async function validateProposalAcceptance(
   const totalAmount = proposalRate + rushFee;
 
   const freelancerLimit = projectEntity.freelancer_limit != null ? projectEntity.freelancer_limit : 1;
-  const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
-  if (preCheckAcceptedCount >= freelancerLimit) {
+  // Slots are reserved from acceptance: contracts still negotiating, signing or
+  // awaiting funding hold a slot until they are cancelled or expire.
+  const reservedSlots = await contractRepository.countReservedSlots(proposalEntity.project_id);
+  if (reservedSlots >= freelancerLimit) {
     return { error: errorResult('FREELANCER_LIMIT_REACHED', `This project has already filled all ${freelancerLimit} freelancer slot${freelancerLimit === 1 ? '' : 's'} and is no longer accepting proposals.`) };
   }
 
   return { proposal: proposalEntity, project, projectEntity, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage };
-}
-
-/**
- * Reject other pending proposals for the same project when all freelancer
- * slots are now filled. Multi-freelancer projects (freelancerLimit > 1) keep
- * the remaining proposals pending so the employer can fill the other slots.
- * Non-critical: logs errors and continues.
- */
-async function rejectOtherProposals(projectId: string, acceptedProposalId: string, maxFreelancers: number): Promise<void> {
-  try {
-    const otherProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
-    const acceptedCount = otherProposals.items.filter(p => p.status === 'accepted').length;
-    if (acceptedCount < maxFreelancers) {
-      // More slots remain — leave other pending proposals open
-      return;
-    }
-    const toReject = otherProposals.items.filter(p => p.id !== acceptedProposalId && p.status === 'pending');
-    await Promise.all(toReject.map(p => proposalRepository.updateProposal(p.id, { status: 'rejected' })));
-  } catch (error) {
-    logger.error('Failed to reject other pending proposals', { error });
-    // Continue - this is non-critical
-  }
 }
 
 /**
@@ -360,57 +338,42 @@ async function createContractFromAcceptedProposal(
     return { error: errorResult('UPDATE_FAILED', 'Failed to accept proposal or proposal already accepted') };
   }
 
-  const contractEntity = await contractRepository.create({
-    id: generateId(),
-    project_id: project.id,
-    proposal_id: proposalId,
-    freelancer_id: proposalEntity.freelancer_id,
-    employer_id: employerId,
-    base_amount: proposalRate,
-    rush_fee: rushFee,
-    total_amount: totalAmount,
-    status: 'pending',
-    escrow_address: '',
-  });
+  let contractEntity: ContractEntity | null = null;
+  let createError: unknown = null;
+  try {
+    contractEntity = await contractRepository.create({
+      id: generateId(),
+      project_id: project.id,
+      proposal_id: proposalId,
+      freelancer_id: proposalEntity.freelancer_id,
+      employer_id: employerId,
+      base_amount: proposalRate,
+      rush_fee: rushFee,
+      total_amount: totalAmount,
+      status: 'negotiating',
+      milestone_source: 'contract',
+      escrow_address: '',
+    });
+  } catch (error) {
+    createError = error;
+  }
 
   if (!contractEntity) {
-    return { error: errorResult('UPDATE_FAILED', 'Proposal accepted but no contract was created') };
+    // Compensate: never leave a proposal 'accepted' without its contract (it would
+    // hold a hiring slot that no contract can ever release).
+    logger.error('Contract creation failed after accepting proposal; reverting proposal to pending', {
+      proposalId,
+      error: createError instanceof Error ? createError.message : createError,
+    });
+    try {
+      await proposalRepository.updateProposal(proposalId, { status: 'pending' });
+    } catch (revertError) {
+      logger.error('CRITICAL: failed to revert proposal after contract creation failure', { proposalId, error: revertError });
+    }
+    return { error: errorResult('CONTRACT_CREATION_FAILED', 'The contract could not be created, so the proposal was left pending. Please try again.') };
   }
 
   return { updatedProposalEntity, contractEntity };
-}
-
-/**
- * Updates project status after proposal acceptance.
- * Transitions project to in_progress when all freelancer slots are filled,
- * and activates the first milestone.
- */
-async function updateProjectAfterAcceptance(
-  projectId: string,
-  _proposalId: string,
-): Promise<void> {
-  const projectEntity = await projectRepository.findProjectById(projectId);
-  if (!projectEntity) return;
-
-  const project = mapProjectFromEntity(projectEntity);
-  /* istanbul ignore next -- mapProjectFromEntity always yields a numeric freelancerLimit */
-  const maxFreelancers = project.freelancerLimit ?? 1;
-  const acceptedProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
-  const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
-  const limitReached = acceptedCount >= maxFreelancers;
-
-  if (limitReached && project.milestones && project.milestones.length > 0) {
-    const updatedMilestones: MilestoneEntity[] = project.milestones.map((milestone, index): MilestoneEntity => ({
-      ...milestone,
-      status: (index === 0 ? 'in_progress' : milestone.status) as MilestoneStatus,
-      due_date: milestone.dueDate,
-    }));
-
-    await projectRepository.updateProject(projectId, {
-      status: 'in_progress',
-      milestones: updatedMilestones,
-    });
-  }
 }
 
 /**
@@ -428,7 +391,7 @@ async function notifyProposalAccepted(
       user_id: proposal.freelancer_id,
       type: 'proposal_accepted',
       title: 'Proposal Accepted',
-      message: `Your proposal for "${project.title}" has been accepted!`,
+      message: `Your proposal for "${project.title}" has been accepted! Review and negotiate the contract terms.`,
       data: {
         proposalId: proposal.id,
         projectId: project.id,
@@ -454,7 +417,7 @@ async function notifyProposalAccepted(
     sendContractCreatedEmail(recipient.email, {
       recipientName: recipient.name,
       projectTitle: project.title,
-      contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${contract.id}`,
+      contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/dashboard/freelancer/contracts/${contract.id}`,
     })
   );
 }
@@ -500,101 +463,11 @@ async function auditProposalAcceptance(input: AuditProposalAcceptanceInput): Pro
   }
 }
 
-/**
- * Deploy blockchain agreement and initialize escrow.
- * Non-critical: logs errors and continues on blockchain failures.
- */
-type InitializeEscrowForContractInput = {
-  contract: Contract;
-  project: Project;
-  proposalEntity: ProposalEntity;
-  totalAmount: number;
-  rushFee: number;
-  isRush: boolean;
-  rushFeePercentage: number;
-};
-
-async function applyProposalMilestoneScaling(
-  project: Project,
-  proposalRate: number,
-  rushFee: number
-): Promise<Project> {
-  /* istanbul ignore next -- validateProposalAcceptance rejects empty-milestone projects first */
-  if (project.milestones.length === 0) return project;
-
-  const currentTotal = project.milestones.reduce((sum, m) => sum + m.amount, 0);
-  const targetTotal = proposalRate + rushFee;
-
-  let scaledAmounts: number[];
-  if (project.milestones.length === 1) {
-    scaledAmounts = [Math.round(targetTotal * 100) / 100];
-  } else {
-    scaledAmounts = rescaleMilestoneAmounts(
-      project.milestones.map(m => m.amount),
-      currentTotal,
-      targetTotal - currentTotal,
-    );
-  }
-
-  /* istanbul ignore next -- rescaleMilestoneAmounts returns one scaled amount per milestone */
-  const scaledMilestones = project.milestones.map((m, i) => ({
-    ...m,
-    amount: scaledAmounts[i] ?? m.amount,
-  }));
-  /* istanbul ignore next -- rescaleMilestoneAmounts returns one scaled amount per milestone */
-  const scaledEntityMilestones: MilestoneEntity[] = project.milestones.map((m, i) => ({
-    ...m,
-    due_date: m.dueDate,
-    amount: scaledAmounts[i] ?? m.amount,
-  }));
-  /* istanbul ignore next -- mapProjectFromEntity always yields a numeric freelancerLimit */
-  if ((project.freelancerLimit ?? 1) <= 1) {
-    await projectRepository.updateProject(project.id, {
-      budget: proposalRate,
-      milestones: scaledEntityMilestones,
-    });
-  }
-  return { ...project, budget: proposalRate, milestones: scaledMilestones };
-}
-
-async function initializeEscrowForContract(
-  input: InitializeEscrowForContractInput
-): Promise<void> {
-  const { contract, project, proposalEntity, totalAmount, rushFee, isRush, rushFeePercentage } = input;
-  try {
-    const employer = await userRepository.getUserById(project.employerId);
-    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
-
-    if (employer?.wallet_address && freelancer?.wallet_address) {
-      /* istanbul ignore next */
-      const description = project.description != null ? project.description : '';
-      /* istanbul ignore next */
-      const deadline = project.deadline != null ? project.deadline : '';
-      await createAgreementOnBlockchain({
-        contractId: contract.id,
-        employerWallet: employer.wallet_address,
-        freelancerWallet: freelancer.wallet_address,
-        totalAmount: totalAmount,
-        milestoneCount: project.milestones.length,
-        terms: {
-          projectTitle: project.title,
-          description,
-          milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
-          deadline,
-          ...(isRush ? { isRush: true, rushFee, rushFeePercentage } : {}),
-        },
-      });
-    }
-  } catch (error) {
-    logger.error('Failed to create blockchain agreement for contract', { error });
-  }
-}
-
-// Accept a proposal - creates a contract
-// - Checks if another proposal was already accepted (prevents race condition)
-// - Uses freelancer's proposedRate for contract amount (not project.budget)
-// - Rejects all other pending proposals for the same project
-// - Checks that project has milestones before creating contract
+// Accept a proposal - creates a contract in `negotiating`
+// - Serialized per project so concurrent accepts cannot exceed the freelancer limit
+// - Reserves a slot; the remaining pending proposals are only rejected once every
+//   slot has a funded (active) contract (see contract-lifecycle-service)
+// - Seeds a round-1 offer from the project template and the proposed rate
 export async function acceptProposal(
   proposalId: string,
   employerId: string
@@ -615,21 +488,15 @@ export async function acceptProposal(
     const validated = await validateProposalAcceptance(proposalId, employerId, freshProposal);
     if ('error' in validated) return validated.error;
 
-    const { proposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
+    const { proposal, project, projectEntity, proposalRate, totalAmount, rushFee, isRush } = validated;
 
-    // Fold negotiated rates and rush fees into project milestones before contract creation so
-    // that the contract escrow and smart contract agree on milestone totals.
-    const projectMilestones = project.milestones || [];
-    const milestoneTotal = projectMilestones.reduce((sum, m) => sum + m.amount, 0);
-    const needsScaling = projectMilestones.length > 0 && (Math.abs(milestoneTotal - proposalRate) > 0.01 || (isRush && rushFee > 0));
-    const activeProject = needsScaling
-      ? await applyProposalMilestoneScaling(project, proposalRate, isRush ? rushFee : 0)
-      : project;
-
+    // Accepting starts negotiation: the contract holds a slot but is not active.
+    // Terms (milestones, extra pay, deadline, rush fee) are agreed per freelancer
+    // on the contract, so the shared project template is never rescaled here.
     const contractResult = await createContractFromAcceptedProposal({
       proposalId,
       proposalEntity: proposal,
-      project: activeProject,
+      project,
       employerId,
       proposalRate,
       rushFee,
@@ -640,39 +507,8 @@ export async function acceptProposal(
     const { updatedProposalEntity, contractEntity } = contractResult;
     const contract = mapContractFromEntity(contractEntity);
 
-    // BLF-6.2: Only reject the remaining pending proposals once the project's
-    // freelancer slots are full; otherwise multi-freelancer projects could never
-    // fill their other slots.
-    /* istanbul ignore next -- mapProjectFromEntity always yields a numeric freelancerLimit */
-    await rejectOtherProposals(project.id, proposalId, project.freelancerLimit ?? 1);
-
-    try {
-      await initializeEscrowForContract({
-        contract: contract,
-        project: activeProject,
-        proposalEntity: proposal,
-        totalAmount,
-        rushFee,
-        isRush,
-        rushFeePercentage,
-      });
-    } catch (escrowError) {
-      /* istanbul ignore next */
-      logger.error('Escrow initialization failed after contract creation — contract remains pending', {
-        contractId: contract.id,
-        error: escrowError,
-      });
-    }
-
-    try {
-      await updateProjectAfterAcceptance(project.id, proposalId);
-    } catch (updateError) {
-      logger.error('Failed to update project status after acceptance � proposal accepted but project status may be stale', {
-        projectId: project.id,
-        proposalId: proposal.id,
-        error: updateError,
-      });
-    }
+    // Round-1 offer from the posted terms so the freelancer can accept in one step.
+    await createSeedOffer(contractEntity, projectEntity, proposal);
 
     void notifyProposalAccepted(proposal, contract, project);
 

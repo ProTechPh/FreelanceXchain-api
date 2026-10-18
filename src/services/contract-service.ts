@@ -8,6 +8,8 @@ import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { CONTRACT_TRANSITIONS, UNFUNDED_STATUSES } from './contract-state-machine.js';
+import { readContractMilestones, usesContractMilestones } from './contract-milestone-store.js';
 
 type ContractServiceResult<T> = ServiceResult<T>;
 
@@ -63,6 +65,8 @@ async function withProjectMilestones(entities: ContractEntity[]): Promise<Contra
     const project = projectMap.get(entity.project_id);
     const freelancerUser = userMap.get(entity.freelancer_id);
     const employerUser = userMap.get(entity.employer_id);
+    // Negotiated contracts carry their own milestones; legacy ones share the project's.
+    const sourceMilestones = usesContractMilestones(entity) ? readContractMilestones(entity) : (project?.milestones || []);
 
     return {
       ...entity,
@@ -72,7 +76,7 @@ async function withProjectMilestones(entities: ContractEntity[]): Promise<Contra
         title: project.title,
         description: project.description,
         deadline: project.deadline,
-        milestones: (project.milestones || []).map((m: any) => entity.status === 'completed' && ['pending', 'submitted', 'in_progress'].includes(m.status) ? { ...m, status: 'completed' } : m),
+        milestones: sourceMilestones.map((m: any) => entity.status === 'completed' && ['pending', 'submitted', 'in_progress'].includes(m.status) ? { ...m, status: 'completed' } : m),
       } : (entity as any).project,
       freelancer: (entity as any).freelancer || (freelancerUser ? {
         id: freelancerUser.id,
@@ -91,9 +95,16 @@ async function withProjectMilestones(entities: ContractEntity[]): Promise<Contra
 }
 
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
-  const entity = await contractRepository.getContractByIdWithRelations(contractId);
+  let entity = await contractRepository.getContractByIdWithRelations(contractId);
   if (!entity) {
     return errorResult('NOT_FOUND', 'Contract not found');
+  }
+  // Lazy funding-deadline expiry so a stale awaiting_funding never reaches the client.
+  if (entity.status === 'awaiting_funding' && entity.funding_deadline) {
+    const { expireIfOverdue } = await import('./contract-lifecycle-service.js');
+    if (await expireIfOverdue(entity)) {
+      entity = (await contractRepository.getContractByIdWithRelations(contractId)) ?? entity;
+    }
   }
   // Cast to avoid exactOptionalPropertyTypes mismatch between ContractWithRelations and ContractRelations
   return successResult(mapContractFromEntity(entity as any));
@@ -153,30 +164,10 @@ export async function updateContractStatus(
   const isEmployer = entity.employer_id === userId;
   const isFreelancer = entity.freelancer_id === userId;
 
-  const validTransitions: Record<ContractStatus, { status: ContractStatus; allowedRoles: ('employer' | 'freelancer' | 'admin')[] }[]> = {
-    pending: [
-      { status: 'active', allowedRoles: ['employer'] },
-      { status: 'cancelled', allowedRoles: ['employer', 'freelancer'] },
-    ],
-    active: [
-      { status: 'completed', allowedRoles: ['employer'] },
-      { status: 'disputed', allowedRoles: ['employer', 'freelancer'] },
-    ],
-    disputed: [
-      { status: 'resolved', allowedRoles: ['admin'] },
-      { status: 'cancelled', allowedRoles: ['admin'] },
-    ],
-    completed: [],
-    cancelled: [],
-    resolved: [
-      { status: 'active', allowedRoles: ['admin'] },
-      { status: 'completed', allowedRoles: ['employer'] },
-      { status: 'cancelled', allowedRoles: ['admin'] },
-    ],
-  };
-
-  const allowed = validTransitions[entity.status];
-  const transition = allowed.find(t => t.status === status);
+  // 'system' transitions (offer accepted, signature verified, deadline expired)
+  // only happen as side effects of their own endpoints, never through here.
+  const allowed = CONTRACT_TRANSITIONS[entity.status] ?? [];
+  const transition = allowed.find(t => t.status === status && t.allowedRoles.some(r => r !== 'system'));
   if (!transition) {
     return errorResult('INVALID_STATUS_TRANSITION', `Cannot transition from "${entity.status}" to "${status}"`);
   }
@@ -242,8 +233,9 @@ export async function getContractByProposalId(
 }
 
 /**
- * Cancel a pending contract
- * Only allowed for contracts that haven't been funded yet (status = 'pending')
+ * Cancel a contract that has not been funded yet (pending, negotiating,
+ * awaiting signatures or awaiting funding). Negotiation-flow contracts release
+ * their project slot so the employer can hire someone else.
  */
 export async function cancelPendingContract(contractId: string, userId: string): Promise<{ success: boolean; error?: ServiceError }> {
   // BLF-5.4: Serialize concurrent cancel requests to prevent duplicate side effects
@@ -254,12 +246,23 @@ export async function cancelPendingContract(contractId: string, userId: string):
     return errorResult('NOT_FOUND', 'Contract not found');
   }
 
-  if (contract.status !== 'pending') {
-    return errorResult('INVALID_STATUS', `This contract can only be cancelled while it is pending. Its current status is: ${contract.status}.`);
+  if (!UNFUNDED_STATUSES.includes(contract.status)) {
+    return errorResult('INVALID_STATUS', `This contract can only be cancelled before it is funded. Its current status is: ${contract.status}.`);
   }
 
   if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
     return errorResult('UNAUTHORIZED', 'Only the employer or freelancer can cancel this contract');
+  }
+
+  if (contract.status !== 'pending') {
+    const { releaseContractSlot } = await import('./contract-lifecycle-service.js');
+    const released = await releaseContractSlot({
+      contractId,
+      actorId: userId,
+      actor: contract.employer_id === userId ? 'employer' : 'freelancer',
+      reason: 'cancelled_by_party',
+    });
+    return released.success ? { success: true } : { success: false, error: released.error };
   }
 
   const updated = await contractRepository.updateContract(contractId, { status: 'cancelled' });
@@ -267,6 +270,16 @@ export async function cancelPendingContract(contractId: string, userId: string):
   if (!updated) {
     logger.error('Failed to cancel pending contract');
     return errorResult('UPDATE_FAILED', 'Failed to cancel contract');
+  }
+
+  // Free the slot: slots are counted from accepted proposals / live contracts.
+  try {
+    const { proposalRepository } = await import('../repositories/proposal-repository.js');
+    await proposalRepository.updateProposal(contract.proposal_id, {
+      status: contract.freelancer_id === userId ? 'withdrawn' : 'rejected',
+    });
+  } catch (error) {
+    logger.error('Failed to release proposal after cancelling pending contract', { contractId, error });
   }
 
   // BLF-12.2: durable audit trail — contract cancellations are recorded with the

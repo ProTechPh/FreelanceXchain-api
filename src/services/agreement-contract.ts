@@ -39,7 +39,15 @@ type CreateAgreementInput = {
     rushFee?: number;
     rushFeePercentage?: number;
   };
+  /** Use this hash instead of hashing `terms` (the EIP-712 terms hash in the negotiation flow). */
+  termsHash?: string;
+  /** Legacy behaviour: the employer is treated as signed on creation. Defaults to true. */
+  autoSignEmployer?: boolean;
 };
+
+function sameWallet(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
 
 // Contract address (simulated)
 const AGREEMENT_CONTRACT_ADDRESS = generateWalletAddress();
@@ -79,7 +87,7 @@ export async function createAgreementOnBlockchain(
   input: CreateAgreementInput
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(input.contractId);
-  const termsHash = generateTermsHash(input.terms);
+  const termsHash = input.termsHash ?? generateTermsHash(input.terms);
 
   const existing = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
@@ -115,7 +123,8 @@ export async function createAgreementOnBlockchain(
     totalAmount: input.totalAmount,
     milestoneCount: input.milestoneCount,
     status: 'pending',
-    employerSignedAt: now, // Employer signs on creation
+    // Legacy: employer signs on creation. The negotiation flow records real signatures instead.
+    employerSignedAt: input.autoSignEmployer === false ? null : now,
     freelancerSignedAt: null,
     createdAt: now,
     transactionHash: confirmed.hash!,
@@ -165,7 +174,7 @@ export async function signAgreement(
   if (!entity) throw new Error('Agreement not found');
   const agreement = mapAgreementFromEntity(entity);
   if (agreement.status !== 'pending') throw new Error('Agreement not pending');
-  if (signerWallet !== agreement.employerWallet && signerWallet !== agreement.freelancerWallet) {
+  if (!sameWallet(signerWallet, agreement.employerWallet) && !sameWallet(signerWallet, agreement.freelancerWallet)) {
     throw new Error('Not a party to this agreement');
   }
 
@@ -186,9 +195,9 @@ export async function signAgreement(
   let employerSignedAt = agreement.employerSignedAt;
   let freelancerSignedAt = agreement.freelancerSignedAt;
 
-  if (signerWallet === agreement.employerWallet && !employerSignedAt) {
+  if (sameWallet(signerWallet, agreement.employerWallet) && !employerSignedAt) {
     employerSignedAt = now;
-  } else if (signerWallet === agreement.freelancerWallet && !freelancerSignedAt) {
+  } else if (sameWallet(signerWallet, agreement.freelancerWallet) && !freelancerSignedAt) {
     freelancerSignedAt = now;
   }
 
@@ -334,6 +343,51 @@ export async function disputeAgreement(
       timestamp: now,
     },
   };
+}
+
+type LockAgreementTermsInput = {
+  contractId: string;
+  employerWallet: string;
+  freelancerWallet: string;
+  totalAmount: number;
+  milestoneCount: number;
+  termsHash: string;
+  terms: CreateAgreementInput['terms'];
+};
+
+/**
+ * Record (or re-record after renegotiation) the locked terms of a contract.
+ * Nobody is marked signed: signatures are added by signAgreement as each party
+ * signs. An existing pending/cancelled agreement is reset in place because the
+ * agreement id is derived from the contract id and cannot be recreated.
+ */
+export async function lockAgreementTerms(input: LockAgreementTermsInput): Promise<void> {
+  const contractIdHash = generateContractIdHash(input.contractId);
+  const existing = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
+  if (!existing) {
+    await createAgreementOnBlockchain({ ...input, autoSignEmployer: false });
+    return;
+  }
+  if (existing.status !== 'pending' && existing.status !== 'cancelled') {
+    throw new Error(`Agreement is ${existing.status}; terms can no longer change`);
+  }
+  await blockchainAgreementRepository.updateAgreement(existing.id, {
+    terms_hash: input.termsHash,
+    employer_wallet: input.employerWallet,
+    freelancer_wallet: input.freelancerWallet,
+    total_amount: input.totalAmount,
+    milestone_count: input.milestoneCount,
+    status: 'pending',
+    employer_signed_at: null,
+    freelancer_signed_at: null,
+  } as unknown as Partial<BlockchainAgreementEntity>);
+}
+
+/** Mark the agreement cancelled (contract cancelled before funding). No-op when absent. */
+export async function cancelAgreement(contractId: string): Promise<void> {
+  const entity = await blockchainAgreementRepository.findByContractIdHash(generateContractIdHash(contractId));
+  if (!entity || entity.status === 'cancelled' || entity.status === 'completed') return;
+  await blockchainAgreementRepository.updateAgreement(entity.id, { status: 'cancelled' });
 }
 
 export async function getAgreementFromBlockchain(contractId: string): Promise<BlockchainAgreement | null> {

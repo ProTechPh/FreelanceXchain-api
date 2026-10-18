@@ -82,7 +82,19 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => v || 20,
   clampOffset: (v: any) => v || 0,
+  parseField: (v: any, f: any) => (v == null ? f : typeof v === 'string' ? JSON.parse(v) : v),
   safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
+}));
+
+const mockOnContractActivated = jest.fn<any>().mockResolvedValue(undefined);
+jest.unstable_mockModule(resolveModule('src/services/contract-lifecycle-service.ts'), () => ({
+  onContractActivated: mockOnContractActivated,
+}));
+
+const mockLoadMilestoneProject = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/services/contract-milestone-store.ts'), () => ({
+  usesContractMilestones: (c: any) => (c?.milestone_source ?? c?.milestoneSource) === 'contract',
+  loadMilestoneProject: mockLoadMilestoneProject,
 }));
 
 const contractRouter = (await import('../../routes/contract-routes.js')).default;
@@ -866,6 +878,7 @@ describe('contract-routes - ?? nullish fallback branches', () => {
     jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
       clampLimit: (v: any) => v || 20,
       clampOffset: (v: any) => v || 0,
+      parseField: (v: any, f: any) => (v == null ? f : typeof v === 'string' ? JSON.parse(v) : v),
     }));
     jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
       getContractById: mockGetContractById,
@@ -1029,6 +1042,7 @@ describe('contract-routes - remaining branch coverage', () => {
     jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
       clampLimit: (v: any) => v || 20,
       clampOffset: (v: any) => v || 0,
+      parseField: (v: any, f: any) => (v == null ? f : typeof v === 'string' ? JSON.parse(v) : v),
     }));
     jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
       getContractById: mockGetContractById,
@@ -1641,6 +1655,7 @@ describe('contract-routes.ts - Remaining coverage gaps', () => {
     jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
       clampLimit: (v: any) => v || 20,
       clampOffset: (v: any) => v || 0,
+      parseField: (v: any, f: any) => (v == null ? f : typeof v === 'string' ? JSON.parse(v) : v),
     }));
     jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
       getContractById: mockGetContractById,
@@ -1803,5 +1818,74 @@ describe('contract-routes.ts - Remaining coverage gaps', () => {
     expect(res.status).toBe(200);
     expect(mockGetUserById).not.toHaveBeenCalled();
     expect(mockWithdrawFromEscrow).toHaveBeenCalledWith('0xESC');
+  });
+});
+
+describe('Contract Routes - negotiated contracts funding', () => {
+  let app: express.Express;
+  const future = () => new Date(Date.now() + 3600e3).toISOString();
+  const past = () => new Date(Date.now() - 3600e3).toISOString();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+      req.user = { userId: 'user-1', role: 'employer' };
+      next();
+    });
+    app = express();
+    app.use(express.json());
+    app.use('/api/contracts', contractRouter);
+  });
+
+  it('refuses to fund before terms are agreed and signed', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: { id: 'c1', employerId: 'user-1', status: 'negotiating' } });
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('sign the contract');
+  });
+
+  it('refuses to fund after the funding deadline', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: { id: 'c1', employerId: 'user-1', status: 'awaiting_funding', fundingDeadline: past() } });
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('FUNDING_DEADLINE_PASSED');
+  });
+
+  it('funds an awaiting_funding contract from its own milestones and runs activation', async () => {
+    const contract = { id: 'c1', employerId: 'user-1', status: 'awaiting_funding', fundingDeadline: future(), escrowAddress: null, projectId: 'p1', totalAmount: 2, milestoneSource: 'contract' };
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: contract });
+    mockLoadMilestoneProject.mockResolvedValueOnce({ id: 'p1', title: 'P', milestones: [{ id: 'm1', title: 'M1', amount: 2, status: 'pending', due_date: '2099-01-01' }] });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xEMP', freelancerWallet: '0xFREE' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: true, data: { escrowAddress: '0xESC' } });
+    mockUpdateContractStatus.mockResolvedValueOnce({ success: true });
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(200);
+    expect(mockGetProjectById).not.toHaveBeenCalled();
+    expect(mockInitializeContractEscrow.mock.calls[0][1].milestones[0].amount).toBe(2);
+    expect(mockOnContractActivated).toHaveBeenCalledWith('c1');
+  });
+
+  it('reports a missing project for negotiated contracts', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: { id: 'c1', employerId: 'user-1', status: 'awaiting_funding', escrowAddress: null, projectId: 'p1', totalAmount: 2, milestoneSource: 'contract' } });
+    mockLoadMilestoneProject.mockResolvedValueOnce(null);
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('PROJECT_NOT_FOUND');
+  });
+
+  it('fund-info refuses unsigned or expired contracts and includes the deadline', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: { id: 'c1', employerId: 'user-1', status: 'awaiting_signatures' } });
+    expect((await request(app).get('/api/contracts/c1/fund-info')).body.error.code).toBe('NOT_FUNDABLE');
+
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: { id: 'c1', employerId: 'user-1', status: 'awaiting_funding', fundingDeadline: past() } });
+    expect((await request(app).get('/api/contracts/c1/fund-info')).body.error.code).toBe('FUNDING_DEADLINE_PASSED');
+
+    const deadline = future();
+    mockGetContractById.mockResolvedValueOnce({ success: true, data: { id: 'c1', employerId: 'user-1', status: 'awaiting_funding', fundingDeadline: deadline, projectId: 'p1', totalAmount: 1, milestoneSource: 'contract' } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockLoadMilestoneProject.mockResolvedValueOnce({ id: 'p1', milestones: [{ id: 'm1', amount: 1, title: 'M1' }] });
+    const ok = await request(app).get('/api/contracts/c1/fund-info');
+    expect(ok.status).toBe(200);
+    expect(ok.body.fundingDeadline).toBe(deadline);
   });
 });

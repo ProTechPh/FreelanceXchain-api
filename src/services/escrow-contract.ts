@@ -81,7 +81,10 @@ async function loadEscrow(address: string): Promise<EscrowState | null> {
         const { projectRepository } = await import('../repositories/project-repository.js');
         const contract = await contractRepository.getContractById(row.contract_id);
         if (contract?.project_id) {
-          const project = await projectRepository.getProjectById(contract.project_id);
+          const { loadMilestoneProject, usesContractMilestones } = await import('./contract-milestone-store.js');
+          const project = usesContractMilestones(contract)
+            ? await loadMilestoneProject(contract)
+            : await projectRepository.getProjectById(contract.project_id);
           if (project?.milestones && project.milestones.length > 0) {
             const { parseUnits } = await import('ethers');
             await Promise.all(

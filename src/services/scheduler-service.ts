@@ -6,6 +6,7 @@ import { sendWeeklyDigestEmail } from './email-delivery-service.js';
 import { filterProjectsBySavedSearch, filterFreelancersBySavedSearch } from './saved-search-service.js';
 import { resolveSkillFilterToNames } from './search-service.js';
 import { projectRepository, type ProjectEntity, type ProjectMilestoneSnapshot, type ProjectStatus } from '../repositories/project-repository.js';
+import { readContractMilestones, saveMilestones } from './contract-milestone-store.js';
 import { contractRepository, type ContractEntity, type ContractProjectRef } from '../repositories/contract-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { messageRepository } from '../repositories/message-repository.js';
@@ -390,7 +391,49 @@ async function cleanupOldNotifications(): Promise<void> {
  */
 const RELEASING_STUCK_GRACE_MS = 15 * 60 * 1000; // 15 minutes
 
+function stuckReleasingIndexes(milestones: Array<{ status?: string; updated_at?: string }>, now: number): number[] {
+  return milestones.reduce<number[]>((acc, m, i) => {
+    if (m.status === 'releasing') {
+      const updated = m.updated_at ? new Date(m.updated_at).getTime() : 0;
+      if (updated > 0 && now - updated > RELEASING_STUCK_GRACE_MS) acc.push(i);
+    }
+    return acc;
+  }, []);
+}
+
+/** Same recovery for negotiated contracts, whose milestones live on the contract. */
+async function recoverStuckContractScopedMilestones(now: number): Promise<void> {
+  const contracts = await contractRepository.findActiveContractScopedMilestones();
+  for (const contract of contracts) {
+    try {
+      const milestones = readContractMilestones(contract) as Array<MilestoneEntityLike>;
+      const stuck = new Set(stuckReleasingIndexes(milestones, now));
+      if (stuck.size === 0) continue;
+      await saveMilestones(contract, contract.project_id, milestones.map((m, i) =>
+        stuck.has(i) ? { ...m, status: 'submitted' } : m) as unknown as ProjectEntity['milestones']);
+      logger.warn('Recovered stuck "releasing" contract milestones back to "submitted"', {
+        contractId: contract.id,
+        recoveredMilestoneIndexes: [...stuck],
+      });
+    } catch (error) {
+      logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: contract.id, error });
+    }
+  }
+}
+
+type MilestoneEntityLike = { status?: string; updated_at?: string } & Record<string, unknown>;
+
 async function recoverStuckReleasingMilestones(): Promise<void> {
+  await recoverStuckProjectMilestones();
+  try {
+    await recoverStuckContractScopedMilestones(Date.now());
+  } catch (error) {
+    logger.error('Failed to recover stuck releasing contract milestones', error);
+  }
+}
+
+/** Legacy contracts: milestones live on the project document. */
+async function recoverStuckProjectMilestones(): Promise<void> {
   try {
     const now = Date.now();
     const activeContractRefs = await contractRepository.findActiveContractProjectRefs();
@@ -505,6 +548,22 @@ export function initializeScheduler(): void {
   cron.schedule('0 * * * *', () => {
     logger.info('Running scheduled job: Reconcile contract payments with escrow ledger');
     reconcileContractPayments();
+  });
+
+  // Cancel signed contracts whose funding deadline passed (frees the slot) - Every 5 minutes
+  cron.schedule('*/5 * * * *', () => {
+    logger.info('Running scheduled job: Expire overdue contract funding');
+    import('./contract-lifecycle-service.js')
+      .then(({ expireOverdueFunding }) => expireOverdueFunding())
+      .catch((err) => logger.error('Failed to run expireOverdueFunding', { error: err }));
+  });
+
+  // Remind employers 24h before their funding deadline - Every 30 minutes
+  cron.schedule('*/30 * * * *', () => {
+    logger.info('Running scheduled job: Send contract funding reminders');
+    import('./contract-lifecycle-service.js')
+      .then(({ sendFundingReminders }) => sendFundingReminders())
+      .catch((err) => logger.error('Failed to run sendFundingReminders', { error: err }));
   });
 
   // Permanently purge accounts whose 30-day grace period has expired - Daily at 3 AM

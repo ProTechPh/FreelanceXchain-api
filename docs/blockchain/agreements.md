@@ -150,8 +150,10 @@ class ContractAgreement {
   - Maintain in-memory ledger of agreements for simulation
   - Enforce lifecycle constraints (e.g., pending before signing)
 - Key functions:
-  - createAgreementOnBlockchain: creates an agreement and marks employer as signed
-  - signAgreement: accepts freelancer signature; transitions to Signed when both parties sign
+  - createAgreementOnBlockchain: creates an agreement; legacy callers mark the employer as signed, the negotiation flow passes `autoSignEmployer: false` and its EIP-712 `termsHash`
+  - lockAgreementTerms: records (or re-records after renegotiation) the locked terms with no signatures
+  - signAgreement: records a party's signature (wallets compared case-insensitively); transitions to Signed when both parties sign
+  - cancelAgreement: marks the agreement Cancelled when the contract is cancelled before funding
   - completeAgreement: marks Completed (requires Signed)
   - disputeAgreement: marks Disputed (requires Signed)
   - getAgreementFromBlockchain, verifyAgreementTerms, isAgreementFullySigned, getUserAgreements
@@ -233,6 +235,21 @@ Mapper-->>Service : Contract[]
 Service-->>Routes : ContractServiceResult<PaginatedResult<Contract>>
 Routes-->>Client : 200 OK
 ```
+
+### Negotiated Terms and EIP-712 Signatures
+
+When a negotiation offer is accepted, `contract-negotiation-service` builds canonical terms (contract, project, both wallets, wei amounts, rush fee in basis points, deadline, milestones and the hash of the versioned legal clauses in `src/constants/legal-terms.ts`) and stores them on the contract as `terms_snapshot`. The terms hash is the EIP-712 struct hash of `ContractTerms`:
+
+```text
+domain        = { name: "FreelanceXchain Contract Agreement", version: "1", chainId }
+Milestone     = (uint16 index, string title, bytes32 descriptionHash, uint256 amountWei, string dueDate)
+ContractTerms = (string contractId, string projectId, address employer, address freelancer, string currency,
+                 uint256 baseAmountWei, uint256 additionalPayWei, uint16 rushFeeBps, uint256 rushFeeWei,
+                 uint256 totalAmountWei, string deadline, Milestone[] milestones, bytes32 legalTermsHash)
+SignContract  = (string statement, string signerRole, bytes32 termsHash, ContractTerms terms)
+```
+
+Each party signs `SignContract` in MetaMask (`eth_signTypedData_v4`) together with a drawn or typed signature. `contract-signature-service` verifies that the signature recovers to the signer's linked wallet, that the hash matches the locked terms, and that the freelancer signed first. Each verified signature is also recorded on the agreement through `signAgreement`. The `chainId` is the connected network in real mode and `CONTRACT_SIGNING_CHAIN_ID` (default 1337) in simulated mode.
 
 ### Agreement Lifecycle and Workflows
 

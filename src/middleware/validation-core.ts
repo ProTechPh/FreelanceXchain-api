@@ -623,6 +623,61 @@ export const addMilestonesSchema: RequestSchema = {
   },
 };
 
+const contractOfferMilestoneItem = {
+  type: 'object' as const,
+  properties: {
+    title: { type: 'string' as const, minLength: 1, maxLength: 255, required: true },
+    description: { type: 'string' as const, maxLength: 2000 },
+    amount: { type: 'number' as const, exclusiveMinimum: 0, maximum: 1_000_000, required: true },
+    dueDate: { type: 'string' as const, pattern: '^\\d{4}-\\d{2}-\\d{2}', required: true },
+  },
+};
+
+/** Negotiation offer / counter-offer. Business rules (floor, sums, dates) live in the service. */
+export const createContractOfferSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      baseAmount: { type: 'number', exclusiveMinimum: 0, maximum: 1_000_000, required: true },
+      additionalPay: { type: 'number', minimum: 0, maximum: 1_000_000 },
+      isRush: { type: 'boolean', required: true },
+      rushFeePercentage: { type: 'number', minimum: 0, maximum: 100 },
+      deadline: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}', required: true },
+      message: { type: 'string', maxLength: 2000 },
+      milestones: { type: 'array', minItems: 1, maxItems: 20, required: true, items: contractOfferMilestoneItem },
+    },
+  },
+};
+
+export const declineContractOfferSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      reason: { type: 'string', maxLength: 1000 },
+      endNegotiation: { type: 'boolean' },
+    },
+  },
+};
+
+/** Dual e-signature: adopted drawn/typed signature + EIP-712 wallet signature. */
+export const submitContractSignatureSchema: RequestSchema = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      termsHash: { type: 'string', pattern: '^0x[0-9a-fA-F]{64}$', required: true },
+      signatureType: { type: 'string', enum: ['drawn', 'typed'], required: true },
+      signatureImage: { type: 'string', maxLength: 150000 },
+      typedName: { type: 'string', minLength: 2, maxLength: 120 },
+      walletAddress: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$', required: true },
+      walletSignature: { type: 'string', pattern: '^0x[0-9a-fA-F]{130}$', required: true },
+      consent: { type: 'boolean', required: true },
+    },
+  },
+};
+
 export const submitProposalSchema: RequestSchema = {
   body: {
     type: 'object',

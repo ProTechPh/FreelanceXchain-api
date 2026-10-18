@@ -18,7 +18,7 @@ import {
   notifyPaymentReleased,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
-import { Contract as EthersContract, getAddress, parseUnits } from 'ethers';
+import { Contract as EthersContract, Interface, getAddress, parseUnits } from 'ethers';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import {
@@ -26,8 +26,8 @@ import {
   approveMilestoneOnRegistry,
 } from './milestone-registry.js';
 import { completeAgreement } from './agreement-contract.js';
-import { approveMilestone as approveOnChainMilestone, getMilestoneStatus, submitMilestone as submitMilestoneOnChain, type OnChainMilestoneStatus } from './escrow-blockchain.js';
-import { getProvider, isWeb3Available } from './web3-client.js';
+import { approveMilestone as approveOnChainMilestone, getEscrowInfo, getMilestoneStatus, submitMilestone as submitMilestoneOnChain, type OnChainMilestoneStatus } from './escrow-blockchain.js';
+import { getProvider, getWallet, isWeb3Available } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowDeployedBytecode } from './contract-abis.js';
 import { isApprovedEscrowDeployedBytecode } from './escrow-bytecode-validator.js';
 import { getBlockchainMode } from './blockchain/factory.js';
@@ -39,6 +39,7 @@ import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
 import { toEthUnits } from '../utils/index.js';
 import { paymentSummaryCache } from '../utils/cache.js';
+import { loadMilestoneProject, saveMilestones, usesContractMilestones } from './contract-milestone-store.js';
 const MIN_MILESTONE_AMOUNT = 0.0001; // Minimum milestone amount in ETH
 const MAX_CONTRACT_AMOUNT = 1_000_000; // Maximum contract amount in ETH
 
@@ -125,7 +126,7 @@ async function validateMilestoneSubmission(
     return { error: errorResult('UNAUTHORIZED', 'Only the contract freelancer can request milestone completion') };
   }
 
-  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  const projectEntity = await loadMilestoneProject(contract);
   if (!projectEntity) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
@@ -249,10 +250,17 @@ async function ensureMilestoneSubmittedOnChain(
       await submitMilestoneOnChain(escrowAddress, milestoneIndex);
       return {};
     } catch (error) {
-      logger.error('Failed to submit milestone on-chain before release', {
+      // Escrows deployed before the platform could submit on the freelancer's
+      // behalf only accept submitMilestone from the freelancer's own wallet.
+      logger.warn('Platform could not submit milestone on-chain before release; freelancer wallet confirmation required', {
         escrowAddress, milestoneIndex, error: error instanceof Error ? error.message : String(error),
       });
-      return { error: errorResult('ESCROW_STATE_MISMATCH', 'The milestone could not be advanced on the blockchain before release. Please contact support.') };
+      return {
+        error: errorResult(
+          'FREELANCER_CHAIN_SUBMISSION_REQUIRED',
+          'The freelancer needs to confirm this submission on the blockchain from their wallet before the payment can be released.',
+        ),
+      };
     }
   }
   logger.error('On-chain milestone in incompatible state before approval', { escrowAddress, milestoneIndex, status });
@@ -358,9 +366,7 @@ export async function requestMilestoneCompletion(
         { metadata, submittedAt: new Date().toISOString() },
       );
 
-      await projectRepository.updateProject(project.id, {
-        milestones: updatedMilestones,
-      });
+      await saveMilestones(contract, project.id, updatedMilestones);
     }
 
     await notifyMilestoneSubmitted({
@@ -415,7 +421,7 @@ async function validateMilestoneApproval(
     return { error: errorResult('UNAUTHORIZED', 'Only the contract employer can approve milestones') };
   }
 
-  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  const projectEntity = await loadMilestoneProject(contract);
   if (!projectEntity) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
@@ -458,7 +464,7 @@ async function validateMilestoneApproval(
   }
 
   // Re-read project before intent write to reduce concurrent-approval race window
-  const freshProject = await projectRepository.findProjectById(contract.projectId);
+  const freshProject = await loadMilestoneProject(contract);
   if (!freshProject) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
@@ -481,7 +487,57 @@ type ReleaseOnBlockchainInput = {
   milestoneIndex: number;
   milestoneId: string;
   employerWallet: string;
+  /** Hash of the employer's own approveMilestone transaction (employer-deployed escrows). */
+  employerTxHash?: string | undefined;
 };
+
+/**
+ * Escrows funded from the employer's wallet record that wallet as `employer`, and
+ * only it may call approveMilestone, so the platform wallet cannot release them.
+ */
+async function escrowRequiresEmployerSignature(escrowAddress: string): Promise<boolean> {
+  try {
+    const [info, serverWallet] = [await getEscrowInfo(escrowAddress), getWallet()];
+    const employer = info?.employer;
+    const server = serverWallet?.address;
+    return Boolean(employer && server && getAddress(employer) !== getAddress(server));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify the employer's approveMilestone transaction: confirmed, sent by the
+ * employer wallet to this escrow, emitted MilestoneApproved for this index, and
+ * not already recorded as another payment.
+ */
+async function verifyEmployerApprovalTx(input: {
+  escrowAddress: string;
+  milestoneIndex: number;
+  transactionHash: string;
+  employerWallet: string;
+}): Promise<boolean> {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(input.transactionHash)) return false;
+  if (await paymentRepository.findByTxHash(input.transactionHash)) return false;
+  const provider = getProvider();
+  const [transaction, receipt] = await Promise.all([
+    provider.getTransaction(input.transactionHash),
+    provider.getTransactionReceipt(input.transactionHash),
+  ]);
+  if (!transaction || !receipt || receipt.status !== 1 || !transaction.to) return false;
+  if (getAddress(transaction.to) !== getAddress(input.escrowAddress)) return false;
+  if (getAddress(transaction.from) !== getAddress(input.employerWallet)) return false;
+  const escrowInterface = new Interface(FreelanceEscrowABI);
+  return receipt.logs.some((log) => {
+    if (getAddress(log.address) !== getAddress(input.escrowAddress)) return false;
+    try {
+      const parsed = escrowInterface.parseLog(log);
+      return parsed?.name === 'MilestoneApproved' && Number(parsed.args[0]) === input.milestoneIndex;
+    } catch {
+      return false;
+    }
+  });
+}
 
 /**
  * Release the milestone on-chain (real) or in the simulated escrow ledger.
@@ -500,9 +556,33 @@ async function releaseOnBlockchain(
     }
     try {
       let onChainResult: { transactionHash: string } | null = null;
+      let onChainStatus: OnChainMilestoneStatus | null = null;
       try {
-        const onChainStatus = await getMilestoneStatus(input.contract.escrowAddress, input.milestoneIndex);
-        if (onChainStatus === 'approved') {
+        onChainStatus = await getMilestoneStatus(input.contract.escrowAddress, input.milestoneIndex);
+      } catch (statusErr) {
+        logger.debug('Could not check milestone status before approval, proceeding to approve', { error: statusErr });
+      }
+
+      if (onChainStatus === 'approved') {
+        if (input.employerTxHash) {
+          // Verification failures (including RPC errors) never fall through to a platform release.
+          const verified = await verifyEmployerApprovalTx({
+            escrowAddress: input.contract.escrowAddress,
+            milestoneIndex: input.milestoneIndex,
+            transactionHash: input.employerTxHash,
+            employerWallet: input.employerWallet,
+          }).catch((verifyErr: unknown) => {
+            logger.warn('Employer release transaction could not be verified', { error: verifyErr, transactionHash: input.employerTxHash });
+            return false;
+          });
+          if (!verified) {
+            return {
+              error: errorResult('INVALID_RELEASE_TRANSACTION', 'The release transaction could not be verified for this milestone.'),
+              rollbackSafe: true,
+            };
+          }
+          onChainResult = { transactionHash: input.employerTxHash };
+        } else {
           logger.info('On-chain milestone already approved, reconciling ledger', {
             escrowAddress: input.contract.escrowAddress,
             milestoneIndex: input.milestoneIndex,
@@ -512,8 +592,14 @@ async function releaseOnBlockchain(
             transactionHash: ethers.id(`${input.contract.escrowAddress}-${input.milestoneIndex}-reconciled`),
           };
         }
-      } catch (statusErr) {
-        logger.debug('Could not check milestone status before approval, proceeding to approve', { error: statusErr });
+      }
+
+      if (!onChainResult && await escrowRequiresEmployerSignature(input.contract.escrowAddress)) {
+        // Nothing was sent: the employer must sign approveMilestone from their wallet.
+        return {
+          error: errorResult('EMPLOYER_SIGNATURE_REQUIRED', 'Approve this milestone from your connected wallet to release the payment.'),
+          rollbackSafe: true,
+        };
       }
 
       if (!onChainResult) {
@@ -583,13 +669,14 @@ async function readEscrowRecordedAmount(
  * payment failure, so it can be retried. Logs CRITICAL if rollback fails.
  */
 async function rollbackReleasingMilestone(
-  projectId: string,
+  contract: Contract,
   contractId: string,
   milestoneId: string,
   milestoneIndex: number,
 ): Promise<void> {
+  const projectId = contract.projectId;
   try {
-    const latestProject = await projectRepository.findProjectById(projectId);
+    const latestProject = await loadMilestoneProject(contract);
     if (!latestProject) {
       logger.error('CRITICAL: Cannot rollback — project fetch returned null. Milestone may be stuck in releasing.', { milestoneId, contractId });
     } else {
@@ -600,7 +687,7 @@ async function rollbackReleasingMilestone(
         const rollbackMilestones = latestProject.milestones.map((m, i) =>
           i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
         );
-        await projectRepository.updateProject(projectId, { milestones: rollbackMilestones });
+        await saveMilestones(contract, projectId, rollbackMilestones);
         logger.warn('Recovered milestone from "releasing" back to "submitted" after payment failure.', {
           milestoneId, contractId, projectId, milestoneIndex,
         });
@@ -636,6 +723,7 @@ type ReleaseEscrowPaymentInput = {
   employerId: string;
   employerWallet: string;
   releasingBaseEntity: ProjectEntity;
+  employerTxHash?: string | undefined;
 };
 
 /**
@@ -649,19 +737,19 @@ async function releaseEscrowPaymentWithSaga(
 ): Promise<
   { transactionHash: string } | { error: ServiceResult<MilestoneApprovalResult> }
 > {
-  const { contract, project, milestoneId, milestoneIndex, milestoneAmount, employerId, employerWallet, contractId, releasingBaseEntity } = input;
+  const { contract, project, milestoneId, milestoneIndex, milestoneAmount, employerId, employerWallet, contractId, releasingBaseEntity, employerTxHash } = input;
 
   const releasingMilestones = releasingBaseEntity.milestones.map((m, i) =>
     i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
   );
-  const marked = await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
+  const marked = await saveMilestones(contract, project.id, releasingMilestones);
   if (!marked) {
     return { error: errorResult('PAYMENT_RELEASE_FAILED', 'Failed to persist payment release intent') };
   }
 
   let releaseResult: ReleaseOutcome;
   try {
-    releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet });
+    releaseResult = await releaseOnBlockchain({ contract, contractId, milestoneIndex, milestoneId, employerWallet, employerTxHash });
   } catch (error) {
     // Defensive: releaseOnBlockchain is expected to classify its own failures,
     // but anything escaping is treated as an unknown outcome (no rollback).
@@ -672,7 +760,7 @@ async function releaseEscrowPaymentWithSaga(
   }
   if ('error' in releaseResult) {
     if (releaseResult.rollbackSafe) {
-      await rollbackReleasingMilestone(contract.projectId, contractId, milestoneId, milestoneIndex);
+      await rollbackReleasingMilestone(contract, contractId, milestoneId, milestoneIndex);
     }
     return { error: releaseResult.error };
   }
@@ -753,7 +841,8 @@ async function completeContractIfAllMilestonesDone(input: CompleteContractInput)
     if (typeof contractRepository.getContractsByProject === 'function') {
       const projectContracts = await contractRepository.getContractsByProject(project.id);
       contractsList = Array.isArray(projectContracts) ? projectContracts : ((projectContracts as any)?.items || []);
-      remainingActive = contractsList.filter((c: any) => c.id !== contractId && (c.status === 'active' || c.status === 'pending'));
+      // Contracts still being negotiated, signed or funded hold their slot too.
+      remainingActive = contractsList.filter((c: any) => c.id !== contractId && ['active', 'pending', 'negotiating', 'awaiting_signatures', 'awaiting_funding'].includes(c.status));
     }
 
     if (maxFreelancers <= 1 && remainingActive.length === 0) {
@@ -824,7 +913,7 @@ async function finalizeMilestoneApproval(
         completed_at: nowIso,
       } : m
     );
-    await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
+    await saveMilestones(contract, project.id, updatedMilestones);
   }
 
   await approveMilestoneOnBlockchainRegistry(milestoneId, employerId);
@@ -887,7 +976,8 @@ async function finalizeMilestoneApproval(
 export async function approveMilestone(
   contractId: string,
   milestoneId: string,
-  employerId: string
+  employerId: string,
+  options: { transactionHash?: string } = {},
 ): Promise<ServiceResult<MilestoneApprovalResult>> {
   // Serialize concurrent approval attempts for the same milestone to prevent double-spend
   return withLock(milestoneLockKey(milestoneId), async () => {
@@ -920,6 +1010,7 @@ export async function approveMilestone(
       employerId,
       employerWallet: employer.wallet_address,
       releasingBaseEntity,
+      employerTxHash: options.transactionHash,
     });
     if ('error' in released) return released.error;
 
@@ -993,7 +1084,7 @@ export async function getContractPaymentStatus(
     // admin is allowed through — no early return
   }
 
-  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  const projectEntity = await loadMilestoneProject(contract);
   if (!projectEntity) {
     return errorResult('NOT_FOUND', 'Project not found');
   }
@@ -1207,7 +1298,7 @@ export async function isContractComplete(contractId: string): Promise<boolean> {
     return false;
   }
 
-  const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
+  const projectEntity = await loadMilestoneProject(contractEntity);
   if (!projectEntity) {
     return false;
   }
@@ -1265,16 +1356,17 @@ function validateMilestoneAmounts(amounts: number[]): { valid: boolean; error?: 
     if (amount < MIN_MILESTONE_AMOUNT) {
       return { valid: false, error: `Milestone amount must be at least ${MIN_MILESTONE_AMOUNT} ETH` };
     }
-    if (hasMoreThanTwoDecimals(amount)) {
-      return { valid: false, error: 'Milestone amount must have maximum 2 decimal places' };
+    if (hasMoreThanFourDecimals(amount)) {
+      return { valid: false, error: 'Milestone amount must have maximum 4 decimal places' };
     }
   }
   return { valid: true };
 }
 
-function hasMoreThanTwoDecimals(value: number): boolean {
+// Matches MIN_MILESTONE_AMOUNT (0.0001 ETH): negotiated amounts carry up to 4 decimals.
+function hasMoreThanFourDecimals(value: number): boolean {
   const decimalStr = value.toString().split('.')[1];
-  return decimalStr !== undefined && decimalStr.length > 2;
+  return decimalStr !== undefined && decimalStr.length > 4;
 }
 
 export function buildEscrowMilestones(project: Project, contract: Contract): {
@@ -1305,7 +1397,9 @@ export function buildEscrowMilestones(project: Project, contract: Contract): {
   let amounts = baseAmounts;
   let scaled = false;
 
-  if (contract.rushFee > 0) {
+  // Negotiated (contract-scoped) milestones already sum to the agreed total, fee
+  // included, so they are never rescaled.
+  if (contract.rushFee > 0 && !usesContractMilestones(contract)) {
     const base = contract.baseAmount > 0 ? contract.baseAmount : contract.totalAmount - contract.rushFee;
     const milestoneSum = baseAmounts.reduce((sum, amount) => sum + amount, 0);
     const alreadyScaled = Math.abs(milestoneSum - contract.totalAmount) < 0.01;

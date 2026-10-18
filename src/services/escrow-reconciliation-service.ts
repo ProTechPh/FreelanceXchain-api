@@ -23,6 +23,7 @@ import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 import { contractRepository, type ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
+import { readContractMilestones, usesContractMilestones } from './contract-milestone-store.js';
 import { paymentRepository } from '../repositories/payment-repository.js';
 import { getEscrowState } from './escrow-contract.js';
 import { toEthUnits } from '../utils/index.js';
@@ -316,9 +317,13 @@ async function reconcileContract(
     return issues;
   }
 
-  const project = contract.project_id
+  const projectDoc = contract.project_id
     ? snapshot.projectsById.get(contract.project_id) ?? null
     : null;
+  // Negotiated contracts reconcile against their own milestones, not the project template.
+  const project = projectDoc && usesContractMilestones(contract)
+    ? { ...projectDoc, milestones: readContractMilestones(contract) }
+    : projectDoc;
   if (!project) {
     issues.push(issue(
       'critical',

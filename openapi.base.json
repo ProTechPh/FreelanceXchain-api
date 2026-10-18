@@ -385,9 +385,14 @@
           "status": {
             "type": "string",
             "enum": [
+              "negotiating",
+              "awaiting_signatures",
+              "awaiting_funding",
+              "pending",
               "active",
               "completed",
               "disputed",
+              "resolved",
               "cancelled"
             ]
           },
@@ -398,6 +403,41 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "milestoneSource": {
+            "type": "string",
+            "enum": [
+              "project",
+              "contract"
+            ],
+            "description": "'contract' when milestones were negotiated per freelancer"
+          },
+          "additionalPay": {
+            "type": "number",
+            "description": "Negotiated pay on top of the base amount"
+          },
+          "rushFeePercentage": {
+            "type": "number"
+          },
+          "deadline": {
+            "type": "string",
+            "description": "Negotiated contract deadline (YYYY-MM-DD)"
+          },
+          "termsHash": {
+            "type": "string",
+            "description": "EIP-712 struct hash of the locked terms"
+          },
+          "fundingDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Employer must fund before this time once both parties signed"
+          },
+          "fullySignedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancelReason": {
+            "type": "string"
           }
         }
       },
@@ -8271,6 +8311,120 @@
           },
           "404": {
             "description": "Employer profile not found"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/negotiation": {
+      "get": {
+        "summary": "Get contract negotiation state",
+        "description": "Offers, the freelancer's floor rate (proposed rate), the project template, the caller's permissions and the chat target.",
+        "tags": [
+          "Contract Negotiation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Negotiation state"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not a contract party"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/signing-payload": {
+      "get": {
+        "summary": "Get the locked terms and EIP-712 typed data to sign",
+        "description": "Canonical terms, terms hash, chain id, versioned legal clauses, existing signatures and who signs next.",
+        "tags": [
+          "Contract Signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signing payload"
+          },
+          "403": {
+            "description": "Not a contract party"
+          },
+          "404": {
+            "description": "Contract not found"
+          },
+          "409": {
+            "description": "Terms not locked yet"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/signatures": {
+      "get": {
+        "summary": "List valid signatures over the current terms",
+        "description": "IP address and user agent are only included for your own signature (or for admins).",
+        "tags": [
+          "Contract Signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signatures"
+          },
+          "403": {
+            "description": "Not a contract party"
+          },
+          "404": {
+            "description": "Contract not found"
           }
         }
       }

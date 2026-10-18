@@ -422,6 +422,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
 // Mock Contract Repository
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
+    countReservedSlots: jest.fn(async (projectId: string) => {
+      return [...contractStore.values()].filter((c: any) =>
+        ((c as any).project_id || c.projectId) === projectId && c.status !== 'cancelled').length;
+    }),
     create: jest.fn(async (contract: any) => {
       contractStore.set(contract.id, contract as any);
       return contract;
@@ -630,6 +634,7 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () =>
   refundMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'd'.repeat(64), status: 'success' })),
   getEscrowBalance: jest.fn(async () => BigInt(5000)),
   getMilestoneStatus: jest.fn(async () => 'pending'),
+  getEscrowInfo: jest.fn(async () => ({ employer: null })),
   areAllMilestonesReleased: jest.fn(async () => false),
 }));
 
@@ -647,6 +652,7 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () 
   approveMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'b'.repeat(64) })),
   submitMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'c'.repeat(64), blockNumber: 12345 })),
   getMilestoneStatus: jest.fn(async () => 'pending'),
+  getEscrowInfo: jest.fn(async () => ({ employer: null })),
   isWeb3Available: jest.fn(() => true),
 }));
 
@@ -853,12 +859,14 @@ describe('Happy Path Integration - Complete User & Marketplace Lifecycle', () =>
 
     expect(acceptResult.data.proposal.status).toBe('accepted');
     const contract = acceptResult.data.contract;
-    expect(contract.status).toBe('pending');
+    // Accepting starts negotiation (negotiate → sign → fund are covered by the
+    // contract negotiation/signature service tests).
+    expect(contract.status).toBe('negotiating');
     expect(contract.employerId).toBe(employerId);
     expect(contract.freelancerId).toBe(freelancerId);
     expect(contract.totalAmount).toBe(totalProjectBudget);
 
-    // Employer funds escrow / activates the contract
+    // Terms agreed, both parties signed, employer funds escrow / activates the contract
     contract.status = 'active';
     contractStore.set(contract.id, contract);
 

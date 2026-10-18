@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   addMilestonesSchema,
+  createContractOfferSchema,
+  declineContractOfferSchema,
+  submitContractSignatureSchema,
   bulkNotificationActionSchema,
   createProjectSchema,
   createProjectWithAttachmentsSchema,
@@ -275,7 +278,7 @@ export const VALIDATED_ENDPOINTS: ValidatedEndpoint[] = [
     schema: fundContractSchema.body!,
     operation: {
       summary: 'Fund contract escrow',
-      description: 'Employer funds the escrow for a pending contract, activating it',
+      description: 'Employer funds the escrow once both parties signed (awaiting_funding, before the funding deadline) or for a legacy pending contract, activating it',
       tags: ['Contracts'],
       security: [{ bearerAuth: [] }],
       parameters: [
@@ -327,8 +330,8 @@ export const VALIDATED_ENDPOINTS: ValidatedEndpoint[] = [
     method: 'post',
     schema: emptyBodySchema.body!,
     operation: {
-      summary: 'Cancel a pending contract',
-      description: 'Cancel a contract that is still in pending status',
+      summary: 'Cancel an unfunded contract',
+      description: 'Cancel a contract before it is funded (pending, negotiating, awaiting_signatures or awaiting_funding). Negotiated contracts release their project slot.',
       tags: ['Contracts'],
       security: [{ bearerAuth: [] }],
       parameters: [
@@ -345,6 +348,120 @@ export const VALIDATED_ENDPOINTS: ValidatedEndpoint[] = [
         '400': { description: 'Contract cannot be cancelled' },
         '401': { description: 'Unauthorized' },
         '404': { description: 'Contract not found' },
+      },
+    },
+  },
+  {
+    path: '/api/contracts/{id}/offers',
+    method: 'post',
+    schema: createContractOfferSchema.body!,
+    operation: {
+      summary: 'Propose or counter contract terms',
+      description: "Either party proposes terms while the contract is negotiating. The base amount cannot go below the freelancer's proposed rate, and milestone amounts must sum to base + additional pay + rush fee.",
+      tags: ['Contract Negotiation'],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Contract ID' },
+      ],
+      responses: {
+        '201': { description: 'Offer created' },
+        '400': { description: 'Invalid terms (FLOOR_VIOLATION, AMOUNT_MISMATCH, VALIDATION_ERROR)' },
+        '403': { description: 'Not a contract party' },
+        '409': { description: 'Contract is not negotiating or the round limit was reached' },
+      },
+    },
+  },
+  {
+    path: '/api/contracts/{id}/offers/{offerId}/accept',
+    method: 'post',
+    schema: emptyBodySchema.body!,
+    operation: {
+      summary: 'Accept the open offer and lock the terms',
+      description: 'Only the counterparty of the proposer can accept. Locks the milestones and terms hash and moves the contract to awaiting_signatures.',
+      tags: ['Contract Negotiation'],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Contract ID' },
+        { in: 'path', name: 'offerId', required: true, schema: { type: 'string' }, description: 'Offer ID' },
+      ],
+      responses: {
+        '200': { description: 'Terms locked; contract awaiting signatures' },
+        '400': { description: 'Offer no longer valid or a party has no linked wallet' },
+        '409': { description: 'Offer not open or contract not negotiating' },
+      },
+    },
+  },
+  {
+    path: '/api/contracts/{id}/offers/{offerId}/decline',
+    method: 'post',
+    schema: declineContractOfferSchema.body!,
+    operation: {
+      summary: 'Decline the open offer',
+      description: 'Declining keeps the negotiation open unless endNegotiation is true, which cancels the contract and releases the project slot.',
+      tags: ['Contract Negotiation'],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Contract ID' },
+        { in: 'path', name: 'offerId', required: true, schema: { type: 'string' }, description: 'Offer ID' },
+      ],
+      responses: {
+        '200': { description: 'Offer declined' },
+        '409': { description: 'Offer not open' },
+      },
+    },
+  },
+  {
+    path: '/api/contracts/{id}/offers/{offerId}/withdraw',
+    method: 'post',
+    schema: emptyBodySchema.body!,
+    operation: {
+      summary: 'Withdraw your own open offer',
+      tags: ['Contract Negotiation'],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Contract ID' },
+        { in: 'path', name: 'offerId', required: true, schema: { type: 'string' }, description: 'Offer ID' },
+      ],
+      responses: {
+        '200': { description: 'Offer withdrawn' },
+        '409': { description: 'Offer not open' },
+      },
+    },
+  },
+  {
+    path: '/api/contracts/{id}/negotiation/reopen',
+    method: 'post',
+    schema: emptyBodySchema.body!,
+    operation: {
+      summary: 'Request changes to locked terms',
+      description: 'Returns an awaiting_signatures contract to negotiating and voids any signatures.',
+      tags: ['Contract Negotiation'],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Contract ID' },
+      ],
+      responses: {
+        '200': { description: 'Back to negotiating' },
+        '409': { description: 'Contract is not awaiting signatures' },
+      },
+    },
+  },
+  {
+    path: '/api/contracts/{id}/signatures',
+    method: 'post',
+    schema: submitContractSignatureSchema.body!,
+    operation: {
+      summary: 'Sign the contract',
+      description: 'Adopted drawn/typed e-signature plus an EIP-712 wallet signature over the locked terms. The freelancer signs first; the employer signature moves the contract to awaiting_funding and starts the funding deadline.',
+      tags: ['Contract Signatures'],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { in: 'path', name: 'id', required: true, schema: { type: 'string' }, description: 'Contract ID' },
+      ],
+      responses: {
+        '201': { description: 'Signature recorded' },
+        '400': { description: 'Invalid signature, consent missing or wallet signature mismatch' },
+        '409': { description: 'Out of order, already signed, or terms changed' },
       },
     },
   },

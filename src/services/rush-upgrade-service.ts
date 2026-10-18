@@ -375,6 +375,12 @@ export async function requestRushUpgrade(
     return errorResult('UNAUTHORIZED', 'Only the employer can request a rush upgrade');
   }
 
+  // Negotiated contracts agree the rush fee before signing; changing it afterwards
+  // would invalidate the signed terms and the escrow milestones.
+  if (contractEntity.milestone_source === 'contract') {
+    return errorResult('INVALID_STATUS', 'The rush fee is part of the negotiated and signed contract terms and cannot be changed afterwards');
+  }
+
   if (contractEntity.status !== 'active' && contractEntity.status !== 'pending') {
     return errorResult('INVALID_STATUS', 'Contract must be active or pending to request a rush upgrade');
   }

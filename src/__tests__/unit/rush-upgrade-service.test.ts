@@ -220,6 +220,17 @@ describe('requestRushUpgrade', () => {
     expect(result.data.contractId).toBe(contract.id);
   });
 
+  it('should reject rush upgrades on negotiated contracts (rush fee is part of the signed terms)', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id, milestone_source: 'contract', status: 'active' });
+    const result = await requestRushUpgrade(employer.id, { contractId: contract.id, proposedPercentage: 25 });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+      expect(result.error.message).toContain('negotiated');
+    }
+  });
+
   it('should reject if contract already has rush fee', async () => {
     const employer = seedUser({ role: 'employer' });
     const contract = seedContract({ employer_id: employer.id, rush_fee: 250, total_amount: 1250 });
