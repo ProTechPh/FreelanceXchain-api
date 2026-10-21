@@ -239,12 +239,36 @@ describe('Admin Permissions & RBAC Middleware', () => {
       [{ name: 'Alice', email: 'alice@example.com', role: 'moderator' }, 'INVALID_ROLE'],
       [{ name: 'Alice', email: 'alice@example.com', role: 'admin', permissions: 'kyc:view' }, 'INVALID_PERMISSIONS'],
       [{ name: 'Alice', email: 'alice@example.com', role: 'admin', permissions: ['unknown:permission'] }, 'INVALID_PERMISSION'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'admin', permissions: [42] }, 'INVALID_PERMISSION'],
       [{ name: 'Alice', email: 'alice@example.com', role: 'freelancer', password: 'short' }, 'INVALID_PASSWORD'],
+      [{ name: 42, email: 'alice@example.com', role: 'freelancer' }, 'INVALID_NAME'],
+      [{ name: 'x'.repeat(101), email: 'alice@example.com', role: 'freelancer' }, 'INVALID_NAME'],
+      [{ name: 'Alice', email: 42, role: 'freelancer' }, 'INVALID_EMAIL'],
+      [{ name: 'Alice', email: `${'x'.repeat(244)}@example.com`, role: 'freelancer' }, 'INVALID_EMAIL'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'freelancer', password: 42 }, 'INVALID_PASSWORD'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'freelancer', password: 'x'.repeat(257) }, 'INVALID_PASSWORD'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'freelancer', autoVerifyEmail: 'true' }, 'VALIDATION_ERROR'],
+      [{ name: 'Alice', email: 'alice@example.com', role: 'freelancer', grantPro: 1 }, 'VALIDATION_ERROR'],
     ])('rejects invalid invitation input with %s', async (input, code) => {
       const result = await inviteOrAddUser(input as any);
 
       expect(result.success).toBe(false);
       expect(result.error?.code).toBe(code);
+    });
+
+    it.each([
+      ['name minimum', { name: 'Al', email: 'alice@example.com', role: 'freelancer' }],
+      ['name maximum', { name: 'x'.repeat(100), email: 'alice@example.com', role: 'freelancer' }],
+      ['password minimum', { name: 'Alice', email: 'alice@example.com', role: 'freelancer', password: 'x'.repeat(8) }],
+      ['password maximum', { name: 'Alice', email: 'alice@example.com', role: 'freelancer', password: 'x'.repeat(256) }],
+    ])('accepts the %s validation boundary', async (_label, input) => {
+      const emailExists = jest.spyOn(userRepository, 'emailExists').mockResolvedValue(true);
+
+      const result = await inviteOrAddUser(input as any);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('DUPLICATE_EMAIL');
+      expect(emailExists).toHaveBeenCalledWith('alice@example.com');
     });
 
     it('rejects duplicate email if already in database', async () => {
@@ -431,11 +455,11 @@ describe('Admin Permissions & RBAC Middleware', () => {
       expect(result.error?.code).toBe('INTERNAL_ERROR');
     });
 
-    it('returns INTERNAL_ERROR for an unexpected malformed invocation', async () => {
+    it('returns VALIDATION_ERROR for a malformed invocation', async () => {
       const result = await inviteOrAddUser(null as any);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('INTERNAL_ERROR');
+      expect(result.error?.code).toBe('VALIDATION_ERROR');
     });
   });
 

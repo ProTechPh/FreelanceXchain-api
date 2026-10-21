@@ -35,6 +35,15 @@ import {
 
 const router = Router();
 
+const USER_ROLES = ['freelancer', 'employer', 'admin'] as const;
+const USER_STATUSES = ['active', 'suspended'] as const;
+const KYC_STATUSES = ['not_started', 'pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired'] as const;
+const DISPUTE_STATUSES = ['open', 'under_review', 'resolved'] as const;
+
+function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value);
+}
+
 /** Transform a user entity into the admin frontend shape */
 function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean; kyc_status?: string; email_verified?: boolean; permissions?: string[] }) | null | undefined) {
   if (!user) return null;
@@ -120,11 +129,28 @@ router.get('/users', authMiddleware, requirePermission('users:view'), apiRateLim
   const kycStatus = req.query['kycStatus'] as string | undefined;
   const emailVerified = req.query['emailVerified'] as string | undefined;
 
+  if (status !== undefined && !isOneOf(status, USER_STATUSES)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', `Invalid status. Must be one of: ${USER_STATUSES.join(', ')}`, { requestId });
+    return;
+  }
+  if (role !== undefined && !isOneOf(role, USER_ROLES)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', `Invalid role. Must be one of: ${USER_ROLES.join(', ')}`, { requestId });
+    return;
+  }
+  if (kycStatus !== undefined && !isOneOf(kycStatus, KYC_STATUSES)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', `Invalid KYC status. Must be one of: ${KYC_STATUSES.join(', ')}`, { requestId });
+    return;
+  }
+  if (emailVerified !== undefined && !isOneOf(emailVerified, ['true', 'false'] as const)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'emailVerified must be true or false', { requestId });
+    return;
+  }
+
   const filters: UserFilters = {};
   if (status) filters.status = status;
   if (role) filters.role = role;
   if (kycStatus) filters.kycStatus = kycStatus;
-  if (emailVerified !== undefined) filters.emailVerified = emailVerified;
+  if (emailVerified !== undefined) filters.emailVerified = emailVerified === 'true';
   const result = await getUserManagement(filters);
 
   if (!result.success) {
@@ -151,7 +177,8 @@ router.get('/users', authMiddleware, requirePermission('users:view'), apiRateLim
 router.post('/users', authMiddleware, requirePermission('users:manage'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
-  const { name, email, role, password, permissions, autoVerifyEmail, grantPro } = req.body;
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const { name, email, role, password, permissions, autoVerifyEmail, grantPro } = body;
 
   if (!adminUserId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
@@ -160,6 +187,10 @@ router.post('/users', authMiddleware, requirePermission('users:manage'), apiRate
 
   if (grantPro !== undefined && typeof grantPro !== 'boolean') {
     sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'grantPro must be a boolean', { requestId });
+    return;
+  }
+  if (autoVerifyEmail !== undefined && typeof autoVerifyEmail !== 'boolean') {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'autoVerifyEmail must be a boolean', { requestId });
     return;
   }
 
@@ -188,7 +219,7 @@ router.post('/users', authMiddleware, requirePermission('users:manage'), apiRate
   if (!result.success) {
     const code = result.error?.code ?? 'UNKNOWN';
     const statusCode = code === 'DUPLICATE_EMAIL' ? 409
-      : ['INVALID_EMAIL', 'INVALID_NAME', 'INVALID_ROLE', 'INVALID_PERMISSION', 'INVALID_PASSWORD', 'INVALID_PERMISSIONS'].includes(code) ? 400
+      : ['VALIDATION_ERROR', 'INVALID_EMAIL', 'INVALID_NAME', 'INVALID_ROLE', 'INVALID_PERMISSION', 'INVALID_PASSWORD', 'INVALID_PERMISSIONS'].includes(code) ? 400
       : 500;
     sendErrorResponse(res, statusCode, code, result.error?.message ?? 'An error occurred', { requestId });
     return;
@@ -214,7 +245,8 @@ router.post('/users', authMiddleware, requirePermission('users:manage'), apiRate
 router.patch('/users/:userId', authMiddleware, requirePermission('users:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
-  const { name, role, isActive } = req.body;
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const { name, role, isActive } = body;
   const requestId = getRequestId(req);
 
   if (!adminUserId) {
@@ -227,8 +259,24 @@ router.patch('/users/:userId', authMiddleware, requirePermission('users:manage')
     sendErrorResponse(res, 400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, { requestId });
     return;
   }
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100)) {
+    sendErrorResponse(res, 400, 'INVALID_NAME', 'Name must be between 2 and 100 characters', { requestId });
+    return;
+  }
+  if (isActive !== undefined && typeof isActive !== 'boolean') {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'isActive must be a boolean', { requestId });
+    return;
+  }
+  if (name === undefined && role === undefined && isActive === undefined) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'At least one supported field is required', { requestId });
+    return;
+  }
 
-  const result = await updateUser(userId, { name, role, isActive }, adminUserId);
+  const updates: { name?: string; role?: string; isActive?: boolean } = {};
+  if (typeof name === 'string') updates.name = name.trim();
+  if (typeof role === 'string') updates.role = role;
+  if (typeof isActive === 'boolean') updates.isActive = isActive;
+  const result = await updateUser(userId, updates, adminUserId);
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
@@ -248,7 +296,7 @@ router.patch('/users/:userId', authMiddleware, requirePermission('users:manage')
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/impersonate', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+router.post('/users/:userId/impersonate', authMiddleware, requirePermission('admin:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -265,13 +313,15 @@ router.post('/users/:userId/impersonate', authMiddleware, requireRole('admin'), 
     return;
   }
 
-  let sessionSecret = `impersonate_${user.id}_${Date.now()}`;
+  let sessionSecret: string;
   try {
     const { users } = await import('../config/appwrite.js');
     const session = await users.createSession(user.id);
+    if (!session.secret) throw new Error('Appwrite returned an empty session secret');
     sessionSecret = session.secret;
   } catch {
-    // Fallback in simulated/mock environments
+    sendErrorResponse(res, 502, 'SESSION_CREATION_FAILED', 'Unable to create an impersonation session', { requestId });
+    return;
   }
 
   res.status(200).json({
@@ -289,28 +339,41 @@ router.post('/users/:userId/impersonate', authMiddleware, requireRole('admin'), 
  *     security:
  *       - bearerAuth: []
  */
-router.post('/impersonate', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.body.userId || req.body.id;
-  const email = req.body.email;
+router.post('/impersonate', authMiddleware, requirePermission('admin:manage'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const rawUserId = body.userId ?? body.id;
+  const email = body.email;
   const requestId = getRequestId(req);
+
+  if ((rawUserId !== undefined && typeof rawUserId !== 'string') || (email !== undefined && typeof email !== 'string')) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'userId and email must be strings', { requestId });
+    return;
+  }
+  const userId = typeof rawUserId === 'string' ? rawUserId.trim() : '';
+  if (!userId && !(typeof email === 'string' && email.trim())) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'A userId or email is required', { requestId });
+    return;
+  }
 
   const { userRepository } = await import('../repositories/user-repository.js');
   let user = userId ? await userRepository.getUserById(userId) : null;
   if (!user && email) {
-    user = await userRepository.getUserByEmail(email);
+    user = await userRepository.getUserByEmail(email.trim().toLowerCase());
   }
   if (!user) {
     sendErrorResponse(res, 404, 'USER_NOT_FOUND', 'User not found', { requestId });
     return;
   }
 
-  let sessionSecret = `impersonate_${user.id}_${Date.now()}`;
+  let sessionSecret: string;
   try {
     const { users } = await import('../config/appwrite.js');
     const session = await users.createSession(user.id);
+    if (!session.secret) throw new Error('Appwrite returned an empty session secret');
     sessionSecret = session.secret;
   } catch {
-    // Fallback in simulated/mock environments
+    sendErrorResponse(res, 502, 'SESSION_CREATION_FAILED', 'Unable to create an impersonation session', { requestId });
+    return;
   }
 
   res.status(200).json({
@@ -331,7 +394,7 @@ router.post('/impersonate', authMiddleware, requireRole('admin'), apiRateLimiter
 router.post('/users/:userId/suspend', authMiddleware, requirePermission('users:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
-  const { reason } = req.body;
+  const reason = req.body?.reason;
   const requestId = getRequestId(req);
 
   if (!adminUserId) {
@@ -339,7 +402,12 @@ router.post('/users/:userId/suspend', authMiddleware, requirePermission('users:m
     return;
   }
 
-  const result = await suspendUser(userId, reason, adminUserId);
+  if (typeof reason !== 'string' || reason.trim().length < 10 || reason.trim().length > 500) {
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', { requestId });
+    return;
+  }
+
+  const result = await suspendUser(userId, reason.trim(), adminUserId);
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
@@ -492,6 +560,11 @@ router.get('/disputes', authMiddleware, requirePermission('disputes:view'), apiR
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
 
+  if (status !== undefined && !isOneOf(status, DISPUTE_STATUSES)) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', `Invalid status. Must be one of: ${DISPUTE_STATUSES.join(', ')}`, { requestId });
+    return;
+  }
+
   const filters: DisputeFilters = {};
   if (status) filters.status = status;
   const result = await getDisputeManagement(filters);
@@ -540,7 +613,7 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimit
   const result = await getPlatformStats();
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code ?? 'UNKNOWN', result.error.message ?? 'An error occurred', { requestId });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
