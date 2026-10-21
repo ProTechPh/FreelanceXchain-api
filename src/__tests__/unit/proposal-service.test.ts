@@ -150,6 +150,7 @@ const {
   acceptProposal,
   rejectProposal,
   withdrawProposal,
+  updateProposal,
   getProposalWithEmployerHistory,
 } = await import('../../services/proposal-service.js');
 
@@ -2229,6 +2230,251 @@ describe('proposal-service.ts - Remaining coverage gaps', () => {
       } else {
         process.env['FRONTEND_URL'] = savedFrontendUrl;
       }
+    }
+  });
+});
+
+describe('Proposal Service - updateProposal terms editing', () => {
+  const employerId = 'employer-terms';
+  const freelancerId = 'freelancer-terms';
+  let project: any;
+  let proposal: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockProposalRepo.clear();
+    mockProjectRepo.clear();
+    mockContractRepo.clear();
+    mockUserRepo.clear();
+    mockNotificationRepo.clear();
+    mockReviewRepo.clear();
+    mockEmployerProfileRepo.clear();
+    mockNotificationRepo.createNotification.mockClear();
+
+    project = createTestProject({
+      id: 'project-terms',
+      employer_id: employerId,
+      title: 'Analytics overhaul',
+      status: 'open',
+      freelancer_limit: 1,
+    });
+    projectStore.set(project.id, project);
+
+    proposal = createTestProposal({
+      id: 'proposal-terms',
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      status: 'pending',
+      proposed_rate: 1,
+      estimated_duration: 10,
+      cover_letter: 'Original cover letter',
+    });
+    proposalStore.set(proposal.id, proposal);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns NOT_FOUND when the proposal does not exist', async () => {
+    const result = await updateProposal('missing-proposal', freelancerId, { proposedRate: 2 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns UNAUTHORIZED when another freelancer tries to edit it', async () => {
+    const result = await updateProposal(proposal.id, 'other-freelancer', { proposedRate: 2 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    expect((proposalStore.get(proposal.id) as any).proposed_rate).toBe(1);
+  });
+
+  it('returns INVALID_STATUS once the proposal is no longer pending', async () => {
+    proposalStore.set(proposal.id, { ...proposal, status: 'accepted' });
+
+    const result = await updateProposal(proposal.id, freelancerId, { proposedRate: 2 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+      expect(result.error.message).toContain('accepted');
+    }
+  });
+
+  it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects an invalid proposed rate: %s',
+    async (proposedRate) => {
+      const updateSpy = jest.spyOn(mockProposalRepo, 'updateProposal');
+
+      const result = await updateProposal(proposal.id, freelancerId, { proposedRate });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('VALIDATION_ERROR');
+        expect(result.error.message).toBe('Proposed rate must be greater than 0');
+      }
+      expect(updateSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([0, -1, 1.5, 3651, Number.NaN])(
+    'rejects an invalid estimated duration: %s',
+    async (estimatedDuration) => {
+      const updateSpy = jest.spyOn(mockProposalRepo, 'updateProposal');
+
+      const result = await updateProposal(proposal.id, freelancerId, { estimatedDuration });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('VALIDATION_ERROR');
+        expect(result.error.message).toBe('Estimated duration must be an integer between 1 and 3650 days');
+      }
+      expect(updateSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it('returns UPDATE_FAILED when the repository returns null', async () => {
+    jest.spyOn(mockProposalRepo, 'updateProposal').mockResolvedValueOnce(null);
+
+    const result = await updateProposal(proposal.id, freelancerId, { proposedRate: 2 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+      expect(result.error.message).toBe('Failed to update proposal');
+    }
+    expect(mockNotificationRepo.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('persists the changed terms and notifies the project employer', async () => {
+    const result = await updateProposal(proposal.id, freelancerId, {
+      proposedRate: 2.5,
+      estimatedDuration: 21,
+      coverLetter: 'Updated approach and timeline.',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proposedRate).toBe(2.5);
+      expect(result.data.estimatedDuration).toBe(21);
+      expect(result.data.coverLetter).toBe('Updated approach and timeline.');
+    }
+
+    const saved = proposalStore.get(proposal.id) as any;
+    expect(saved.proposed_rate).toBe(2.5);
+    expect(saved.estimated_duration).toBe(21);
+    expect(saved.cover_letter).toBe('Updated approach and timeline.');
+
+    expect(mockNotificationRepo.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: employerId,
+        type: 'proposal_received',
+        title: 'Proposal Terms Updated',
+        message: expect.stringContaining('2.5 ETH'),
+        is_read: false,
+        data: expect.objectContaining({
+          proposalId: proposal.id,
+          projectId: project.id,
+          projectTitle: project.title,
+          freelancerId,
+        }),
+      })
+    );
+  });
+
+  it('falls back to the stored rate in the notification when only other terms change', async () => {
+    const result = await updateProposal(proposal.id, freelancerId, { coverLetter: 'Only the letter changed.' });
+
+    expect(result.success).toBe(true);
+    expect(mockNotificationRepo.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('1 ETH'),
+      })
+    );
+  });
+
+  it('still succeeds when the notification cannot be created', async () => {
+    jest
+      .spyOn(mockNotificationRepo, 'createNotification')
+      .mockRejectedValueOnce(new Error('notification service down'));
+
+    const result = await updateProposal(proposal.id, freelancerId, { proposedRate: 3 });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.proposedRate).toBe(3);
+    expect((proposalStore.get(proposal.id) as any).proposed_rate).toBe(3);
+  });
+
+  it('skips notification when the proposal project no longer exists', async () => {
+    projectStore.delete(project.id);
+
+    const result = await updateProposal(proposal.id, freelancerId, { proposedRate: 4 });
+
+    expect(result.success).toBe(true);
+    expect(mockNotificationRepo.createNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('Proposal Service - acceptance failure compensation', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns DUPLICATE_CONTRACT when the proposal already has a contract', async () => {
+    const employerId = 'employer-duplicate';
+    const project = createTestProject({ id: 'project-duplicate', employer_id: employerId, status: 'open', freelancer_limit: 1 });
+    projectStore.set(project.id, project);
+    const proposal = createTestProposal({
+      id: 'proposal-duplicate',
+      project_id: project.id,
+      freelancer_id: 'freelancer-duplicate',
+      status: 'pending',
+      proposed_rate: 1,
+    });
+    proposalStore.set(proposal.id, proposal);
+    const contract = createTestContract({ id: 'contract-existing', project_id: project.id, proposal_id: proposal.id });
+    contractStore.set(contract.id, contract);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('DUPLICATE_CONTRACT');
+    expect((proposalStore.get(proposal.id) as any).status).toBe('pending');
+  });
+
+  it('logs a critical error when reverting the proposal also fails', async () => {
+    const employerId = 'employer-revert';
+    const project = createTestProject({ id: 'project-revert', employer_id: employerId, status: 'open', freelancer_limit: 1 });
+    projectStore.set(project.id, project);
+    const proposal = createTestProposal({
+      id: 'proposal-revert',
+      project_id: project.id,
+      freelancer_id: 'freelancer-revert',
+      status: 'pending',
+      proposed_rate: 1,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const originalCreate = mockContractRepo.create;
+    mockContractRepo.create = jest.fn<any>().mockRejectedValue(new Error('contract insert failed'));
+    jest
+      .spyOn(mockProposalRepo, 'updateProposal')
+      .mockResolvedValueOnce({ ...proposal, status: 'accepted' })
+      .mockRejectedValueOnce(new Error('revert failed'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const result = await acceptProposal(proposal.id, employerId);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('CONTRACT_CREATION_FAILED');
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining('CRITICAL: failed to revert proposal after contract creation failure')
+      );
+    } finally {
+      mockContractRepo.create = originalCreate;
     }
   });
 });

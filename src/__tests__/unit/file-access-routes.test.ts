@@ -67,6 +67,11 @@ const app = express();
 app.use(express.json());
 app.use('/api/files/access', router);
 
+const proposalRepoMock = (await import('../../repositories/proposal-repository.ts')).proposalRepository as any;
+const projectRepoMock = (await import('../../repositories/project-repository.ts')).projectRepository as any;
+const disputeRepoMock = (await import('../../repositories/dispute-repository.ts')).disputeRepository as any;
+const contractRepoMock = (await import('../../repositories/contract-repository.ts')).contractRepository as any;
+
 describe('File Access Routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -350,5 +355,234 @@ describe('File Access Routes - negotiated contract deliverables', () => {
     }]);
     const res = await request(app).get('/api/files/access/milestone-deliverables/file-9');
     expect(res.status).toBe(403);
+  });
+});
+
+describe('File Access Routes - proposal and dispute resource authorization', () => {
+  const fileMeta = (name = 'someone_uuid_attachment.pdf') => ({
+    name,
+    sizeOriginal: 1024,
+    mimeType: 'application/pdf',
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUser = { userId: 'user-1', role: 'user' };
+    mockContractQueryAll.mockResolvedValue([]);
+  });
+
+  it('allows the proposal freelancer to read a proposal attachment', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('proposal'));
+    proposalRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'proposal-1',
+        freelancer_id: 'user-1',
+        project_id: 'project-1',
+        attachments: [{ url: '/api/files/access/proposal-attachments/file-1' }],
+      },
+    ]);
+
+    const res = await request(app).get('/api/files/access/proposal-attachments/file-1');
+
+    expect(res.status).toBe(200);
+    expect(res.header['content-type']).toContain('application/pdf');
+    expect(projectRepoMock.findProjectById).not.toHaveBeenCalled();
+  });
+
+  it('allows the project employer to read a proposal attachment', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('proposal'));
+    proposalRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'proposal-1',
+        freelancer_id: 'freelancer-1',
+        project_id: 'project-1',
+        attachments: JSON.stringify([{ fileId: 'file-1' }]),
+      },
+    ]);
+    projectRepoMock.findProjectById.mockResolvedValueOnce({
+      id: 'project-1',
+      employer_id: 'user-1',
+    });
+
+    const res = await request(app).get('/api/files/access/proposal-attachments/file-1');
+
+    expect(res.status).toBe(200);
+    expect(projectRepoMock.findProjectById).toHaveBeenCalledWith('project-1');
+  });
+
+  it('denies a signed-in outsider reading a proposal attachment', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    proposalRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'proposal-1',
+        freelancer_id: 'freelancer-1',
+        project_id: 'project-1',
+        attachments: [{ fileId: 'file-1' }],
+      },
+    ]);
+    projectRepoMock.findProjectById.mockResolvedValueOnce({
+      id: 'project-1',
+      employer_id: 'employer-1',
+    });
+
+    const res = await request(app).get('/api/files/access/proposal-attachments/file-1');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('denies a proposal attachment that no proposal references', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    proposalRepoMock.queryAll.mockResolvedValueOnce([]);
+
+    const res = await request(app).get('/api/files/access/proposal-attachments/file-1');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('denies a proposal attachment when the project can no longer be found', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    proposalRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'proposal-1',
+        freelancer_id: 'freelancer-1',
+        project_id: 'project-1',
+        attachments: [{ fileId: 'file-1' }],
+      },
+    ]);
+    projectRepoMock.findProjectById.mockResolvedValueOnce(null);
+
+    const res = await request(app).get('/api/files/access/proposal-attachments/file-1');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('allows either contract party to read dispute evidence', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta('someone_uuid_evidence.pdf'));
+    mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('evidence'));
+    disputeRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'dispute-1',
+        contract_id: 'contract-1',
+        evidence: [{ url: '/api/files/access/dispute-evidence/file-1' }],
+      },
+    ]);
+    contractRepoMock.getContractById.mockResolvedValueOnce({
+      id: 'contract-1',
+      employer_id: 'employer-1',
+      freelancer_id: 'user-1',
+    });
+
+    const res = await request(app).get('/api/files/access/dispute-evidence/file-1');
+
+    expect(res.status).toBe(200);
+    expect(contractRepoMock.getContractById).toHaveBeenCalledWith('contract-1');
+  });
+
+  it('denies a non-party reading dispute evidence', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    disputeRepoMock.queryAll.mockResolvedValueOnce([
+      { id: 'dispute-1', contract_id: 'contract-1', evidence: [{ fileId: 'file-1' }] },
+    ]);
+    contractRepoMock.getContractById.mockResolvedValueOnce({
+      id: 'contract-1',
+      employer_id: 'employer-1',
+      freelancer_id: 'freelancer-1',
+    });
+
+    const res = await request(app).get('/api/files/access/dispute-evidence/file-1');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('denies dispute evidence that no dispute references', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    disputeRepoMock.queryAll.mockResolvedValueOnce([]);
+
+    const res = await request(app).get('/api/files/access/dispute-evidence/file-1');
+
+    expect(res.status).toBe(403);
+    expect(contractRepoMock.getContractById).not.toHaveBeenCalled();
+  });
+
+  it('allows a contract party to read deliverables referenced by project milestones', async () => {
+    mockUser = { userId: 'employer-1', role: 'user' };
+    mockStorage.getFile.mockResolvedValue(fileMeta('freelancer-1_uuid_deliverable.pdf'));
+    mockStorage.getFileDownload.mockResolvedValueOnce(Buffer.from('deliverable'));
+    projectRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'project-1',
+        milestones: [{ id: 'm1', deliverable_files: [{ fileId: 'file-1' }] }],
+      },
+    ]);
+    contractRepoMock.getContractsByProject.mockResolvedValueOnce([
+      { id: 'contract-1', employer_id: 'employer-1', freelancer_id: 'freelancer-1' },
+    ]);
+
+    const res = await request(app).get('/api/files/access/milestone-deliverables/file-1');
+
+    expect(res.status).toBe(200);
+    expect(contractRepoMock.getContractsByProject).toHaveBeenCalledWith('project-1');
+  });
+
+  it('denies deliverables when the user holds no contract for the project', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    projectRepoMock.queryAll.mockResolvedValueOnce([
+      {
+        id: 'project-1',
+        milestones: [{ id: 'm1', deliverable_files: [{ fileId: 'file-1' }] }],
+      },
+    ]);
+    contractRepoMock.getContractsByProject.mockResolvedValueOnce([
+      { id: 'contract-1', employer_id: 'employer-1', freelancer_id: 'freelancer-1' },
+    ]);
+
+    const res = await request(app).get('/api/files/access/milestone-deliverables/file-1');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects batch entries for buckets outside the configured taxonomy', async () => {
+    const res = await request(app)
+      .post('/api/files/access/batch')
+      .send({ urls: ['https://appwrite.example/v1/storage/buckets/unknown-bucket/files/file-1/view'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.urls[0]).toEqual({
+      original: 'https://appwrite.example/v1/storage/buckets/unknown-bucket/files/file-1/view',
+      secure: null,
+      accessible: false,
+    });
+    expect(mockStorage.getFile).not.toHaveBeenCalled();
+  });
+
+  it('marks a batch URL inaccessible when the caller cannot read the file', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta('someone_uuid_tax.pdf'));
+
+    const res = await request(app)
+      .post('/api/files/access/batch')
+      .send({ urls: ['https://appwrite.example/v1/storage/buckets/kyc-documents/files/file-1/view'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.urls[0]).toEqual({
+      original: 'https://appwrite.example/v1/storage/buckets/kyc-documents/files/file-1/view',
+      secure: null,
+      accessible: false,
+    });
+  });
+
+  it('marks a batch URL inaccessible when authorization lookup throws', async () => {
+    mockStorage.getFile.mockResolvedValue(fileMeta());
+    proposalRepoMock.queryAll.mockRejectedValueOnce(new Error('proposal index unavailable'));
+
+    const res = await request(app)
+      .post('/api/files/access/batch')
+      .send({ urls: ['https://appwrite.example/v1/storage/buckets/proposal-attachments/files/file-1/view'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.urls[0].secure).toBeNull();
+    expect(res.body.urls[0].accessible).toBe(false);
   });
 });

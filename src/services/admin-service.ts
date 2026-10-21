@@ -632,14 +632,18 @@ function generateTemporaryPassword(): string {
 }
 
 function validateInviteUserInput(input: InviteUserInput): ServiceResult<never> | null {
-  const trimmedName = input.name?.trim();
-  if (!trimmedName || trimmedName.length < 2) {
-    return errorResult('INVALID_NAME', 'Name must be at least 2 characters long');
+  if (!input || typeof input !== 'object') {
+    return errorResult('VALIDATION_ERROR', 'A valid request body is required');
   }
 
-  const normalizedEmail = input.email?.trim().toLowerCase();
+  const trimmedName = typeof input.name === 'string' ? input.name.trim() : '';
+  if (trimmedName.length < 2 || trimmedName.length > 100) {
+    return errorResult('INVALID_NAME', 'Name must be between 2 and 100 characters');
+  }
+
+  const normalizedEmail = typeof input.email === 'string' ? input.email.trim().toLowerCase() : '';
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
+  if (normalizedEmail.length < 5 || normalizedEmail.length > 254 || !emailRegex.test(normalizedEmail)) {
     return errorResult('INVALID_EMAIL', 'A valid email address is required');
   }
 
@@ -647,20 +651,29 @@ function validateInviteUserInput(input: InviteUserInput): ServiceResult<never> |
     return errorResult('INVALID_ROLE', 'Role must be freelancer, employer, or admin');
   }
 
-  if (input.role === 'admin' && input.permissions !== undefined) {
+  if (input.permissions !== undefined) {
     if (!Array.isArray(input.permissions)) {
       return errorResult('INVALID_PERMISSIONS', 'Permissions must be an array');
     }
     const validSet = new Set<string>(ADMIN_PERMISSIONS);
     for (const p of input.permissions) {
-      if (!validSet.has(p)) {
+      if (typeof p !== 'string' || !validSet.has(p)) {
         return errorResult('INVALID_PERMISSION', `Invalid permission: ${p}`);
       }
     }
   }
 
-  if (input.password?.trim() && input.password.trim().length < 8) {
-    return errorResult('INVALID_PASSWORD', 'Password must be at least 8 characters long');
+  if (input.password !== undefined && typeof input.password !== 'string') {
+    return errorResult('INVALID_PASSWORD', 'Password must be a string');
+  }
+  if (typeof input.password === 'string' && input.password.trim() && (input.password.length < 8 || input.password.length > 256)) {
+    return errorResult('INVALID_PASSWORD', 'Password must be between 8 and 256 characters');
+  }
+  if (input.autoVerifyEmail !== undefined && typeof input.autoVerifyEmail !== 'boolean') {
+    return errorResult('VALIDATION_ERROR', 'autoVerifyEmail must be a boolean');
+  }
+  if (input.grantPro !== undefined && typeof input.grantPro !== 'boolean') {
+    return errorResult('VALIDATION_ERROR', 'grantPro must be a boolean');
   }
 
   return null;

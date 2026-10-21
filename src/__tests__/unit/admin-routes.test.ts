@@ -72,7 +72,19 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     next();
   },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: (permission: string) => (req: any, res: any, next: any) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: { code: 'AUTH_UNAUTHORIZED' } });
+    if (user.role !== 'admin') return res.status(403).json({ error: { code: 'AUTH_FORBIDDEN' } });
+    const permissions = user.permissions;
+    if (
+      permissions === undefined ||
+      permissions.includes('*') ||
+      permissions.includes('admin:manage') ||
+      permissions.includes(permission)
+    ) return next();
+    return res.status(403).json({ error: { code: 'INSUFFICIENT_PERMISSIONS' } });
+  },
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -163,6 +175,18 @@ describe('Admin Routes', () => {
       const res = await request(app).get('/api/admin/stats');
       expect(res.status).toBe(400);
     });
+
+    it.each([
+      ['status', 'paused'],
+      ['role', 'superadmin'],
+      ['kycStatus', 'verified'],
+      ['emailVerified', 'yes'],
+    ])('rejects an invalid %s filter', async (field, value) => {
+      const res = await request(app).get(`/api/admin/users?${field}=${value}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(mockGetUserManagement).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /analytics', () => {
@@ -193,6 +217,23 @@ describe('Admin Routes', () => {
       mockGetUserManagement.mockResolvedValue({ success: true, data: { users: [], total: 0 } });
       await request(app).get('/api/admin/users?status=active&role=freelancer');
       expect(mockGetUserManagement).toHaveBeenCalledWith({ status: 'active', role: 'freelancer' });
+    });
+
+    it.each([
+      ['status', 'active'], ['status', 'suspended'],
+      ['role', 'freelancer'], ['role', 'employer'], ['role', 'admin'],
+      ['kycStatus', 'not_started'], ['kycStatus', 'pending'], ['kycStatus', 'in_progress'],
+      ['kycStatus', 'completed'], ['kycStatus', 'approved'], ['kycStatus', 'rejected'],
+      ['kycStatus', 'expired'], ['emailVerified', 'true'], ['emailVerified', 'false'],
+    ])('accepts supported %s=%s filter', async (field, value) => {
+      mockGetUserManagement.mockResolvedValue({ success: true, data: { users: [], total: 0 } });
+
+      const res = await request(app).get(`/api/admin/users?${field}=${value}`);
+
+      expect(res.status).toBe(200);
+      expect(mockGetUserManagement).toHaveBeenCalledWith({
+        [field]: field === 'emailVerified' ? value === 'true' : value,
+      });
     });
 
     it('should return 400 on failure', async () => {
@@ -261,6 +302,7 @@ describe('Admin Routes', () => {
     it.each([
       ['DUPLICATE_EMAIL', 409],
       ['INVALID_EMAIL', 400],
+      ['VALIDATION_ERROR', 400],
       ['UPSTREAM_FAILURE', 500],
     ])('maps %s service failures to HTTP %i', async (code, status) => {
       mockInviteOrAddUser.mockResolvedValue({ success: false, error: { code, message: 'failed' } });
@@ -271,6 +313,20 @@ describe('Admin Routes', () => {
 
       expect(res.status).toBe(status);
       expect(res.body.error.code).toBe(code);
+    });
+
+    it('rejects malformed bodies and non-boolean options', async () => {
+      const malformed = await request(app)
+        .post('/api/admin/users')
+        .set('Content-Type', 'application/json')
+        .send('null');
+      expect(malformed.status).toBe(400);
+
+      const invalidAutoVerify = await request(app).post('/api/admin/users').send({
+        name: 'Valid Name', email: 'valid@example.com', role: 'freelancer', autoVerifyEmail: 'yes',
+      });
+      expect(invalidAutoVerify.status).toBe(400);
+      expect(invalidAutoVerify.body.error.code).toBe('VALIDATION_ERROR');
     });
   });
 
@@ -301,10 +357,34 @@ describe('Admin Routes', () => {
       expect(res.body.error.code).toBe('INVALID_ROLE');
     });
 
+    it.each([
+      [{}, 'VALIDATION_ERROR'],
+      [{ name: 'x' }, 'INVALID_NAME'],
+      [{ name: 42 }, 'INVALID_NAME'],
+      [{ isActive: 'false' }, 'VALIDATION_ERROR'],
+    ])('rejects invalid update input %#', async (body, code) => {
+      const res = await request(app).patch('/api/admin/users/u-1').send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe(code);
+      expect(mockUpdateUser).not.toHaveBeenCalled();
+    });
+
     it('should return 400 on failure', async () => {
       mockUpdateUser.mockResolvedValue({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
       const res = await request(app).patch('/api/admin/users/u-1').send({ name: 'New' });
       expect(res.status).toBe(400);
+    });
+
+    it.each([
+      [{}, 'INVALID_REASON'],
+      [{ reason: 'short' }, 'INVALID_REASON'],
+      [{ reason: 123 }, 'INVALID_REASON'],
+      [{ reason: 'x'.repeat(501) }, 'INVALID_REASON'],
+    ])('rejects an invalid suspension reason %#', async (body, code) => {
+      const res = await request(app).post('/api/admin/users/u-1/suspend').send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe(code);
+      expect(mockSuspendUser).not.toHaveBeenCalled();
     });
   });
 
@@ -313,19 +393,38 @@ describe('Admin Routes', () => {
       const res = await request(app)
         .post('/api/admin/users/u-1/suspend')
         .set('x-test-no-user', 'true')
-        .send({ reason: 'Violation' });
+        .send({ reason: 'Policy violation' });
       expect(res.status).toBe(401);
     });
     it('should suspend user', async () => {
       mockSuspendUser.mockResolvedValue({ success: true, data: { id: 'u-1', is_suspended: true } });
-      const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Violation' });
+      const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Policy violation' });
       expect(res.status).toBe(200);
+    });
+
+    it.each([10, 500])('accepts and trims a %i-character reason', async (length) => {
+      mockSuspendUser.mockResolvedValue({ success: true, data: { id: 'u-1', is_suspended: true } });
+      const reason = 'x'.repeat(length);
+
+      const res = await request(app)
+        .post('/api/admin/users/u-1/suspend')
+        .send({ reason: `  ${reason}  ` });
+
+      expect(res.status).toBe(200);
+      expect(mockSuspendUser).toHaveBeenCalledWith('u-1', reason, 'admin-1');
     });
 
     it('should return 400 on failure', async () => {
       mockSuspendUser.mockResolvedValue({ success: false, error: { code: 'ERROR', message: 'Failed' } });
-      const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Test' });
+      const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Policy violation' });
       expect(res.status).toBe(400);
+    });
+
+    it('handles a failure without an error object', async () => {
+      mockGetPlatformStats.mockResolvedValue({ success: false });
+      const res = await request(app).get('/api/admin/platform-stats');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('UNKNOWN');
     });
   });
 
@@ -385,6 +484,28 @@ describe('Admin Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_REASON');
       expect(mockVerifyUser).not.toHaveBeenCalled();
+    });
+
+    it.each([9, 501])('rejects a %i-character audit reason', async (length) => {
+      const res = await request(app)
+        .post('/api/admin/users/u-1/verify')
+        .send({ reason: 'x'.repeat(length) });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_REASON');
+      expect(mockVerifyUser).not.toHaveBeenCalled();
+    });
+
+    it.each([10, 500])('accepts and trims a %i-character audit reason', async (length) => {
+      mockVerifyUser.mockResolvedValue({ success: true, data: { id: 'kyc-1', status: 'approved' } });
+      const reason = 'x'.repeat(length);
+
+      const res = await request(app)
+        .post('/api/admin/users/u-1/verify')
+        .send({ reason: `  ${reason}  ` });
+
+      expect(res.status).toBe(200);
+      expect(mockVerifyUser).toHaveBeenCalledWith('u-1', 'admin-1', reason);
     });
 
     it.each([
@@ -466,13 +587,66 @@ describe('Admin Routes', () => {
 
     it('should pass status filter', async () => {
       mockGetDisputeManagement.mockResolvedValue({ success: true, data: { disputes: [], total: 0 } });
-      await request(app).get('/api/admin/disputes?status=pending');
-      expect(mockGetDisputeManagement).toHaveBeenCalledWith({ status: 'pending' });
+      await request(app).get('/api/admin/disputes?status=under_review');
+      expect(mockGetDisputeManagement).toHaveBeenCalledWith({ status: 'under_review' });
+    });
+
+    it.each(['open', 'under_review', 'resolved'])('accepts the %s status', async (status) => {
+      mockGetDisputeManagement.mockResolvedValue({ success: true, data: { disputes: [], total: 0 } });
+
+      const res = await request(app).get(`/api/admin/disputes?status=${status}`);
+
+      expect(res.status).toBe(200);
+      expect(mockGetDisputeManagement).toHaveBeenCalledWith({ status });
+    });
+
+    it.each(['pending', 'closed', 'OPEN'])('rejects the unsupported %s status', async (status) => {
+      const res = await request(app).get(`/api/admin/disputes?status=${status}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(mockGetDisputeManagement).not.toHaveBeenCalled();
     });
 
     it('should return 400 on failure', async () => {
       mockGetDisputeManagement.mockResolvedValue({ success: false, error: { code: 'ERROR', message: 'Failed' } });
       const res = await request(app).get('/api/admin/disputes');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /impersonate authorization and input validation', () => {
+    it.each([
+      ['/api/admin/impersonate', { userId: 'target-1' }],
+      ['/api/admin/users/target-1/impersonate', {}],
+    ])('blocks a delegated admin without admin:manage on %s', async (url, body) => {
+      const res = await request(app)
+        .post(url)
+        .set('x-test-permissions', 'users:manage')
+        .send(body);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+    });
+
+    it.each([
+      [{}, 'A userId or email is required'],
+      [{ userId: 42 }, 'userId and email must be strings'],
+      [{ email: false }, 'userId and email must be strings'],
+      [{ userId: '   ', email: '   ' }, 'A userId or email is required'],
+    ])('rejects malformed generic impersonation body %#', async (body, message) => {
+      const res = await request(app).post('/api/admin/impersonate').send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatchObject({ code: 'VALIDATION_ERROR', message });
+    });
+
+    it('rejects a null JSON body before route processing', async () => {
+      const res = await request(app)
+        .post('/api/admin/impersonate')
+        .set('Content-Type', 'application/json')
+        .send('null');
+
       expect(res.status).toBe(400);
     });
   });
@@ -587,7 +761,7 @@ describe('admin-routes branch coverage', () => {
   // Suspend/Unsuspend/Verify error fallbacks
   it('POST /users/:userId/suspend error without code', async () => {
     mockAdminService.suspendUser.mockResolvedValue({ success: false, error: { message: 'Failed' } });
-    const res = await request(app).post('/api/admin/users/u1/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/u1/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(400);
   });
 
@@ -694,7 +868,7 @@ describe('admin-routes.ts - Branch Coverage', () => {
   it('L179: POST /users/:userId/suspend', async () => {
     mockSuspendUser.mockResolvedValueOnce({ success: true, data: {} });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(200);
   });
 
@@ -748,7 +922,7 @@ describe('admin-routes.ts - Branch Coverage', () => {
   it('L187: POST /users/:userId/suspend returns 400 on failure', async () => {
     mockSuspendUser.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('ERROR');
   });
@@ -872,7 +1046,7 @@ describe('admin-routes - error with null/undefined error object', () => {
   it('POST /suspend with error: undefined should use UNKNOWN fallback', async () => {
     mockSuspendUser2.mockResolvedValueOnce({ success: false, error: undefined });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('UNKNOWN');
     expect(res.body.error.message).toBe('An error occurred');
@@ -914,15 +1088,13 @@ describe('admin-routes - error with null/undefined error object', () => {
     expect(res.body.error.message).toBe('An error occurred');
   });
 
-  it('GET /platform-stats with error: undefined throws TypeError (line 321 bug - no optional chaining)', async () => {
-    // Line 321 uses result.error.code instead of result.error?.code
-    // When result.error is undefined, this throws TypeError: Cannot read properties of undefined
-    // Verify the ternary logic would produce the fallback if optional chaining were used
-    const result = { success: false, error: undefined };
-    // With optional chaining: result.error?.code ?? 'UNKNOWN' would be 'UNKNOWN'
-    expect(result.error?.code ?? 'UNKNOWN').toBe('UNKNOWN');
-    // Without optional chaining: result.error.code would throw
-    expect(() => (result as any).error.code).toThrow(TypeError);
+  it('GET /platform-stats with error: undefined should use UNKNOWN fallback', async () => {
+    mockGetPlatformStats3.mockResolvedValueOnce({ success: false, error: undefined });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
   });
 });
 
@@ -1001,7 +1173,7 @@ describe('admin-routes - additional branch coverage', () => {
 
   it('POST /users/:userId/suspend with no error property', async () => {
     mockSuspendUser.mockResolvedValue({ success: false });
-    const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('UNKNOWN');
     expect(res.body.error.message).toBe('An error occurred');
@@ -1009,7 +1181,7 @@ describe('admin-routes - additional branch coverage', () => {
 
   it('POST /users/:userId/suspend with code but no message', async () => {
     mockSuspendUser.mockResolvedValue({ success: false, error: { code: 'ALREADY_SUSPENDED' } });
-    const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/u-1/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('ALREADY_SUSPENDED');
     expect(res.body.error.message).toBe('An error occurred');
@@ -1079,13 +1251,12 @@ describe('admin-routes - additional branch coverage', () => {
     expect(res.body.error.message).toBe('An error occurred');
   });
 
-  it('GET /platform-stats with no error property triggers TypeError (no optional chaining on result.error.code)', () => {
-    // platform-stats uses result.error.code without optional chaining,
-    // so { success: false } with no error property causes TypeError.
-    // Express does not catch async errors by default, so the request hangs.
-    // We verify the TypeError at the code level instead.
-    const result = { success: false };
-    expect(() => (result as any).error.code).toThrow(TypeError);
+  it('GET /platform-stats with no error property', async () => {
+    mockGetPlatformStats.mockResolvedValue({ success: false });
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
   });
 
   it('GET /platform-stats with code but no message', async () => {
@@ -1138,7 +1309,7 @@ describe('admin-routes - mapAdminUser / user filters / error fallbacks', () => {
     const res = await request(app).get('/api/admin/users?kycStatus=approved&emailVerified=true');
 
     expect(res.status).toBe(200);
-    expect(mockGetUserManagement).toHaveBeenCalledWith({ kycStatus: 'approved', emailVerified: 'true' });
+    expect(mockGetUserManagement).toHaveBeenCalledWith({ kycStatus: 'approved', emailVerified: true });
   });
 
   it('POST /users with no error property falls back to UNKNOWN / An error occurred', async () => {
@@ -1251,9 +1422,9 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
   it('L179: POST /users/:userId/suspend uses ?? "" fallback', async () => {
     mockSuspendUser.mockResolvedValueOnce({ success: true, data: {} });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/admin/users/any-id/suspend').send({ reason: 'test' });
+    const res = await request(app).post('/api/admin/users/any-id/suspend').send({ reason: 'Policy violation' });
     expect(res.status).toBe(200);
-    expect(mockSuspendUser).toHaveBeenCalledWith('', 'test', 'admin-1');
+    expect(mockSuspendUser).toHaveBeenCalledWith('', 'Policy violation', 'admin-1');
   });
 
   it('L207: POST /users/:userId/unsuspend uses ?? "" fallback', async () => {

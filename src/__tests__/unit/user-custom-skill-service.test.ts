@@ -1106,3 +1106,527 @@ describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Suggestion queue self-healing, approval promotion, taxonomy
+// resolution, and requester synchronisation.
+// ═══════════════════════════════════════════════════════════════
+
+describe('User Custom Skill Service - suggestion approval and queue healing', () => {
+  const importModule = async () => import('../../services/user-custom-skill-service.js');
+
+  const suggestion = (overrides: Record<string, unknown> = {}) => ({
+    id: 'sug-1',
+    user_id: 'u1',
+    skill_name: 'Rust',
+    skill_description: 'Systems programming',
+    suggested_by: 'John',
+    times_requested: 1,
+    requester_ids: ['u1'],
+    status: 'approved',
+    created_at: '2025-01-01',
+    updated_at: '2025-01-02',
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const { userCustomSkillRepository, skillSuggestionRepository } = await import(
+      '../../repositories/user-custom-skill-repository.ts'
+    );
+    // Earlier describes replace these methods with fresh jest.fn() instances.
+    (userCustomSkillRepository as any).getUserCustomSkills = mockGetUserCustomSkills;
+    (userCustomSkillRepository as any).getUserCustomSkillById = mockGetUserCustomSkillById;
+    (userCustomSkillRepository as any).createUserCustomSkill = mockCreateUserCustomSkillRepo;
+    (userCustomSkillRepository as any).updateUserCustomSkill = mockUpdateUserCustomSkillRepo;
+    (userCustomSkillRepository as any).searchUserCustomSkills = mockSearchUserCustomSkillsRepo;
+    (skillSuggestionRepository as any).getSkillSuggestionById = mockGetSkillSuggestionById;
+    (skillSuggestionRepository as any).getById = mockGetSkillSuggestionById;
+    (skillSuggestionRepository as any).getSkillSuggestionByName = mockGetSkillSuggestionByName;
+    (skillSuggestionRepository as any).recordSuggestionRequest = mockRecordSuggestionRequest;
+    (skillSuggestionRepository as any).createSkillSuggestion = mockCreateSkillSuggestion;
+    (skillSuggestionRepository as any).getPendingSkillSuggestions = mockGetPendingSkillSuggestions;
+    (skillSuggestionRepository as any).updateSkillSuggestionStatus = mockUpdateSkillSuggestionStatus;
+    delete (skillSuggestionRepository as any).fetchAll;
+
+    mockGetUserCustomSkills.mockResolvedValue([]);
+    mockAddSkillsToProfile.mockResolvedValue({ success: true });
+    mockCreateSkillRepo.mockResolvedValue({ id: 'skill-new', name: 'Rust' });
+  });
+
+  describe('getPendingSkillSuggestions self-healing', () => {
+    it('reopens an approved suggestion that never reached the global taxonomy', async () => {
+      const { getPendingSkillSuggestions } = await importModule();
+      const { skillSuggestionRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+      mockGetPendingSkillSuggestions.mockResolvedValueOnce([
+        suggestion({ id: 'sug-pending', skill_name: 'Pending Skill', status: 'pending' }),
+      ]);
+      const fetchAll = jest.fn<any>().mockResolvedValueOnce([
+        suggestion({ id: 'sug-approved', skill_name: 'Legacy Skill' }),
+      ]);
+      (skillSuggestionRepository as any).fetchAll = fetchAll;
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(
+        suggestion({ id: 'sug-approved', skill_name: 'Legacy Skill', status: 'pending' })
+      );
+
+      const result = await getPendingSkillSuggestions();
+
+      expect(fetchAll).toHaveBeenCalledWith([]);
+      expect(mockUpdateSkillSuggestionStatus).toHaveBeenCalledWith('sug-approved', 'pending');
+      expect(result.map((s) => s.id)).toEqual(['sug-pending', 'sug-approved']);
+      expect(result[1].status).toBe('pending');
+    });
+
+    it('does not duplicate a reopened suggestion already present in the pending list', async () => {
+      const { getPendingSkillSuggestions } = await importModule();
+      const { skillSuggestionRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+      mockGetPendingSkillSuggestions.mockResolvedValueOnce([
+        suggestion({ id: 'sug-approved', skill_name: 'Legacy Skill', status: 'pending' }),
+      ]);
+      (skillSuggestionRepository as any).fetchAll = jest.fn<any>().mockResolvedValueOnce([
+        suggestion({ id: 'sug-approved', skill_name: 'Legacy Skill' }),
+      ]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'pending' }));
+
+      const result = await getPendingSkillSuggestions();
+
+      expect(mockUpdateSkillSuggestionStatus).toHaveBeenCalledWith('sug-approved', 'pending');
+      expect(result).toHaveLength(1);
+    });
+
+    it('leaves an approved suggestion alone when the skill exists globally', async () => {
+      const { getPendingSkillSuggestions } = await importModule();
+      const { skillSuggestionRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+      mockGetPendingSkillSuggestions.mockResolvedValueOnce([]);
+      (skillSuggestionRepository as any).fetchAll = jest.fn<any>().mockResolvedValueOnce([
+        suggestion({ id: 'sug-approved', skill_name: 'Rust' }),
+      ]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-rust', name: 'Rust' });
+
+      const result = await getPendingSkillSuggestions();
+
+      expect(mockUpdateSkillSuggestionStatus).not.toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+
+    it('swallows a self-healing failure and still returns the pending queue', async () => {
+      const { getPendingSkillSuggestions } = await importModule();
+      const { skillSuggestionRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+      mockGetPendingSkillSuggestions.mockResolvedValueOnce([
+        suggestion({ id: 'sug-pending', status: 'pending' }),
+      ]);
+      (skillSuggestionRepository as any).fetchAll = jest
+        .fn<any>()
+        .mockRejectedValueOnce(new Error('taxonomy read failed'));
+
+      const result = await getPendingSkillSuggestions();
+
+      expect(result).toHaveLength(1);
+      expect(mockUpdateSkillSuggestionStatus).not.toHaveBeenCalled();
+    });
+
+    it('skips self-healing entirely when the repository has no fetchAll', async () => {
+      const { getPendingSkillSuggestions } = await importModule();
+
+      mockGetPendingSkillSuggestions.mockResolvedValueOnce([
+        suggestion({ id: 'sug-pending', status: 'pending' }),
+      ]);
+
+      const result = await getPendingSkillSuggestions();
+
+      expect(result).toHaveLength(1);
+      expect(mockGetSkillByNameNormalized).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('category resolution during approval', () => {
+    const approve = async (options: {
+      categoryId?: string;
+      categoryName?: string;
+      categories?: Array<{ id: string; name: string; is_active: boolean }>;
+    }) => {
+      const { updateSkillSuggestionStatus } = await importModule();
+      mockGetSkillSuggestionById.mockResolvedValueOnce(
+        suggestion({ category_name: options.categoryName })
+      );
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetAllCategoriesRepo.mockResolvedValueOnce(options.categories ?? []);
+      return updateSkillSuggestionStatus('sug-1', 'approved', options.categoryId);
+    };
+
+    it('uses an explicit preferred category id that exists', async () => {
+      const result = await approve({
+        categoryId: 'cat-preferred',
+        categories: [{ id: 'cat-preferred', name: 'Backend', is_active: true }],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ category_id: 'cat-preferred', name: 'Rust', description: 'Systems programming' })
+      );
+      expect(mockGetCategoryByNameRepo).not.toHaveBeenCalled();
+    });
+
+    it('falls back to a matching suggested category name', async () => {
+      mockGetCategoryByNameRepo.mockResolvedValueOnce({ id: 'cat-web', name: 'Web Dev' });
+
+      const result = await approve({
+        categoryName: 'Web Dev',
+        categories: [{ id: 'cat-other', name: 'Other', is_active: true }],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ category_id: 'cat-web' })
+      );
+      expect(mockCreateCategoryRepo).not.toHaveBeenCalled();
+    });
+
+    it('creates a category when the suggested name is new', async () => {
+      mockGetCategoryByNameRepo.mockResolvedValueOnce(null);
+      mockCreateCategoryRepo.mockResolvedValueOnce({ id: 'cat-created', name: 'Blockchain' });
+
+      const result = await approve({ categoryName: 'Blockchain', categories: [] });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateCategoryRepo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Blockchain',
+          description: 'Skills related to Blockchain',
+          is_active: true,
+        })
+      );
+      expect(mockCreateSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ category_id: 'cat-created' })
+      );
+    });
+
+    it('prefers an active General/Other category over other active categories', async () => {
+      await approve({
+        categories: [
+          { id: 'cat-design', name: 'Design', is_active: true },
+          { id: 'cat-inactive-general', name: 'General', is_active: false },
+          { id: 'cat-general', name: 'general', is_active: true },
+        ],
+      });
+
+      expect(mockCreateSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ category_id: 'cat-general' })
+      );
+    });
+
+    it('falls back to the first active category when no General/Other exists', async () => {
+      await approve({
+        categories: [
+          { id: 'cat-inactive', name: 'General', is_active: false },
+          { id: 'cat-design', name: 'Design', is_active: true },
+        ],
+      });
+
+      expect(mockCreateSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ category_id: 'cat-design' })
+      );
+    });
+
+    it('creates a General category when the taxonomy is empty', async () => {
+      mockCreateCategoryRepo.mockResolvedValueOnce({ id: 'cat-general-created', name: 'General' });
+
+      await approve({ categories: [] });
+
+      expect(mockCreateCategoryRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'General', description: 'General skills', is_active: true })
+      );
+      expect(mockCreateSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ category_id: 'cat-general-created' })
+      );
+    });
+  });
+
+  describe('promotion and requester sync', () => {
+    it('skips taxonomy creation when the skill already exists globally', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(suggestion());
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-rust', name: 'Rust' });
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillRepo).not.toHaveBeenCalled();
+      expect(mockCreateCategoryRepo).not.toHaveBeenCalled();
+      expect(mockAddSkillsToProfile).toHaveBeenCalledWith('u1', [
+        { name: 'Rust', yearsOfExperience: 1 },
+      ]);
+    });
+
+    it('still approves when creating the global skill fails', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(suggestion());
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockCreateSkillRepo.mockRejectedValueOnce(new Error('taxonomy write failed'));
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.status).toBe('approved');
+    });
+
+    it('still approves when creating the fallback category fails', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(suggestion());
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockCreateCategoryRepo.mockRejectedValueOnce(new Error('category write failed'));
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillRepo).not.toHaveBeenCalled();
+    });
+
+    it('dedupes requesters and marks only matching custom skills approved', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(
+        suggestion({ user_id: 'u1', requester_ids: ['u1', 'u2', '', null, undefined] })
+      );
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-rust', name: 'Rust' });
+      mockGetUserCustomSkills
+        .mockResolvedValueOnce([
+          { id: 'cs-1', name: 'rust' },
+          { id: 'cs-2', name: 'Go' },
+        ])
+        .mockResolvedValueOnce([{ id: 'cs-3', name: 'RUST' }]);
+      mockUpdateUserCustomSkillRepo.mockResolvedValue({});
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockGetUserCustomSkills).toHaveBeenCalledTimes(2);
+      expect(mockGetUserCustomSkills).toHaveBeenNthCalledWith(1, 'u1');
+      expect(mockGetUserCustomSkills).toHaveBeenNthCalledWith(2, 'u2');
+      expect(mockUpdateUserCustomSkillRepo).toHaveBeenCalledTimes(2);
+      expect(mockUpdateUserCustomSkillRepo).toHaveBeenNthCalledWith(1, 'cs-1', 'u1', { is_approved: true });
+      expect(mockUpdateUserCustomSkillRepo).toHaveBeenNthCalledWith(2, 'cs-3', 'u2', { is_approved: true });
+      expect(mockAddSkillsToProfile).toHaveBeenCalledTimes(2);
+      expect(mockAddSkillsToProfile).toHaveBeenNthCalledWith(1, 'u1', [
+        { name: 'Rust', yearsOfExperience: 1 },
+      ]);
+      expect(mockAddSkillsToProfile).toHaveBeenNthCalledWith(2, 'u2', [
+        { name: 'Rust', yearsOfExperience: 1 },
+      ]);
+    });
+
+    it('continues syncing other requesters when one custom-skill lookup fails', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(
+        suggestion({ user_id: 'u1', requester_ids: ['u1', 'u2'] })
+      );
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-rust', name: 'Rust' });
+      mockGetUserCustomSkills
+        .mockRejectedValueOnce(new Error('profile read failed'))
+        .mockResolvedValueOnce([{ id: 'cs-3', name: 'Rust' }]);
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockGetUserCustomSkills).toHaveBeenCalledTimes(2);
+      expect(mockUpdateUserCustomSkillRepo).toHaveBeenCalledWith('cs-3', 'u2', { is_approved: true });
+      expect(mockAddSkillsToProfile).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores profile sync failures for requesters without a freelancer profile', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(suggestion({ requester_ids: ['u1'] }));
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-rust', name: 'Rust' });
+      mockAddSkillsToProfile.mockRejectedValueOnce(new Error('no freelancer profile'));
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(true);
+      expect(mockAddSkillsToProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('syncs only the suggestion owner when requester_ids is not an array', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(
+        suggestion({ user_id: 'u1', requester_ids: 'u1' })
+      );
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(suggestion({ status: 'approved' }));
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({ id: 'global-rust', name: 'Rust' });
+
+      await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(mockGetUserCustomSkills).toHaveBeenCalledTimes(1);
+      expect(mockGetUserCustomSkills).toHaveBeenCalledWith('u1');
+    });
+
+    it('returns SUGGESTION_NOT_FOUND when the repository update yields null', async () => {
+      const { updateSkillSuggestionStatus } = await importModule();
+
+      mockGetSkillSuggestionById.mockResolvedValueOnce(suggestion());
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce(null);
+
+      const result = await updateSkillSuggestionStatus('sug-1', 'approved');
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('SUGGESTION_NOT_FOUND');
+      expect(mockCreateSkillRepo).not.toHaveBeenCalled();
+      expect(mockAddSkillsToProfile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('suggestSkill side effects', () => {
+    beforeEach(() => {
+      mockGetSkillByNameNormalized.mockResolvedValue(null);
+      mockGetSkillSuggestionByName.mockResolvedValue(null);
+      mockCreateSkillSuggestion.mockResolvedValue({ id: 'sug-1' });
+      mockCreateUserCustomSkillRepo.mockResolvedValue({});
+    });
+
+    it('trims input, defaults experience to one year, and mirrors the skill everywhere', async () => {
+      const { suggestSkill } = await importModule();
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: '  Elixir  ',
+        description: '  Functional language  ',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillSuggestion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skill_name: 'Elixir',
+          skill_description: 'Functional language',
+          requester_ids: ['u1'],
+          status: 'pending',
+        })
+      );
+      expect(mockCreateUserCustomSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: 'u1',
+          name: 'Elixir',
+          description: 'Functional language',
+          years_of_experience: 1,
+          is_approved: false,
+          suggested_for_global: true,
+        })
+      );
+      expect(mockAddSkillsToProfile).toHaveBeenCalledWith('u1', [
+        { name: 'Elixir', yearsOfExperience: 1 },
+      ]);
+    });
+
+    it('propagates the supplied experience years to the skill and the profile', async () => {
+      const { suggestSkill } = await importModule();
+
+      await suggestSkill('u1', 'John Doe', {
+        name: 'Elixir',
+        description: 'Functional language',
+        yearsOfExperience: 7,
+      });
+
+      expect(mockCreateUserCustomSkillRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ years_of_experience: 7 })
+      );
+      expect(mockAddSkillsToProfile).toHaveBeenCalledWith('u1', [
+        { name: 'Elixir', yearsOfExperience: 7 },
+      ]);
+    });
+
+    it('does not duplicate a custom skill the user already owns', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetUserCustomSkills.mockResolvedValueOnce([{ id: 'cs-1', name: 'elixir' }]);
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Elixir',
+        description: 'Functional language',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateUserCustomSkillRepo).not.toHaveBeenCalled();
+      expect(mockAddSkillsToProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops auto-creating custom skills at the 50-skill cap', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetUserCustomSkills.mockResolvedValueOnce(
+        Array.from({ length: 50 }, (_, i) => ({ id: `cs-${i}`, name: `Skill ${i}` }))
+      );
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Elixir',
+        description: 'Functional language',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateUserCustomSkillRepo).not.toHaveBeenCalled();
+    });
+
+    it('still records the suggestion when auto-creating the custom skill fails', async () => {
+      const { suggestSkill } = await importModule();
+      mockCreateUserCustomSkillRepo.mockRejectedValueOnce(new Error('custom skill write failed'));
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Elixir',
+        description: 'Functional language',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillSuggestion).toHaveBeenCalledTimes(1);
+      expect(mockAddSkillsToProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not attempt custom-skill or profile writes when the suggestion write fails', async () => {
+      const { suggestSkill } = await importModule();
+      mockCreateSkillSuggestion.mockRejectedValueOnce(new Error('suggestion write failed'));
+
+      const result = await suggestSkill('u1', 'John Doe', {
+        name: 'Elixir',
+        description: 'Functional language',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('SUGGESTION_FAILED');
+      expect(mockCreateUserCustomSkillRepo).not.toHaveBeenCalled();
+      expect(mockAddSkillsToProfile).not.toHaveBeenCalled();
+    });
+
+    it('reopens a previously rejected suggestion when it is requested again', async () => {
+      const { suggestSkill } = await importModule();
+      mockGetSkillSuggestionByName.mockResolvedValueOnce({
+        id: 'sug-old',
+        name: 'Elixir',
+        status: 'rejected',
+      });
+      mockRecordSuggestionRequest.mockResolvedValueOnce({ id: 'sug-old' });
+      mockUpdateSkillSuggestionStatus.mockResolvedValueOnce({ id: 'sug-old', status: 'pending' });
+
+      const result = await suggestSkill('u2', 'Jane Doe', {
+        name: 'Elixir',
+        description: 'Functional language',
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockRecordSuggestionRequest).toHaveBeenCalledWith('sug-old', 'u2');
+      expect(mockUpdateSkillSuggestionStatus).toHaveBeenCalledWith('sug-old', 'pending');
+      expect(mockCreateSkillSuggestion).not.toHaveBeenCalled();
+    });
+  });
+});
+

@@ -298,6 +298,172 @@ describe('ProposalRepository', () => {
       const result = await repo.getProposalCountsByProjects(['pr1']);
       expect(result.get('pr1')).toBe(0);
     });
+
+    it('deduplicates project ids and ignores unknown or malformed documents', async () => {
+      db().listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', project_id: 'pr1', status: 'pending' },
+          { $id: 'p2', project_id: 'pr1', status: 'accepted' },
+          { $id: 'p3', project_id: 'pr-unknown', status: 'pending' },
+          { $id: 'p4', project_id: 42, status: 'pending' },
+          { $id: 'p5', project_id: 'pr2', status: 'withdrawn' },
+        ],
+        total: 5,
+      });
+
+      const result = await repo.getProposalCountsByProjects(['pr1', 'pr1', 'pr2']);
+
+      expect([...result.entries()]).toEqual([['pr1', 2], ['pr2', 0]]);
+      expect(db().listDocuments).toHaveBeenCalledTimes(1);
+      expect(db().listDocuments.mock.calls[0][2]).toContain('equal(project_id,pr1,pr2)');
+    });
+
+    it('pages with cursorAfter when a full page is returned', async () => {
+      const firstPage = Array.from({ length: 100 }, (_, index) => ({
+        $id: `p${index + 1}`,
+        project_id: 'pr1',
+        status: 'pending',
+      }));
+      db().listDocuments
+        .mockResolvedValueOnce({ documents: firstPage, total: 102 })
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p101', project_id: 'pr1', status: 'pending' },
+            { $id: 'p102', project_id: 'pr2', status: 'pending' },
+          ],
+          total: 2,
+        });
+
+      const result = await repo.getProposalCountsByProjects(['pr1', 'pr2']);
+
+      expect(result.get('pr1')).toBe(101);
+      expect(result.get('pr2')).toBe(1);
+      expect(db().listDocuments).toHaveBeenCalledTimes(2);
+      expect(db().listDocuments.mock.calls[1][2]).toContain('cursorAfter(p100)');
+    });
+
+    it('stops paging when a full page has no last document id', async () => {
+      const firstPage = Array.from({ length: 100 }, (_, index) => ({
+        $id: index === 99 ? undefined : `p${index + 1}`,
+        project_id: 'pr1',
+        status: 'pending',
+      }));
+      db().listDocuments.mockResolvedValueOnce({ documents: firstPage, total: 100 });
+
+      const result = await repo.getProposalCountsByProjects(['pr1']);
+
+      expect(result.get('pr1')).toBe(100);
+      expect(db().listDocuments).toHaveBeenCalledTimes(1);
+      expect(db().listDocuments.mock.calls[0][2]).not.toContain('cursorAfter(undefined)');
+    });
+  });
+
+  describe('getAcceptedProposalCountsByProjects', () => {
+    it('should return empty map for empty input', async () => {
+      const result = await repo.getAcceptedProposalCountsByProjects([]);
+      expect(result.size).toBe(0);
+      expect(db().listDocuments).not.toHaveBeenCalled();
+    });
+
+    it('counts only accepted proposals for known projects', async () => {
+      db().listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', project_id: 'pr1', status: 'accepted' },
+          { $id: 'p2', project_id: 'pr1', status: 'accepted' },
+          { $id: 'p3', project_id: 'pr1', status: 'pending' },
+          { $id: 'p4', project_id: 'pr2', status: 'rejected' },
+          { $id: 'p5', project_id: 'pr-unknown', status: 'accepted' },
+          { $id: 'p6', project_id: 42, status: 'accepted' },
+        ],
+        total: 6,
+      });
+
+      const result = await repo.getAcceptedProposalCountsByProjects(['pr1', 'pr2']);
+
+      expect([...result.entries()]).toEqual([['pr1', 2], ['pr2', 0]]);
+      expect(db().listDocuments).toHaveBeenCalledTimes(1);
+      const queries = db().listDocuments.mock.calls[0][2];
+      expect(queries).toContain('equal(project_id,pr1,pr2)');
+      expect(queries).toContain('equal(status,accepted)');
+    });
+
+    it('deduplicates project ids before querying', async () => {
+      db().listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'p1', project_id: 'pr1', status: 'accepted' }],
+        total: 1,
+      });
+
+      const result = await repo.getAcceptedProposalCountsByProjects(['pr1', 'pr1']);
+
+      expect([...result.entries()]).toEqual([['pr1', 1]]);
+      expect(db().listDocuments.mock.calls[0][2]).toContain('equal(project_id,pr1)');
+    });
+
+    it('pages with cursorAfter when a full accepted page is returned', async () => {
+      const firstPage = Array.from({ length: 100 }, (_, index) => ({
+        $id: `a${index + 1}`,
+        project_id: 'pr1',
+        status: 'accepted',
+      }));
+      db().listDocuments
+        .mockResolvedValueOnce({ documents: firstPage, total: 102 })
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'a101', project_id: 'pr1', status: 'accepted' },
+            { $id: 'a102', project_id: 'pr2', status: 'accepted' },
+          ],
+          total: 2,
+        });
+
+      const result = await repo.getAcceptedProposalCountsByProjects(['pr1', 'pr2']);
+
+      expect(result.get('pr1')).toBe(101);
+      expect(result.get('pr2')).toBe(1);
+      expect(db().listDocuments).toHaveBeenCalledTimes(2);
+      expect(db().listDocuments.mock.calls[1][2]).toContain('cursorAfter(a100)');
+    });
+
+    it('stops paging when a full accepted page has no last document id', async () => {
+      const firstPage = Array.from({ length: 100 }, (_, index) => ({
+        $id: index === 99 ? undefined : `a${index + 1}`,
+        project_id: 'pr1',
+        status: 'accepted',
+      }));
+      db().listDocuments.mockResolvedValueOnce({ documents: firstPage, total: 100 });
+
+      const result = await repo.getAcceptedProposalCountsByProjects(['pr1']);
+
+      expect(result.get('pr1')).toBe(100);
+      expect(db().listDocuments).toHaveBeenCalledTimes(1);
+      expect(db().listDocuments.mock.calls[0][2]).not.toContain('cursorAfter(undefined)');
+    });
+
+    it('chunks more than 100 project ids into separate queries', async () => {
+      db().listDocuments.mockResolvedValue({ documents: [], total: 0 });
+      const projectIds = Array.from({ length: 101 }, (_, index) => `pr${index + 1}`);
+
+      const result = await repo.getAcceptedProposalCountsByProjects(projectIds);
+
+      expect(result.size).toBe(101);
+      expect(result.get('pr1')).toBe(0);
+      expect(result.get('pr101')).toBe(0);
+      expect(db().listDocuments).toHaveBeenCalledTimes(2);
+      const firstQueries = db().listDocuments.mock.calls[0][2];
+      const secondQueries = db().listDocuments.mock.calls[1][2];
+      expect(firstQueries.join(',')).toContain('pr100');
+      expect(firstQueries.join(',')).not.toContain('pr101');
+      expect(secondQueries.join(',')).toContain('pr101');
+    });
+
+    it('resets every count to zero when the query fails', async () => {
+      db().listDocuments.mockRejectedValueOnce(new Error('select failed'));
+
+      const result = await repo.getAcceptedProposalCountsByProjects(['pr1', 'pr2']);
+
+      expect(result.get('pr1')).toBe(0);
+      expect(result.get('pr2')).toBe(0);
+      expect(db().listDocuments).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('getExistingProposal', () => {
