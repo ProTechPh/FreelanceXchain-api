@@ -1,5 +1,6 @@
 import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
 import { proposalRepository } from '../repositories/proposal-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
 import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
@@ -356,6 +357,54 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
   return successResult(data);
 }
 
+/**
+ * Once freelancers are hired the agreed scope is locked; only the number of
+ * openings may change, and never below the freelancers already hired. Raising
+ * it on a project whose slots were all funded reopens it for new proposals.
+ */
+async function updateOpeningsOfLockedProject(
+  project: ProjectEntity,
+  input: UpdateProjectInput,
+): Promise<ServiceResult<ProjectEntity>> {
+  const changesScope = Object.entries(input).some(([key, value]) => key !== 'freelancerLimit' && value !== undefined);
+  if (changesScope || input.freelancerLimit === undefined) {
+    return errorResult(
+      'PROJECT_LOCKED',
+      'Cannot update project with accepted proposals. Only the number of freelancers needed can still be changed.',
+    );
+  }
+
+  const freelancerLimitError = validateFreelancerLimit(input.freelancerLimit);
+  if (freelancerLimitError) return freelancerLimitError;
+
+  const hiredCount = await proposalRepository.getAcceptedProposalCount(project.id);
+  if (input.freelancerLimit < hiredCount) {
+    return errorResult(
+      'VALIDATION_ERROR',
+      // Only reachable with 2+ hired: a limit below 1 is rejected above.
+      `Freelancers needed can't be lower than the ${hiredCount} freelancers already hired`,
+    );
+  }
+
+  const updates: Partial<ProjectEntity> = { freelancer_limit: input.freelancerLimit };
+  if (project.status === 'in_progress') {
+    try {
+      const funded = await contractRepository.countFundedContracts(project.id);
+      if (funded < input.freelancerLimit) updates.status = 'open';
+    } catch (error) {
+      logger.warn('Could not check funded contracts while adding openings', { projectId: project.id, error });
+    }
+  }
+
+  const updated = await projectRepository.updateProject(project.id, updates);
+  if (!updated) {
+    return errorResult('UPDATE_FAILED', 'Failed to update project');
+  }
+  clearProjectCache();
+  void invalidateProjectMatchingCache(project.id);
+  return successResult(updated);
+}
+
 export async function updateProject(
   projectId: string,
   employerId: string,
@@ -372,7 +421,7 @@ export async function updateProject(
 
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
-    return errorResult('PROJECT_LOCKED', 'Cannot update project with accepted proposals');
+    return updateOpeningsOfLockedProject(existingProject, input);
   }
 
   let skillRefs = existingProject.required_skills;
@@ -525,13 +574,20 @@ export async function listProjectsByEmployer(
   const result = await projectRepository.getProjectsByEmployer(employerId, options);
   
   const projectIds = result.items.map(p => p.id);
-  const proposalCounts = projectIds.length > 0
-    ? await proposalRepository.getProposalCountsByProjects(projectIds)
-    : new Map<string, number>();
+  // Hired counts let "My projects" show how many vacancies each project has left.
+  const [proposalCounts, hiredCounts] = projectIds.length > 0
+    ? await Promise.all([
+        proposalRepository.getProposalCountsByProjects(projectIds),
+        typeof proposalRepository.getAcceptedProposalCountsByProjects === 'function'
+          ? proposalRepository.getAcceptedProposalCountsByProjects(projectIds)
+          : new Map<string, number>(),
+      ])
+    : [new Map<string, number>(), new Map<string, number>()];
 
   const projectsWithCounts: ProjectWithProposalCount[] = result.items.map((project) => ({
     ...project,
     proposalCount: proposalCounts.get(project.id) ?? 0,
+    hiredCount: hiredCounts.get(project.id) ?? 0,
   }));
 
   const data = {
