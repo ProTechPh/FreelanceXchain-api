@@ -38,6 +38,20 @@ export async function requireCompleteBusinessProfile(req: Request, res: Response
       });
       return;
     }
+
+    if (result.data.verificationStatus && result.data.verificationStatus !== 'verified') {
+      const message = result.data.verificationStatus === 'rejected'
+        ? 'Your business profile verification was rejected. Please update your details and resubmit for admin approval.'
+        : 'Your business profile is pending admin verification before you can post projects.';
+      sendErrorResponse(res, 403, 'BUSINESS_PROFILE_NOT_VERIFIED', message, {
+        requestId,
+        details: {
+          verificationStatus: result.data.verificationStatus,
+          verificationNotes: result.data.verificationNotes,
+        },
+      });
+      return;
+    }
   } catch (error) {
     logger.error('Failed to check business profile completeness', error as Error, {
       requestId,

@@ -54,6 +54,16 @@ export type ProjectEntity = {
 };
 
 const COLLECTION_ID = 'projects';
+
+/** Newest projects first, so freshly posted work tops every list. */
+function newestFirstQuery(): string {
+  return Query.orderDesc('$createdAt');
+}
+
+/** In-memory equivalent of newestFirstQuery for lists filtered in JavaScript. */
+function newestFirst(projects: ProjectEntity[]): ProjectEntity[] {
+  return [...projects].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+}
 export type ProjectMilestoneSnapshot = Pick<ProjectEntity, 'id' | 'milestones'>;
 
 /** Extract the skill IDs from a project's required_skills for the indexed array attribute. */
@@ -198,7 +208,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     return this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('employer_id', employerId)],
+      [Query.equal('employer_id', employerId), newestFirstQuery()],
       limit,
       offset,
       mapDoc
@@ -214,7 +224,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     return this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open')],
+      [Query.equal('status', 'open'), newestFirstQuery()],
       limit,
       offset,
       mapDoc
@@ -225,7 +235,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     return this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', status)],
+      [Query.equal('status', status), newestFirstQuery()],
       limit,
       offset,
       mapDoc
@@ -238,7 +248,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     const dbResult = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.equal('required_skill_ids', skillIds)],
+      [Query.equal('status', 'open'), Query.equal('required_skill_ids', skillIds), newestFirstQuery()],
       limit,
       offset,
       mapDoc
@@ -273,7 +283,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     return this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.between('budget', minBudget, maxBudget)],
+      [Query.equal('status', 'open'), Query.between('budget', minBudget, maxBudget), newestFirstQuery()],
       limit,
       offset,
       mapDoc
@@ -295,6 +305,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
           Query.contains('title', keyword),
           Query.contains('description', keyword),
         ]),
+        newestFirstQuery(),
       ],
       limit,
       offset,
@@ -340,12 +351,12 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     }
   }
 
-  /** Apply offset/limit pagination to an in-memory filtered result set. */
+  /** Apply newest-first ordering and offset/limit pagination to an in-memory filtered result set. */
   private paginateFiltered(filtered: ProjectEntity[], options?: QueryOptions): PaginatedResult<ProjectEntity> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     return {
-      items: filtered.slice(offset, offset + limit),
+      items: newestFirst(filtered).slice(offset, offset + limit),
       hasMore: offset + limit < filtered.length,
       total: filtered.length,
     };

@@ -186,6 +186,10 @@ export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): Emp
     businessEmail: entity.business_email ?? null,
     website: entity.website ?? null,
     yearEstablished: entity.year_established ?? null,
+    verificationStatus: entity.verification_status ?? 'unverified',
+    verificationNotes: entity.verification_notes ?? null,
+    verifiedAt: entity.verified_at ?? null,
+    verifiedBy: entity.verified_by ?? null,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };

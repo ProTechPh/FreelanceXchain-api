@@ -1,5 +1,5 @@
 import { BaseRepository } from './base-repository.js';
-import type { BusinessType } from '../models/employer-profile.js';
+import type { BusinessType, BusinessVerificationStatus } from '../models/employer-profile.js';
 
 export type EmployerProfileEntity = {
   id: string;
@@ -17,6 +17,10 @@ export type EmployerProfileEntity = {
   business_email?: string | null;
   website?: string | null;
   year_established?: number | null;
+  verification_status?: BusinessVerificationStatus | null;
+  verification_notes?: string | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
   created_at: string;
   updated_at: string;
 };

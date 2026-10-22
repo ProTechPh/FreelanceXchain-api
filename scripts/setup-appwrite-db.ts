@@ -145,6 +145,10 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'business_email', type: 'string', size: 255, required: false },
       { name: 'website', type: 'string', size: 500, required: false },
       { name: 'year_established', type: 'integer', required: false },
+      { name: 'verification_status', type: 'string', size: 30, required: false, default: 'unverified' },
+      { name: 'verification_notes', type: 'string', size: 2000, required: false },
+      { name: 'verified_at', type: 'string', size: 50, required: false },
+      { name: 'verified_by', type: 'string', size: 36, required: false },
     ],
     indexes: [
       { key: 'user_id', type: DatabasesIndexType.Key, attributes: ['user_id'] },
@@ -162,6 +166,7 @@ const COLLECTIONS: CollectionDef[] = [
       { name: 'file_name', type: 'string', size: 255, required: true },
       { name: 'mime_type', type: 'string', size: 100, required: true },
       { name: 'size', type: 'integer', required: true },
+      { name: 'file_hash', type: 'string', size: 64, required: false },
     ],
     indexes: [
       { key: 'employer_id', type: DatabasesIndexType.Key, attributes: ['employer_id'] },

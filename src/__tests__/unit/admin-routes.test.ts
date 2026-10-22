@@ -23,11 +23,15 @@ const mockListBusinessDocuments = jest.fn<any>(async () => []);
 const mockGetBusinessProfileCompleteness = jest.fn<any>();
 const mockListBusinessProfilesForAdmin = jest.fn<any>();
 const mockGetEmployerProfileByUserId = jest.fn<any>();
+const mockVerifyBusinessProfileByAdmin = jest.fn<any>();
+const mockRejectBusinessProfileByAdmin = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/services/employer-business-document-service.ts'), () => ({
   listBusinessDocuments: mockListBusinessDocuments,
   getBusinessProfileCompleteness: mockGetBusinessProfileCompleteness,
   listBusinessProfilesForAdmin: mockListBusinessProfilesForAdmin,
-  ADMIN_BUSINESS_PROFILE_STATUSES: ['all', 'with_documents', 'complete', 'incomplete'],
+  ADMIN_BUSINESS_PROFILE_STATUSES: ['all', 'with_documents', 'complete', 'incomplete', 'pending', 'verified', 'rejected'],
+  verifyBusinessProfileByAdmin: mockVerifyBusinessProfileByAdmin,
+  rejectBusinessProfileByAdmin: mockRejectBusinessProfileByAdmin,
 }));
 jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
   getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
@@ -159,6 +163,37 @@ describe('Admin Routes', () => {
       mockGetEmployerProfileByUserId.mockResolvedValueOnce({ success: false, error: { code: 'PROFILE_NOT_FOUND', message: 'Employer profile not found' } });
       const res = await request(app).get('/api/admin/employers/emp-1/business-profile');
       expect(res.status).toBe(404);
+    });
+  });
+
+
+
+  describe('POST /employers/:userId/business-profile/verify', () => {
+    it('verifies employer business profile', async () => {
+      mockVerifyBusinessProfileByAdmin.mockResolvedValueOnce({ success: true, data: { profile: { id: 'ep-1', verificationStatus: 'verified' } } });
+      const res = await request(app).post('/api/admin/employers/emp-1/business-profile/verify').send({ notes: 'Approved' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.profile.verificationStatus).toBe('verified');
+    });
+    it('returns 400 when profile cannot be verified', async () => {
+      mockVerifyBusinessProfileByAdmin.mockResolvedValueOnce({ success: false, error: { code: 'CANNOT_VERIFY_INCOMPLETE', message: 'Incomplete' } });
+      const res = await request(app).post('/api/admin/employers/emp-1/business-profile/verify');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /employers/:userId/business-profile/reject', () => {
+    it('rejects employer business profile with notes', async () => {
+      mockRejectBusinessProfileByAdmin.mockResolvedValueOnce({ success: true, data: { profile: { id: 'ep-1', verificationStatus: 'rejected' } } });
+      const res = await request(app).post('/api/admin/employers/emp-1/business-profile/reject').send({ notes: 'Document is expired' });
+      expect(res.status).toBe(200);
+      expect(res.body.profile.verificationStatus).toBe('rejected');
+    });
+    it('returns 400 when notes are missing or too short', async () => {
+      const res = await request(app).post('/api/admin/employers/emp-1/business-profile/reject').send({ notes: 'no' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_NOTES');
     });
   });
 

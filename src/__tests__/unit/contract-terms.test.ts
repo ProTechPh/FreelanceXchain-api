@@ -8,6 +8,7 @@ import {
   hashOfferTerms,
   normalizeDate,
   floorUnits,
+  minimumBaseUnits,
   ethToWei,
   hasAtMostDecimals,
   buildCanonicalTerms,
@@ -75,12 +76,18 @@ describe('contract-terms', () => {
       }
     });
 
-    it('accepts base exactly at the floor and rejects one cent below', () => {
-      const atFloor = validateOfferTerms(validInput({ baseAmount: 1.5 }) as any, { floor: 1.5, now });
-      expect(atFloor.ok).toBe(true);
-      const below = validateOfferTerms(validInput({ baseAmount: 1.49, additionalPay: 0.51 }) as any, { floor: 1.5, now });
-      expect(below.ok).toBe(false);
-      if (!below.ok) expect(below.code).toBe('FLOOR_VIOLATION');
+    it('lets the base go down to half the proposed rate and no lower', () => {
+      const belowRate = validateOfferTerms(validInput({ baseAmount: 1.49, additionalPay: 0.51 }) as any, { floor: 1.5, now });
+      expect(belowRate.ok).toBe(true);
+      const atHalf = validateOfferTerms(validInput({ baseAmount: 0.75, additionalPay: 1.25 }) as any, { floor: 1.5, now });
+      expect(atHalf.ok).toBe(true);
+      const belowHalf = validateOfferTerms(validInput({ baseAmount: 0.7499, additionalPay: 1.2501 }) as any, { floor: 1.5, now });
+      expect(belowHalf.ok).toBe(false);
+      if (!belowHalf.ok) {
+        expect(belowHalf.code).toBe('FLOOR_VIOLATION');
+        expect(belowHalf.message).toBe("The base amount cannot go below half of the freelancer's proposed rate (0.75 ETH)");
+        expect(belowHalf.errors).toEqual([{ field: 'baseAmount', message: 'Must be at least 0.75' }]);
+      }
     });
 
     it('rejects milestones that do not sum to the total', () => {
@@ -156,17 +163,26 @@ describe('contract-terms', () => {
     });
   });
 
+  describe('minimumBaseUnits', () => {
+    it('is half the proposed rate, rounded up to the contract precision', () => {
+      expect(minimumBaseUnits(1.5)).toBe(7500);
+      expect(minimumBaseUnits(0.1534)).toBe(767);
+      expect(minimumBaseUnits(0.1535)).toBe(768);
+      expect(minimumBaseUnits(0.0001)).toBe(1);
+    });
+  });
+
   describe('fractional proposed rates', () => {
     it('keeps 4-decimal rates as the exact floor', () => {
       expect(floorUnits(0.1534)).toBe(1534);
       expect(floorUnits(0.15)).toBe(1500);
-      const below = validateOfferTerms(validInput({ baseAmount: 0.15, additionalPay: 1.85 }) as any, { floor: 0.1534, now });
+      const below = validateOfferTerms(validInput({ baseAmount: 0.0766, additionalPay: 1.9234 }) as any, { floor: 0.1534, now });
       expect(below.ok).toBe(false);
       if (!below.ok) {
         expect(below.code).toBe('FLOOR_VIOLATION');
-        expect(below.message).toContain('0.1534 ETH');
+        expect(below.message).toContain('0.0767 ETH');
       }
-      expect(validateOfferTerms(validInput({ baseAmount: 0.1534, additionalPay: 1.8466 }) as any, { floor: 0.1534, now }).ok).toBe(true);
+      expect(validateOfferTerms(validInput({ baseAmount: 0.0767, additionalPay: 1.9233 }) as any, { floor: 0.1534, now }).ok).toBe(true);
       expect(floorUnits(0.15345)).toBe(1535);
     });
 

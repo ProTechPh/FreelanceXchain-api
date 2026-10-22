@@ -14,6 +14,7 @@ const mockDocRepo = {
 const mockProfileRepo = {
   getProfileByUserId: jest.fn<any>(),
   queryAll: jest.fn<any>(),
+  updateProfile: jest.fn<any>(),
 };
 const mockUserRepo = {
   getUsersByIds: jest.fn<any>(),
@@ -47,6 +48,9 @@ const {
   getRequiredDocumentTypes,
   mapBusinessDocumentFromEntity,
   listBusinessProfilesForAdmin,
+  submitBusinessProfileForVerification,
+  verifyBusinessProfileByAdmin,
+  rejectBusinessProfileByAdmin,
 } = await import('../../services/employer-business-document-service.js');
 
 const docEntity = (overrides: Record<string, unknown> = {}) => ({
@@ -182,7 +186,7 @@ describe('employer-business-document-service', () => {
       const result = await uploadBusinessDocument('emp-1', { ...uploadInput, documentType: 'other', label: '  BOI certificate ' });
 
       expect(result.data.label).toBe('BOI certificate');
-      expect(mockDocRepo.findByEmployer).not.toHaveBeenCalled();
+      expect(mockDocRepo.createDocument).toHaveBeenCalled();
     });
 
     it('stores a null label for "other" documents without one', async () => {
@@ -195,6 +199,85 @@ describe('employer-business-document-service', () => {
     });
   });
 
+
+    it('rejects duplicate file upload for different document type', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce(completeProfile);
+      const existing = docEntity({ id: 'd-existing', document_type: 'dti_certificate', file_name: 'bir.pdf', size: uploadInput.buffer.length });
+      mockDocRepo.findByEmployer.mockResolvedValueOnce([existing]);
+      const result = await uploadBusinessDocument('emp-1', uploadInput);
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('DUPLICATE_FILE');
+    });
+
+    it('rejects identical file upload for same document type', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce(completeProfile);
+      const existing = docEntity({ id: 'd-existing', document_type: 'bir_2303', file_name: 'bir.pdf', size: uploadInput.buffer.length });
+      mockDocRepo.findByEmployer.mockResolvedValueOnce([existing]);
+      const result = await uploadBusinessDocument('emp-1', uploadInput);
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('DUPLICATE_FILE');
+    });
+
+  describe('verification workflow', () => {
+    it('submits business profile for verification when complete', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce(completeProfile);
+      mockDocRepo.findByEmployer.mockResolvedValueOnce([
+        docEntity(),
+        docEntity({ id: 'd2', document_type: 'dti_certificate' }),
+        docEntity({ id: 'd3', document_type: 'mayors_permit' }),
+      ]);
+      mockProfileRepo.updateProfile.mockResolvedValueOnce({ ...completeProfile, verification_status: 'pending' });
+      const result = await submitBusinessProfileForVerification('emp-1');
+      expect(result.success).toBe(true);
+      expect(result.data.verificationStatus).toBe('pending');
+      expect(mockProfileRepo.updateProfile).toHaveBeenCalledWith('ep-1', { verification_status: 'pending' });
+    });
+
+    it('fails to submit for verification when profile is incomplete', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce({ ...completeProfile, tin: null });
+      mockDocRepo.findByEmployer.mockResolvedValueOnce([]);
+      const result = await submitBusinessProfileForVerification('emp-1');
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('INCOMPLETE_PROFILE');
+    });
+
+    it('allows admin to verify and confirm a complete profile', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce(completeProfile);
+      mockDocRepo.findByEmployer.mockResolvedValueOnce([
+        docEntity(),
+        docEntity({ id: 'd2', document_type: 'dti_certificate' }),
+        docEntity({ id: 'd3', document_type: 'mayors_permit' }),
+      ]);
+      mockProfileRepo.updateProfile.mockResolvedValueOnce({ ...completeProfile, verification_status: 'verified', verified_by: 'admin-1' });
+      const result = await verifyBusinessProfileByAdmin('admin-1', 'emp-1', 'All documents valid');
+      expect(result.success).toBe(true);
+      expect(result.data.profile.verificationStatus).toBe('verified');
+    });
+
+    it('prevents admin from verifying an incomplete profile', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce({ ...completeProfile, tin: null });
+      mockDocRepo.findByEmployer.mockResolvedValueOnce([]);
+      const result = await verifyBusinessProfileByAdmin('admin-1', 'emp-1');
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('CANNOT_VERIFY_INCOMPLETE');
+    });
+
+    it('allows admin to reject with notes', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce(completeProfile);
+      mockProfileRepo.updateProfile.mockResolvedValueOnce({ ...completeProfile, verification_status: 'rejected', verification_notes: 'BIR is blurry' });
+      const result = await rejectBusinessProfileByAdmin('admin-1', 'emp-1', 'BIR is blurry');
+      expect(result.success).toBe(true);
+      expect(result.data.profile.verificationStatus).toBe('rejected');
+      expect(result.data.profile.verificationNotes).toBe('BIR is blurry');
+    });
+
+    it('rejects admin rejection if notes are too short', async () => {
+      mockProfileRepo.getProfileByUserId.mockResolvedValueOnce(completeProfile);
+      const result = await rejectBusinessProfileByAdmin('admin-1', 'emp-1', 'bad');
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('INVALID_NOTES');
+    });
+  });
   describe('deleteBusinessDocument', () => {
     it('returns DOCUMENT_NOT_FOUND for unknown documents', async () => {
       mockDocRepo.getDocumentById.mockResolvedValueOnce(null);
@@ -253,7 +336,7 @@ describe('employer-business-document-service', () => {
         docEntity({ id: 'd3', document_type: 'mayors_permit' }),
       ]);
       const result = await getBusinessProfileCompleteness('emp-1');
-      expect(result.data).toEqual({ complete: true, missingFields: [], missingDocuments: [] });
+      expect(result.data).toEqual({ complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'pending', verificationNotes: null, verifiedAt: null });
     });
 
     it('requires SEC instead of DTI for corporations', async () => {
@@ -294,7 +377,7 @@ describe('employer-business-document-service', () => {
     it('summarizes every profile, newest activity first, with filter counts', async () => {
       const result = await listBusinessProfilesForAdmin();
 
-      expect(result.counts).toEqual({ all: 3, withDocuments: 2, complete: 1, incomplete: 2 });
+      expect(result.counts).toEqual({ all: 3, withDocuments: 2, complete: 1, incomplete: 2, pending: 1, verified: 0, rejected: 0 });
       expect(result.items.map(item => item.userId)).toEqual(['emp-1', 'emp-2', 'ghost']);
 
       const [acme, beta, ghost] = result.items;
@@ -331,7 +414,7 @@ describe('employer-business-document-service', () => {
       expect((await listBusinessProfilesForAdmin({ search: 'ana@' })).items.map(item => item.userId)).toEqual(['emp-1']);
       const result = await listBusinessProfilesForAdmin({ search: 'no docs' });
       expect(result.items.map(item => item.userId)).toEqual(['ghost']);
-      expect(result.counts).toEqual({ all: 1, withDocuments: 0, complete: 0, incomplete: 1 });
+      expect(result.counts).toEqual({ all: 1, withDocuments: 0, complete: 0, incomplete: 1, pending: 0, verified: 0, rejected: 0 });
     });
 
     it('shows one row per user when a user has duplicate employer profiles', async () => {

@@ -1056,9 +1056,9 @@ export type SwitchRoleResult =
   | { success: true; user: AuthResult['user'] }
   | {
       success: false;
-      code: 'USER_NOT_FOUND' | 'ROLE_SWITCH_NOT_ALLOWED' | 'BUSINESS_PROFILE_INCOMPLETE' | 'UPDATE_FAILED';
+      code: 'USER_NOT_FOUND' | 'ROLE_SWITCH_NOT_ALLOWED' | 'BUSINESS_PROFILE_INCOMPLETE' | 'BUSINESS_PROFILE_NOT_VERIFIED' | 'UPDATE_FAILED';
       message: string;
-      details?: { missingFields: string[]; missingDocuments: string[] };
+      details?: Record<string, unknown>;
     };
 
 /**
@@ -1089,6 +1089,19 @@ export async function switchActiveRole(userId: string, role: ParticipantRole): P
           details: completeness.success
             ? { missingFields: completeness.data.missingFields, missingDocuments: completeness.data.missingDocuments }
             : { missingFields: [], missingDocuments: [] },
+        };
+      }
+      if (completeness.data.verificationStatus !== 'verified') {
+        return {
+          success: false,
+          code: 'BUSINESS_PROFILE_NOT_VERIFIED',
+          message: completeness.data.verificationStatus === 'rejected'
+            ? 'Your business information verification was rejected by admin. Please review the notes and resubmit.'
+            : 'Your business information is pending admin verification before you can switch to employer',
+          details: {
+            verificationStatus: completeness.data.verificationStatus,
+            verificationNotes: completeness.data.verificationNotes,
+          },
         };
       }
     }

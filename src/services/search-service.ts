@@ -1,6 +1,7 @@
 import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
+import { proposalRepository } from '../repositories/proposal-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult } from '../types/service-result.js';
@@ -103,6 +104,21 @@ function buildSearchResult<T>(
     metadata.offset = offset;
   }
   return { items, metadata };
+}
+
+/**
+ * Attach each project's hired count (accepted proposals), so the browse list can
+ * show how many vacancies are left. Search still works if the lookup fails.
+ */
+async function withHiredCounts(items: ProjectEntity[]): Promise<(ProjectEntity & { hiredCount?: number })[]> {
+  if (items.length === 0) return items;
+  try {
+    const hiredCounts = await proposalRepository.getAcceptedProposalCountsByProjects(items.map(project => project.id));
+    return items.map(project => ({ ...project, hiredCount: hiredCounts.get(project.id) ?? 0 }));
+  } catch (error) {
+    logger.warn('Could not load hired counts for project search', { error });
+    return items;
+  }
 }
 
 async function searchProjectsMultiFilter(
@@ -223,7 +239,7 @@ export async function searchProjects(
   }
 
   // Map entities to models
-  const projects = entityResult.items.map(mapProjectFromEntity);
+  const projects = (await withHiredCounts(entityResult.items)).map(mapProjectFromEntity);
 
   const result = buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset);
   /* istanbul ignore next */

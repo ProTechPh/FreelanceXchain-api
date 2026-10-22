@@ -801,3 +801,61 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
     });
   });
 });
+
+describe('ProjectRepository - newest projects first', () => {
+  let repo: any;
+  const skills = (categoryId: string) => JSON.stringify([{ skill_id: 's-1', skill_name: 'React', category_id: categoryId, years_of_experience: 1 }]);
+  const doc = (id: string, createdAt: string | undefined, categoryId = 'cat-web') => ({
+    $id: id, ...(createdAt && { $createdAt: createdAt }), title: id, status: 'open',
+    required_skills: skills(categoryId), milestones: '[]', tags: '[]', attachments: '[]',
+  });
+  const orderedNewestFirst = () =>
+    (mockListDocuments.mock.calls[0]![2] as any[]).some(q => q.type === 'orderDesc' && q.args[0] === '$createdAt');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new ProjectRepository();
+    mockListDocuments.mockResolvedValue({ documents: [], total: 0 });
+  });
+
+  it.each([
+    ['getProjectsByEmployer', (r: any) => r.getProjectsByEmployer('e1')],
+    ['getAllOpenProjects', (r: any) => r.getAllOpenProjects()],
+    ['getProjectsByStatus', (r: any) => r.getProjectsByStatus('open')],
+    ['getProjectsBySkills', (r: any) => r.getProjectsBySkills(['s1'])],
+    ['getProjectsByBudgetRange', (r: any) => r.getProjectsByBudgetRange(100, 500)],
+    ['searchProjects', (r: any) => r.searchProjects('react')],
+  ])('%s asks the database for the newest projects first', async (_name, call) => {
+    await call(repo);
+    expect(orderedNewestFirst()).toBe(true);
+  });
+
+  it('sorts category-filtered projects newest first, even when fetched oldest first', async () => {
+    mockListDocuments.mockResolvedValueOnce({
+      documents: [
+        doc('old', '2024-01-01T00:00:00Z'),
+        doc('no-date', undefined),
+        doc('newest', '2026-10-01T00:00:00Z'),
+        doc('other-category', '2026-10-20T00:00:00Z', 'cat-mobile'),
+        doc('middle', '2025-06-01T00:00:00Z'),
+      ],
+      total: 5,
+    });
+
+    const result = await repo.getProjectsByCategory('cat-web');
+
+    expect(result.items.map((p: any) => p.id)).toEqual(['newest', 'middle', 'old', 'no-date']);
+  });
+
+  it('sorts multi-category projects newest first before paginating', async () => {
+    mockListDocuments.mockResolvedValueOnce({
+      documents: [doc('a', '2024-01-01T00:00:00Z', 'cat-1'), doc('b', '2026-01-01T00:00:00Z', 'cat-2'), doc('c', '2025-01-01T00:00:00Z', 'cat-1')],
+      total: 3,
+    });
+
+    const result = await repo.getProjectsByMultipleCategories(['cat-1', 'cat-2'], { limit: 2, offset: 0 });
+
+    expect(result.items.map((p: any) => p.id)).toEqual(['b', 'c']);
+    expect(result.hasMore).toBe(true);
+  });
+});

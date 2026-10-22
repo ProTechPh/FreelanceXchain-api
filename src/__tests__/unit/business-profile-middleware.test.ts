@@ -39,11 +39,34 @@ describe('requireCompleteBusinessProfile', () => {
     expect(mockGetCompleteness).not.toHaveBeenCalled();
   });
 
-  it('allows employers with a complete business profile', async () => {
-    mockGetCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } });
+  it('allows employers with a complete and verified business profile', async () => {
+    mockGetCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'verified' } });
     const next = jest.fn();
     await requireCompleteBusinessProfile({ headers: {}, user: { userId: 'e', role: 'employer' } } as any, createRes(), next);
     expect(next).toHaveBeenCalled();
+  });
+
+  it('returns 403 when business profile verification is pending', async () => {
+    mockGetCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'pending' } });
+    const res = createRes();
+    const next = jest.fn();
+    await requireCompleteBusinessProfile({ headers: {}, user: { userId: 'e', role: 'employer' } } as any, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    const body = res.json.mock.calls[0][0];
+    expect(body.error.code).toBe('BUSINESS_PROFILE_NOT_VERIFIED');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when business profile verification was rejected', async () => {
+    mockGetCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'rejected', verificationNotes: 'Invalid BIR' } });
+    const res = createRes();
+    const next = jest.fn();
+    await requireCompleteBusinessProfile({ headers: {}, user: { userId: 'e', role: 'employer' } } as any, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    const body = res.json.mock.calls[0][0];
+    expect(body.error.code).toBe('BUSINESS_PROFILE_NOT_VERIFIED');
+    expect(body.error.details.verificationNotes).toBe('Invalid BIR');
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('returns 403 with the missing items when incomplete', async () => {

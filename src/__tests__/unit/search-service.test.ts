@@ -29,6 +29,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
   freelancerProfileRepository: mockFreelancerRepo,
 }));
 
+const mockProposalRepository = {
+  getAcceptedProposalCountsByProjects: jest.fn(async (ids: string[]) => new Map(ids.map(id => [id, 0]))),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: mockProposalRepository,
+}));
+
 // Skill ID → canonical name map used by the mocked skill repository.
 const skillIdToName: Record<string, string> = {
   'skill-react': 'React',
@@ -982,5 +990,38 @@ describe('search-service - Performance Logging Coverage', () => {
     
     const { logger } = await import('../../config/logger.js');
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Slow search query'));
+  });
+});
+
+describe('search-service - hired counts for vacancies', () => {
+  beforeEach(() => {
+    projectStore.clear();
+    jest.clearAllMocks();
+  });
+
+  it('adds each project\'s hired count to the search results', async () => {
+    const project = createTestProject({ status: 'open', freelancer_limit: 5 });
+    projectStore.set(project.id, project);
+    mockProposalRepository.getAcceptedProposalCountsByProjects.mockResolvedValueOnce(new Map([[project.id, 3]]));
+
+    const result = await searchProjects({});
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.items[0]?.hiredCount).toBe(3);
+  });
+
+  it('still returns projects when the hired count lookup fails', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+    mockProposalRepository.getAcceptedProposalCountsByProjects.mockRejectedValueOnce(new Error('DB down'));
+
+    const result = await searchProjects({});
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items).toHaveLength(1);
+      expect(result.data.items[0]?.hiredCount).toBeUndefined();
+    }
+    expect(mockLogger.warn).toHaveBeenCalledWith('Could not load hired counts for project search', expect.anything());
   });
 });

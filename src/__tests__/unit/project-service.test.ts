@@ -106,11 +106,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
   proposalRepository: mockProposalRepo,
 }));
 
+const mockContractRepo = {
+  countFundedContracts: jest.fn<any>(async () => 0),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepo,
+}));
+
 jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: mockSkillRepo,
 }));
 
-const { createProject, getProjectById, updateProject, setMilestones, listOpenProjects, listProjectsBySkills, listProjectsByBudgetRange } = await import('../../services/project-service.js');
+const { createProject, getProjectById, updateProject, setMilestones, listOpenProjects, listProjectsByEmployer, listProjectsBySkills, listProjectsByBudgetRange } = await import('../../services/project-service.js');
 
 // Helper to add accepted proposal
 function addAcceptedProposal(projectId: string, freelancerId: string): ProposalEntity {
@@ -458,6 +466,29 @@ describe('Project Service - Unit Tests', () => {
       expect(result.data.title).toBe(project.title);
       expect(result.data.proposalCount).toBe(1);
     }
+  });
+
+  it('should include proposal and hired counts when listing an employer\'s projects', async () => {
+    const employerId = generateId();
+    const project = createTestProject({ status: 'open', employer_id: employerId, freelancer_limit: 3 });
+    projectStore.set(project.id, project);
+    addAcceptedProposal(project.id, generateId());
+    addAcceptedProposal(project.id, generateId());
+
+    const result = await listProjectsByEmployer(employerId);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items[0]?.proposalCount).toBe(2);
+      expect(result.data.items[0]?.hiredCount).toBe(2);
+    }
+  });
+
+  it('should list an employer with no projects without counting proposals', async () => {
+    const result = await listProjectsByEmployer(generateId());
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.items).toEqual([]);
   });
 
   it('should include proposal counts when listing open projects', async () => {
@@ -1298,5 +1329,116 @@ describe('Project Service - getProjectCategoryStats', () => {
     if (!result.success) {
       expect(result.error.code).toBe('INTERNAL_ERROR');
     }
+  });
+});
+
+describe('updateProject - openings after freelancers are hired', () => {
+  const employerId = 'employer-openings';
+
+  function lockedProject(overrides: Record<string, unknown> = {}) {
+    const project = createTestProject({ employer_id: employerId, status: 'open', freelancer_limit: 5, ...overrides });
+    projectStore.set(project.id, project);
+    for (let i = 0; i < 3; i++) addAcceptedProposal(project.id, generateId());
+    return project;
+  }
+
+  beforeEach(() => {
+    projectStore.clear();
+    proposalStore.clear();
+    mockContractRepo.countFundedContracts.mockReset();
+    mockContractRepo.countFundedContracts.mockResolvedValue(0);
+  });
+
+  it('lets the openings go down to the number already hired', async () => {
+    const project = lockedProject();
+
+    const result = await updateProject(project.id, employerId, { freelancerLimit: 3 });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.freelancer_limit).toBe(3);
+      expect(result.data.status).toBe('open');
+    }
+  });
+
+  it('rejects openings below the number already hired', async () => {
+    const project = lockedProject();
+
+    const result = await updateProject(project.id, employerId, { freelancerLimit: 2 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+      expect(result.error.message).toBe("Freelancers needed can't be lower than the 3 freelancers already hired");
+    }
+  });
+
+  it('rejects openings that are not a whole number of at least 1', async () => {
+    const project = lockedProject();
+
+    for (const freelancerLimit of [0, 1.5]) {
+      const result = await updateProject(project.id, employerId, { freelancerLimit });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('keeps every other field locked', async () => {
+    const project = lockedProject();
+
+    const withScope = await updateProject(project.id, employerId, { freelancerLimit: 4, title: 'A brand new title' });
+    const withoutLimit = await updateProject(project.id, employerId, {});
+
+    for (const result of [withScope, withoutLimit]) {
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROJECT_LOCKED');
+    }
+    expect(projectStore.get(project.id).freelancer_limit).toBe(5);
+  });
+
+  it('reopens a project whose slots were all funded when openings are added', async () => {
+    const project = lockedProject({ status: 'in_progress', freelancer_limit: 3 });
+    mockContractRepo.countFundedContracts.mockResolvedValue(3);
+
+    const result = await updateProject(project.id, employerId, { freelancerLimit: 5 });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.freelancer_limit).toBe(5);
+      expect(result.data.status).toBe('open');
+    }
+  });
+
+  it('leaves an in-progress project alone when every opening is still funded', async () => {
+    const project = lockedProject({ status: 'in_progress', freelancer_limit: 4 });
+    mockContractRepo.countFundedContracts.mockResolvedValue(3);
+
+    const result = await updateProject(project.id, employerId, { freelancerLimit: 3 });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.status).toBe('in_progress');
+  });
+
+  it('still saves the openings when the funded-contract check fails', async () => {
+    const project = lockedProject({ status: 'in_progress', freelancer_limit: 3 });
+    mockContractRepo.countFundedContracts.mockRejectedValue(new Error('DB down'));
+
+    const result = await updateProject(project.id, employerId, { freelancerLimit: 4 });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.freelancer_limit).toBe(4);
+      expect(result.data.status).toBe('in_progress');
+    }
+  });
+
+  it('reports a failed save', async () => {
+    const project = lockedProject();
+    mockProjectRepo.updateProject.mockResolvedValueOnce(null);
+
+    const result = await updateProject(project.id, employerId, { freelancerLimit: 4 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
   });
 });

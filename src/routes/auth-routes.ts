@@ -1780,6 +1780,7 @@ router.post('/switch-role', authMiddleware, authRateLimiter, asyncHandler(async 
   if (!result.success) {
     const status = result.code === 'ROLE_SWITCH_NOT_ALLOWED' ? 403
       : result.code === 'BUSINESS_PROFILE_INCOMPLETE' ? 409
+      : result.code === 'BUSINESS_PROFILE_NOT_VERIFIED' ? 409
       : result.code === 'USER_NOT_FOUND' ? 404
       : 500;
     sendErrorResponse(res, status, result.code, result.message, {
