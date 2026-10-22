@@ -286,7 +286,7 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
    * **Feature: blockchain-freelance-marketplace, Property 6: Work experience date validation**
    * **Validates: Requirements 2.5**
    * 
-   * For any work experience entry, the start date must be before or equal to
+   * For any work experience entry, the start date must be before
    * the end date (if end date is provided), and entries with invalid date
    * ranges shall be rejected.
    */
@@ -1440,7 +1440,7 @@ describe('Duplicate work history entries', () => {
 
     const result = await addExperience('u1', {
       title: 'Nuclear Engineer', company: 'Meralco', description: 'Second contract',
-      startDate: '2027-01-01', endDate: null,
+      startDate: '2025-01-01', endDate: null,
     });
 
     expect(result.success).toBe(true);
@@ -1467,6 +1467,73 @@ describe('Duplicate work history entries', () => {
     });
 
     const result = await updateExperience('u1', 'e1', { description: 'Updated description of the work' });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('Work history date bounds', () => {
+  const daysFromNow = (days: number) => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const entry = { title: 'Engineer', company: 'Acme', description: 'Built accessible products' };
+  const existing = {
+    id: 'e1', ...entry, start_date: '2024-01-01', end_date: '2025-01-01', skills: [],
+  };
+
+  beforeEach(() => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [existing],
+    });
+  });
+
+  it.each([
+    ['a start date far in the future', '2100-01-01', null, 'Start date cannot be in the future'],
+    ['a start date two days ahead', daysFromNow(2), null, 'Start date cannot be in the future'],
+    ['a start date before 1980', '1979-12-31', null, 'Start date cannot be earlier than 1980'],
+    ['an end date far in the future', '2024-01-01', '2100-01-01', 'End date cannot be in the future'],
+    ['an end date with a 5-digit year', '2024-01-01', '+020000-01-01', 'End date cannot be in the future'],
+    ['an end date the same as the start date', '2024-01-01', '2024-01-01', 'End date must be after the start date'],
+    ['an end date on the same day as a timestamped start date', '2024-01-01T08:00:00.000Z', '2024-01-01', 'End date must be after the start date'],
+    ['an end date before the start date', '2024-01-02', '2024-01-01', 'End date must be after the start date'],
+  ])('rejects %s', async (_label, startDate, endDate, message) => {
+    const result = await addExperience('u1', { ...entry, startDate, endDate });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+      expect(result.error.message).toBe(message);
+    }
+  });
+
+  it('accepts a start date of today with no end date', async () => {
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await addExperience('u1', { ...entry, startDate: daysFromNow(0), endDate: null });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an update that moves the end date into the future', async () => {
+    const result = await updateExperience('u1', 'e1', { endDate: '2100-01-01' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_DATE_RANGE');
+  });
+
+  it.each([
+    ['today', daysFromNow(0)],
+    ['tomorrow (UTC), for users ahead of the server time zone', daysFromNow(1)],
+  ])('accepts an end date of %s', async (_label, date) => {
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await addExperience('u1', { ...entry, startDate: daysFromNow(-30), endDate: date });
 
     expect(result.success).toBe(true);
   });

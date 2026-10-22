@@ -457,10 +457,12 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
  *               startDate:
  *                 type: string
  *                 format: date
+ *                 description: Cannot be in the future or earlier than 1980-01-01
  *               endDate:
  *                 type: string
  *                 format: date
  *                 nullable: true
+ *                 description: Omit or null for a current role; must be after startDate and cannot be in the future
  *               skills:
  *                 type: array
  *                 maxItems: 50
@@ -580,10 +582,12 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
  *               startDate:
  *                 type: string
  *                 format: date
+ *                 description: Cannot be in the future or earlier than 1980-01-01
  *               endDate:
  *                 type: string
  *                 format: date
  *                 nullable: true
+ *                 description: Omit or null for a current role; must be after startDate and cannot be in the future
  *               skills:
  *                 type: array
  *                 maxItems: 50

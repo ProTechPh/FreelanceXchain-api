@@ -150,9 +150,30 @@ function isValidDateString(dateStr: string): boolean {
   return !isNaN(date.getTime());
 }
 
+const EXPERIENCE_MIN_DATE_MS = Date.UTC(1980, 0, 1);
+
+/**
+ * Latest instant a work history date may fall on. The server runs in UTC while
+ * users can already be a calendar day ahead, so allow through the end of tomorrow (UTC).
+ */
+function latestExperienceDateMs(now = new Date()): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2) - 1;
+}
+
 function validateDateRange(startDate: string, endDate: string | null | undefined): { valid: boolean; message?: string } {
   if (!isValidDateString(startDate)) {
     return { valid: false, message: 'Invalid start date format' };
+  }
+
+  const start = new Date(startDate);
+  const latest = latestExperienceDateMs();
+
+  if (start.getTime() < EXPERIENCE_MIN_DATE_MS) {
+    return { valid: false, message: 'Start date cannot be earlier than 1980' };
+  }
+
+  if (start.getTime() > latest) {
+    return { valid: false, message: 'Start date cannot be in the future' };
   }
 
   if (endDate !== null && endDate !== undefined) {
@@ -160,11 +181,15 @@ function validateDateRange(startDate: string, endDate: string | null | undefined
       return { valid: false, message: 'Invalid end date format' };
     }
 
-    const start = new Date(startDate);
     const end = new Date(endDate);
 
-    if (start > end) {
-      return { valid: false, message: 'Start date must be before or equal to end date' };
+    if (end.getTime() > latest) {
+      return { valid: false, message: 'End date cannot be in the future' };
+    }
+
+    // Compare calendar days, so a stored timestamp and a plain date on the same day count as the same date.
+    if (Math.floor(end.getTime() / DAY_MS) <= Math.floor(start.getTime() / DAY_MS)) {
+      return { valid: false, message: 'End date must be after the start date' };
     }
   }
 
