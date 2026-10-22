@@ -10,6 +10,7 @@ export type EmployerBusinessDocumentEntity = {
   file_id: string;
   file_url: string;
   file_name: string;
+  file_hash?: string | null;
   mime_type: string;
   size: number;
   created_at: string;

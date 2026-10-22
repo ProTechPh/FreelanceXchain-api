@@ -13,6 +13,7 @@ const mockListBusinessDocuments = jest.fn<any>();
 const mockUploadBusinessDocument = jest.fn<any>();
 const mockDeleteBusinessDocument = jest.fn<any>();
 const mockGetCompleteness = jest.fn<any>();
+const mockSubmitBusinessProfileForVerification = jest.fn<any>();
 
 let currentUser: any = { userId: 'emp-1', role: 'employer' };
 let uploadedFiles: any[] = [];
@@ -30,6 +31,7 @@ jest.unstable_mockModule(resolveModule('src/services/employer-business-document-
   uploadBusinessDocument: mockUploadBusinessDocument,
   deleteBusinessDocument: mockDeleteBusinessDocument,
   getBusinessProfileCompleteness: mockGetCompleteness,
+  submitBusinessProfileForVerification: mockSubmitBusinessProfileForVerification,
 }));
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'emp-1', role: 'employer' }; next(); },
@@ -164,7 +166,23 @@ describe('Employer business routes', () => {
     });
   });
 
-  describe('POST /profile (ensure)', () => {
+  
+
+    describe('POST /profile/submit-verification', () => {
+      it('submits profile for verification', async () => {
+        mockSubmitBusinessProfileForVerification.mockResolvedValueOnce({ success: true, data: { verificationStatus: 'pending' } });
+        const res = await request(app).post('/api/employers/profile/submit-verification');
+        expect(res.status).toBe(200);
+        expect(res.body.verificationStatus).toBe('pending');
+      });
+      it('returns 400 when profile is incomplete', async () => {
+        mockSubmitBusinessProfileForVerification.mockResolvedValueOnce({ success: false, error: { code: 'INCOMPLETE_PROFILE', message: 'Incomplete' } });
+        const res = await request(app).post('/api/employers/profile/submit-verification');
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('INCOMPLETE_PROFILE');
+      });
+    });
+    describe('POST /profile (ensure)', () => {
     it('returns the existing or newly created employer profile', async () => {
       mockEnsureEmployerProfile.mockResolvedValueOnce({ success: true, data: { id: 'ep-1', userId: 'emp-1' } });
       const res = await request(app).post('/api/employers/profile');

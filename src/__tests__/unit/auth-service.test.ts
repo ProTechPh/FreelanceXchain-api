@@ -1339,16 +1339,40 @@ describe('auth-service comprehensive coverage', () => {
       expect(getBusinessProfileCompleteness).not.toHaveBeenCalled();
     });
 
-    it('switches to employer when the business profile is complete', async () => {
+    it('switches to employer when the business profile is complete and verified', async () => {
       userRepository.getUserById
         .mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' })
         .mockResolvedValueOnce({ ...defaultUser, role: 'employer' });
-      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [] } });
+      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'verified' } });
       userRepository.updateUser.mockResolvedValueOnce({ ...defaultUser, role: 'employer' });
       const result = await switchActiveRole('test-user-id', 'employer');
       expect(result.success).toBe(true);
       expect(result.user.role).toBe('employer');
       expect(userRepository.updateUser).toHaveBeenCalledWith('test-user-id', { role: 'employer' });
+    });
+
+    it('blocks switching to employer when business profile verification is pending', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'pending' } });
+      const result = await switchActiveRole('test-user-id', 'employer');
+      expect(result).toMatchObject({
+        success: false,
+        code: 'BUSINESS_PROFILE_NOT_VERIFIED',
+        details: { verificationStatus: 'pending' },
+      });
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('blocks switching to employer when business profile verification was rejected', async () => {
+      userRepository.getUserById.mockResolvedValueOnce({ ...defaultUser, role: 'freelancer' });
+      getBusinessProfileCompleteness.mockResolvedValueOnce({ success: true, data: { complete: true, missingFields: [], missingDocuments: [], verificationStatus: 'rejected', verificationNotes: 'Invalid Mayor permit' } });
+      const result = await switchActiveRole('test-user-id', 'employer');
+      expect(result).toMatchObject({
+        success: false,
+        code: 'BUSINESS_PROFILE_NOT_VERIFIED',
+        details: { verificationStatus: 'rejected', verificationNotes: 'Invalid Mayor permit' },
+      });
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
     });
 
     it('blocks switching to employer while the business profile is incomplete', async () => {

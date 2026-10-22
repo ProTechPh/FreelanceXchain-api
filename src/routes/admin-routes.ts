@@ -29,6 +29,8 @@ import {
   listBusinessDocuments,
   getBusinessProfileCompleteness,
   listBusinessProfilesForAdmin,
+  verifyBusinessProfileByAdmin,
+  rejectBusinessProfileByAdmin,
   ADMIN_BUSINESS_PROFILE_STATUSES,
   type AdminBusinessProfileStatus,
 } from '../services/employer-business-document-service.js';
@@ -699,6 +701,46 @@ router.get('/employers/:userId/business-profile', authMiddleware, requirePermiss
     documents,
     completeness: completeness.success ? completeness.data : null,
   });
+}));
+
+router.post('/employers/:userId/business-profile/verify', authMiddleware, requirePermission('users:manage', 'kyc:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const adminUserId = req.user?.userId;
+  const targetUserId = req.params['userId'] ?? '';
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
+    return;
+  }
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes : undefined;
+  const result = await verifyBusinessProfileByAdmin(adminUserId, targetUserId, notes);
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
+  res.status(200).json({ success: true, profile: result.data.profile });
+}));
+
+router.post('/employers/:userId/business-profile/reject', authMiddleware, requirePermission('users:manage', 'kyc:manage'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+  const adminUserId = req.user?.userId;
+  const targetUserId = req.params['userId'] ?? '';
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
+    return;
+  }
+  const notes = req.body?.notes;
+  if (!notes || typeof notes !== 'string' || notes.trim().length < 5) {
+    sendErrorResponse(res, 400, 'INVALID_NOTES', 'Please provide feedback notes explaining what the employer needs to correct (at least 5 characters)', { requestId });
+    return;
+  }
+  const result = await rejectBusinessProfileByAdmin(adminUserId, targetUserId, notes);
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
+  res.status(200).json({ success: true, profile: result.data.profile });
 }));
 
 export default router;

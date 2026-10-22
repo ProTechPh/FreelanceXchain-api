@@ -17,6 +17,7 @@ import {
   uploadBusinessDocument,
   deleteBusinessDocument,
   getBusinessProfileCompleteness,
+  submitBusinessProfileForVerification,
 } from '../services/employer-business-document-service.js';
 import {
   BUSINESS_TYPES,
@@ -193,6 +194,22 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
     return;
   }
 
+  res.status(200).json(result.data);
+}));
+
+router.post('/profile/submit-verification', authMiddleware, requireRole('employer', 'freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+  const result = await submitBusinessProfileForVerification(userId);
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
+    return;
+  }
   res.status(200).json(result.data);
 }));
 
@@ -468,7 +485,7 @@ router.post('/profile/documents', authMiddleware, requireRole('employer', 'freel
   });
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 500;
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : result.error.code === 'DUPLICATE_FILE' ? 400 : 500;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
