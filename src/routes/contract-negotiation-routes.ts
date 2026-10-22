@@ -100,7 +100,7 @@ router.get('/:id/negotiation', authMiddleware, apiRateLimiter, validateAppwriteD
  * /api/contracts/{id}/offers:
  *   post:
  *     summary: Propose or counter contract terms
- *     description: The base amount cannot go below the freelancer's proposed rate and milestones must sum to the total.
+ *     description: The base amount cannot go below half of the freelancer's proposed rate and milestones must sum to the total.
  *     tags:
  *       - Contract Negotiation
  *     security:

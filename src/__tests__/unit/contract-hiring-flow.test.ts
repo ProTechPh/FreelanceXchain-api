@@ -312,9 +312,9 @@ describe('negotiation', () => {
     expect((await negotiation.getNegotiation(f.contract.id, f.employer.id)).error.code).toBe('NOT_FOUND');
   });
 
-  it('enforces the freelancer floor and milestone sums on offers', async () => {
+  it('enforces the freelancer floor (half the proposed rate) and milestone sums on offers', async () => {
     const f = setup({ floor: 2 });
-    const below = await negotiation.createOffer(f.contract.id, f.employer.id, offerInput({ baseAmount: 1.99, additionalPay: 0.51 }));
+    const below = await negotiation.createOffer(f.contract.id, f.employer.id, offerInput({ baseAmount: 0.99, additionalPay: 1.51 }));
     expect(below.success).toBe(false);
     expect(below.error.code).toBe('FLOOR_VIOLATION');
     const mismatch = await negotiation.createOffer(f.contract.id, f.employer.id, offerInput({ additionalPay: 0 }));

@@ -53,7 +53,7 @@ export type OfferValidationResult =
   | { ok: false; code: 'FLOOR_VIOLATION' | 'AMOUNT_MISMATCH' | 'VALIDATION_ERROR'; message: string; errors: TermsFieldError[] };
 
 export type OfferValidationOptions = {
-  /** The freelancer's proposed rate: the base amount may never go below it. */
+  /** The freelancer's proposed rate: the base amount may go down to half of it, never lower. */
   floor: number;
   maxMilestones?: number;
   now?: Date;
@@ -80,6 +80,14 @@ export function fromUnits(units: number): number {
 /** The freelancer's floor in amount units, rounded up should a rate carry extra precision. */
 export function floorUnits(floor: number): number {
   return Math.ceil(floor * UNITS_PER_ETH - 1e-6);
+}
+
+/** Share of the freelancer's proposed rate that an offer's base amount may go down to. */
+export const MIN_BASE_SHARE = 0.5;
+
+/** Lowest base amount allowed in an offer, in amount units: half the proposed rate, rounded up. */
+export function minimumBaseUnits(proposedRate: number): number {
+  return Math.ceil(floorUnits(proposedRate) * MIN_BASE_SHARE);
 }
 
 export function hasAtMostDecimals(value: number, decimals: number = AMOUNT_DECIMALS): boolean {
@@ -226,12 +234,13 @@ export function validateOfferTerms(input: OfferTermsInput, options: OfferValidat
     return { ok: false, code: 'VALIDATION_ERROR', message: 'Offer terms are invalid', errors };
   }
 
-  if (toUnits(baseAmount) < floorUnits(options.floor)) {
+  const minimumUnits = minimumBaseUnits(options.floor);
+  if (toUnits(baseAmount) < minimumUnits) {
     return {
       ok: false,
       code: 'FLOOR_VIOLATION',
-      message: `The base amount cannot go below the freelancer's proposed rate of ${fromUnits(floorUnits(options.floor))} ETH`,
-      errors: [{ field: 'baseAmount', message: `Must be at least ${fromUnits(floorUnits(options.floor))}` }],
+      message: `The base amount cannot go below half of the freelancer's proposed rate (${fromUnits(minimumUnits)} ETH)`,
+      errors: [{ field: 'baseAmount', message: `Must be at least ${fromUnits(minimumUnits)}` }],
     };
   }
 
