@@ -32,6 +32,7 @@ jest.unstable_mockModule(resolveModule('src/services/employer-business-document-
   uploadBusinessDocument: jest.fn(),
   deleteBusinessDocument: jest.fn(),
   getBusinessProfileCompleteness: jest.fn(),
+  submitBusinessProfileForVerification: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
