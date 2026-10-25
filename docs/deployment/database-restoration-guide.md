@@ -73,45 +73,65 @@ When running `pnpm run db:restore:seed`, the script automatically seeds:
 
 #### A. Skill Categories & Skills
 
-- **4 Categories:** Blockchain, Frontend, Backend, Design
-- **10 Core Skills:** Solidity, Rust, Hardhat, React, TypeScript, Tailwind CSS, Node.js, Python, Figma, UI/UX Design
+- **16 categories** covering engineering, design, operations, data, management, writing, and specialist domains
+- **183 skills** available for profiles, project requirements, and matching
 
 #### B. Demo Accounts & Profiles
+
+The full seed creates **20 freelancers and 20 employers**, plus the default administrator (**41 users total**). All accounts use `DEMO_USER_PASSWORD`, or `FreelanceXchain2026!` when that environment variable is not set.
 
 | User ID | Email | Role | Name / Organization | Hourly Rate |
 | :--- | :--- | :--- | :--- | :--- |
 | `freelancer-1` | `ana@freelance.com` | Freelancer | Ana Reyes (Smart Contract Auditor) | $50/hr |
 | `freelancer-2` | `juan@web3.dev` | Freelancer | Juan dela Cruz (Web3 UI/UX Designer) | $28/hr |
-| `freelancer-3` | `maria@fullstack.io` | Freelancer | Maria Santos (Full-Stack Web Developer) | $45/hr |
+| `freelancer-3` | `maria@fullstack.io` | Freelancer | Maria Santos (Full-Stack Web Developer) | $35/hr |
 | `employer-1` | `sarah@techcorp.com` | Employer | Sarah Chen (TechCorp) | — |
 | `employer-2` | `mike@blockchain.io` | Employer | Mike Johnson (Blockchain.io) | — |
 | `employer-3` | `alex@defi.finance` | Employer | Alex Rivera (DeFi Finance) | — |
+| `freelancer-4` | `carlo@mobile.dev` | Freelancer | Carlo Mendoza (Mobile Engineer) | $42/hr |
+| `freelancer-5` | `aisha@ml.engineer` | Freelancer | Aisha Khan (ML Engineer) | $65/hr |
+| `freelancer-6` | `lucas@cloudops.dev` | Freelancer | Lucas Silva (Cloud/DevOps Engineer) | $55/hr |
+| `freelancer-7` | `mei@security.pro` | Freelancer | Mei Tan (Security Specialist) | $72/hr |
+| `freelancer-8` | `ethan@data.engineer` | Freelancer | Ethan Clark (Data Engineer) | $58/hr |
+| `freelancer-9` | `isabella@product.design` | Freelancer | Isabella Rossi (Product Designer) | $46/hr |
+| `freelancer-10` | `kenji@qa.automation` | Freelancer | Kenji Sato (QA Automation Engineer) | $48/hr |
+| `employer-4` | `priya@aivista.io` | Employer | Priya Sharma (AI Vista) | — |
+| `employer-5` | `daniel@cloudforge.dev` | Employer | Daniel Kim (CloudForge) | — |
+| `employer-6` | `olivia@finsecure.co` | Employer | Olivia Brown (FinSecure) | — |
+| `employer-7` | `liam@mobilefirst.app` | Employer | Liam Wilson (MobileFirst) | — |
+| `employer-8` | `sofia@datapulse.ai` | Employer | Sofia Garcia (DataPulse) | — |
+| `employer-9` | `emma@productlane.eu` | Employer | Emma Muller (ProductLane) | — |
+| `employer-10` | `noah@qualitylabs.io` | Employer | Noah Martin (QualityLabs) | — |
 
-#### C. KYC Verifications (All 6 `APPROVED`)
+Freelancers `freelancer-11` through `freelancer-20` and employers `employer-11` through `employer-20` add backend, performance, documentation, blockchain, data science, product, design, API, mobile, commerce, health, retail, clean-tech, fintech, education, logistics, creator, enterprise, travel, and agriculture profiles.
 
-Prevents live demo interruptions by auto-approving Didit KYC verification for all demo users:
+#### C. KYC Verifications
+
+The seed creates KYC records for all 41 users. Thirty-eight are approved; `freelancer-2`, `freelancer-3`, and `admin-1` remain in review to populate the admin KYC queue.
 
 | Document ID | User ID | Document Type | Status | Flags Verified | Admin Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `kyc-freelancer-1` | `freelancer-1` | PASSPORT (`P1234567A`) | `approved` | Doc: ✓, Liveness: ✓, Face: ✓ | Auto-approved demo account |
-| `kyc-freelancer-2` | `freelancer-2` | NATIONAL_ID (`N7654321B`) | `approved` | Doc: ✓, Liveness: ✓, Face: ✓ | Auto-approved demo account |
-| `kyc-freelancer-3` | `freelancer-3` | DRIVERS_LICENSE (`D9876543C`) | `approved` | Doc: ✓, Liveness: ✓, Face: ✓ | Auto-approved demo account |
+| `kyc-freelancer-2` | `freelancer-2` | NATIONAL_ID (`N7654321B`) | `completed` / review | Doc: ✓, Liveness: ✓, Face: ✓ | Populates admin review queue |
+| `kyc-freelancer-3` | `freelancer-3` | DRIVERS_LICENSE (`D9876543C`) | `completed` / review | Doc: ✓, Liveness: ✓, Face: ✓ | Populates admin review queue |
 | `kyc-employer-1` | `employer-1` | PASSPORT (`E1122334D`) | `approved` | Doc: ✓, Liveness: ✓, Face: ✓ | Auto-approved employer account |
 | `kyc-employer-2` | `employer-2` | PASSPORT (`E2233445E`) | `approved` | Doc: ✓, Liveness: ✓, Face: ✓ | Auto-approved employer account |
 | `kyc-employer-3` | `employer-3` | PASSPORT (`E3344556F`) | `approved` | Doc: ✓, Liveness: ✓, Face: ✓ | Auto-approved employer account |
 
-#### D. Active Projects with Milestones (6 Projects)
+#### D. Active Projects with Milestones (20 Projects)
 
 | Project ID | Employer | Title | Budget | Status | Milestones Count | Required Skills |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `project-1` | Sarah Chen (`employer-1`) | Decentralized Exchange (DEX) Frontend | $8,000 | Open | 3 Milestones ($3k, $3k, $2k) | React, TypeScript, Tailwind |
-| `project-2` | Mike Johnson (`employer-2`) | Smart Contract Audit for DeFi Protocol | $15,000 | Open (Rush) | 3 Milestones ($5k, $7k, $3k) | Solidity, Hardhat |
-| `project-3` | Alex Rivera (`employer-3`) | NFT Marketplace Development | $12,000 | Open | 3 Milestones ($4k, $4k, $4k) | React, Node.js, Solidity |
-| `project-4` | Sarah Chen (`employer-1`) | DAO Governance Dashboard | $6,500 | Open | 3 Milestones ($2k, $2.5k, $2k) | React, Figma, UI/UX Design |
-| `project-5` | Mike Johnson (`employer-2`) | Cross-Chain Bridge UI | $9,000 | Open (Rush) | 3 Milestones ($3k, $4k, $2k) | React, TypeScript, Rust |
-| `project-6` | Alex Rivera (`employer-3`) | DeFi Yield Aggregator | $14,000 | Open | 4 Milestones ($6k, $4k, $4k) | Solidity, Node.js, Python |
+| `project-1` | Sarah Chen (`employer-1`) | Decentralized Exchange (DEX) Frontend | 2.5 | Open | 3 | React, TypeScript |
+| `project-2` | Mike Johnson (`employer-2`) | Smart Contract Audit for DeFi Protocol | 4.5 | Open (Rush) | 3 | Solidity, Hardhat |
+| `project-3` | Alex Rivera (`employer-3`) | NFT Marketplace Development | 3.6 | Open | 3 | React, Node.js, Solidity |
+| `project-4` | Sarah Chen (`employer-1`) | DAO Governance Dashboard | 2.0 | Open | 3 | React, Figma, UI/UX Design |
+| `project-5` | Mike Johnson (`employer-2`) | Cross-Chain Bridge UI | 1.8 | Open | 3 | React, Tailwind CSS, TypeScript |
+| `project-6` | Alex Rivera (`employer-3`) | DeFi Yield Aggregator | 5.5 | Open | 4 | Solidity, Node.js, React |
 
-#### E. Freelancer Portfolios (4 Projects)
+Projects `project-7` through `project-20` add AI/RAG, Kubernetes, security, mobile, analytics, QA, product design, monitoring, documentation, computer vision, cloud cost, and identity work. Each includes required skills, tags, deadlines, budgets, and two milestones.
+
+#### E. Freelancer Portfolios (20 Items)
 
 | Item ID | Freelancer | Portfolio Title | Technologies Used |
 | :--- | :--- | :--- | :--- |
@@ -119,6 +139,8 @@ Prevents live demo interruptions by auto-approving Didit KYC verification for al
 | `port-2` | Ana Reyes (`freelancer-1`) | Decentralized Freelance & Milestone Escrow Protocol | Solidity, Smart Contracts, Polygon, React, Next.js |
 | `port-3` | Juan dela Cruz (`freelancer-2`) | Web3 Multi-Chain NFT Marketplace UI | Figma, UI/UX Design, Tailwind CSS, React |
 | `port-4` | Maria Santos (`freelancer-3`) | Enterprise Web3 Analytics & Subgraph Dashboard | Node.js, TypeScript, React, Python |
+
+Items `port-5` through `port-20` distribute additional mobile, AI, cloud, security, data, design, and QA work across all 10 freelancer profiles.
 
 ---
 

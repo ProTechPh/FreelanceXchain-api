@@ -1242,6 +1242,48 @@ async function setupStorage(buckets: typeof BUCKETS_TO_SETUP = BUCKETS_TO_SETUP)
 
 const futureDate = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
+const seedWallet = (number: number) => `0x${number.toString(16).padStart(40, '0')}`;
+
+const additionalEmployerSeeds = [
+  { id: 4, name: "Priya Sharma", email: "priya@aivista.io", nationality: "Indian", company: "AI Vista", industry: "Artificial Intelligence" },
+  { id: 5, name: "Daniel Kim", email: "daniel@cloudforge.dev", nationality: "South Korean", company: "CloudForge", industry: "Cloud Infrastructure" },
+  { id: 6, name: "Olivia Brown", email: "olivia@finsecure.co", nationality: "British", company: "FinSecure", industry: "Cybersecurity" },
+  { id: 7, name: "Liam Wilson", email: "liam@mobilefirst.app", nationality: "Australian", company: "MobileFirst", industry: "Mobile Technology" },
+  { id: 8, name: "Sofia Garcia", email: "sofia@datapulse.ai", nationality: "Spanish", company: "DataPulse", industry: "Data Analytics" },
+  { id: 9, name: "Emma Muller", email: "emma@productlane.eu", nationality: "German", company: "ProductLane", industry: "Product Development" },
+  { id: 10, name: "Noah Martin", email: "noah@qualitylabs.io", nationality: "Canadian", company: "QualityLabs", industry: "Software Testing" },
+  { id: 11, name: "Grace Lee", email: "grace@healthchain.io", nationality: "Malaysian", company: "HealthChain", industry: "Health Technology" },
+  { id: 12, name: "Mateo Cruz", email: "mateo@retailnova.com", nationality: "Mexican", company: "RetailNova", industry: "E-commerce" },
+  { id: 13, name: "Amara Okafor", email: "amara@greengrid.africa", nationality: "Nigerian", company: "GreenGrid", industry: "Clean Technology" },
+  { id: 14, name: "Hugo Laurent", email: "hugo@ledgerworks.fr", nationality: "French", company: "LedgerWorks", industry: "Financial Technology" },
+  { id: 15, name: "Zara Ahmed", email: "zara@learnsphere.co", nationality: "Emirati", company: "LearnSphere", industry: "Education Technology" },
+  { id: 16, name: "Oliver Jensen", email: "oliver@logiflow.dk", nationality: "Danish", company: "LogiFlow", industry: "Logistics" },
+  { id: 17, name: "Camila Torres", email: "camila@creatorhub.lat", nationality: "Colombian", company: "CreatorHub", industry: "Creator Economy" },
+  { id: 18, name: "Leo Wang", email: "leo@quantumops.tech", nationality: "Taiwanese", company: "QuantumOps", industry: "Enterprise Software" },
+  { id: 19, name: "Mia Andersen", email: "mia@travelmesh.no", nationality: "Norwegian", company: "TravelMesh", industry: "Travel Technology" },
+  { id: 20, name: "Samuel Mensah", email: "samuel@agrolink.gh", nationality: "Ghanaian", company: "AgroLink", industry: "Agricultural Technology" },
+];
+
+const additionalFreelancerSeeds = [
+  { id: 4, name: "Carlo Mendoza", email: "carlo@mobile.dev", nationality: "Filipino", specialty: "mobile engineer", rate: 42, skills: ["React Native", "Flutter", "TypeScript"] },
+  { id: 5, name: "Aisha Khan", email: "aisha@ml.engineer", nationality: "Pakistani", specialty: "machine learning engineer", rate: 65, skills: ["Python", "PyTorch", "RAG Systems"] },
+  { id: 6, name: "Lucas Silva", email: "lucas@cloudops.dev", nationality: "Brazilian", specialty: "cloud and DevOps engineer", rate: 55, skills: ["AWS", "Docker", "Kubernetes"] },
+  { id: 7, name: "Mei Tan", email: "mei@security.pro", nationality: "Singaporean", specialty: "application security specialist", rate: 72, skills: ["OWASP Security", "Penetration Testing", "Threat Modeling"] },
+  { id: 8, name: "Ethan Clark", email: "ethan@data.engineer", nationality: "American", specialty: "data platform engineer", rate: 58, skills: ["Apache Spark", "ETL / Data Pipelines", "PostgreSQL"] },
+  { id: 9, name: "Isabella Rossi", email: "isabella@product.design", nationality: "Italian", specialty: "product designer", rate: 46, skills: ["Figma", "Design Systems", "User Research"] },
+  { id: 10, name: "Kenji Sato", email: "kenji@qa.automation", nationality: "Japanese", specialty: "test automation engineer", rate: 48, skills: ["Playwright", "Jest / Vitest", "Performance Testing (k6)"] },
+  { id: 11, name: "Fatima Noor", email: "fatima@backend.dev", nationality: "Bangladeshi", specialty: "backend systems engineer", rate: 52, skills: ["Node.js", "PostgreSQL", "Microservices"] },
+  { id: 12, name: "Theo Bernard", email: "theo@web.performance", nationality: "French", specialty: "web performance engineer", rate: 50, skills: ["Next.js", "Web Performance", "TypeScript"] },
+  { id: 13, name: "Nia Williams", email: "nia@technical.writer", nationality: "British", specialty: "technical writer", rate: 38, skills: ["Technical Documentation", "API Documentation", "Developer Guides"] },
+  { id: 14, name: "Arjun Patel", email: "arjun@solana.dev", nationality: "Indian", specialty: "blockchain protocol engineer", rate: 70, skills: ["Rust", "Solana", "Smart Contract Auditing"] },
+  { id: 15, name: "Elena Petrova", email: "elena@data.science", nationality: "Bulgarian", specialty: "data scientist", rate: 62, skills: ["Python", "Pandas & NumPy", "Statistical Modeling"] },
+  { id: 16, name: "David Cohen", email: "david@product.manager", nationality: "Israeli", specialty: "technical product manager", rate: 60, skills: ["Technical Product Management", "Agile & Scrum", "Product Roadmapping"] },
+  { id: 17, name: "Chloe Dubois", email: "chloe@brand.studio", nationality: "Belgian", specialty: "brand and motion designer", rate: 44, skills: ["Branding & Identity", "Motion Graphics", "Adobe Illustrator"] },
+  { id: 18, name: "Omar Hassan", email: "omar@api.engineer", nationality: "Egyptian", specialty: "API platform engineer", rate: 54, skills: ["RESTful API Design", "GraphQL API", "Redis"] },
+  { id: 19, name: "Hana Suzuki", email: "hana@ios.engineer", nationality: "Japanese", specialty: "iOS application engineer", rate: 57, skills: ["Swift", "SwiftUI", "Mobile App Security"] },
+  { id: 20, name: "Gabriel Costa", email: "gabriel@wordpress.pro", nationality: "Portuguese", specialty: "commerce web developer", rate: 40, skills: ["WordPress", "WooCommerce", "PHP"] },
+];
+
 const skillCategories = [
   { seedId: "cat-1", name: "Blockchain", description: "Blockchain and smart contract development skills", is_active: true },
   { seedId: "cat-2", name: "Frontend", description: "Frontend and client-side web development skills", is_active: true },
@@ -1532,6 +1574,17 @@ const employerUsers = [
     suspension_reason: null,
     mfa_enabled: false,
   },
+  ...additionalEmployerSeeds.map(({ id, name, email }) => ({
+    seedId: `employer-${id}`,
+    email,
+    password_hash: "",
+    name,
+    role: "employer",
+    wallet_address: seedWallet(1000 + id),
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  })),
 ];
 
 const freelancerUsers = [
@@ -1568,6 +1621,17 @@ const freelancerUsers = [
     suspension_reason: null,
     mfa_enabled: false,
   },
+  ...additionalFreelancerSeeds.map(({ id, name, email }) => ({
+    seedId: `freelancer-${id}`,
+    email,
+    password_hash: "",
+    name,
+    role: "freelancer",
+    wallet_address: seedWallet(2000 + id),
+    is_suspended: false,
+    suspension_reason: null,
+    mfa_enabled: false,
+  })),
 ];
 
 const freelancerProfiles = [
@@ -1656,6 +1720,29 @@ const freelancerProfiles = [
     ]),
     availability: "available",
   },
+  ...additionalFreelancerSeeds.map(({ id, name, nationality, specialty, rate, skills: profileSkills }) => ({
+    seedId: `profile-${id}`,
+    user_id: `freelancer-${id}`,
+    name,
+    nationality,
+    bio: `Experienced ${specialty} focused on reliable, production-ready delivery for global teams.`,
+    hourly_rate: rate,
+    skills: JSON.stringify(profileSkills.map((skill, index) => ({
+      name: skill,
+      years_of_experience: Math.max(2, 6 - index),
+      added_manually: false,
+    }))),
+    experience: JSON.stringify([{
+      id: `exp-${id}`,
+      title: specialty.replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      company: "Independent Consultant",
+      description: `Delivered ${specialty} projects for international clients.`,
+      start_date: "2021-01-01",
+      end_date: null,
+      skills: profileSkills,
+    }]),
+    availability: id % 3 === 0 ? "busy" : "available",
+  })),
 ];
 
 const employerProfiles = [
@@ -1686,6 +1773,32 @@ const employerProfiles = [
     description: "Decentralized finance platform for the future",
     industry: "DeFi",
   },
+  ...additionalEmployerSeeds.map(({ id, name, nationality, company, industry }) => ({
+    seedId: `employer-profile-${id}`,
+    user_id: `employer-${id}`,
+    name,
+    nationality,
+    company_name: company,
+    description: `${company} builds practical products for customers in the ${industry.toLowerCase()} sector.`,
+    industry,
+  })),
+];
+
+const additionalProjectSeeds = [
+  { id: 7, employer: 4, title: "RAG Customer Support Assistant", description: "Build a retrieval-augmented support assistant with source citations, evaluation datasets, and an operator handoff workflow.", budget: 3.2, days: 50, skills: [["skill-8", "Python", "cat-3"], ["skill-101", "RAG Systems", "cat-7"]], tags: ["AI", "RAG", "Support"] },
+  { id: 8, employer: 5, title: "Kubernetes Platform Hardening", description: "Review and harden a production Kubernetes platform, improve deployment controls, and add actionable monitoring dashboards.", budget: 4.0, days: 40, skills: [["skill-81", "Kubernetes", "cat-6"], ["skill-89", "Prometheus & Grafana", "cat-6"]], tags: ["Kubernetes", "DevOps", "Security"] },
+  { id: 9, employer: 6, title: "Fintech API Security Assessment", description: "Perform an authenticated API security assessment and deliver reproducible findings with prioritized remediation guidance.", budget: 3.8, days: 28, skills: [["skill-103", "Penetration Testing", "cat-8"], ["skill-104", "OWASP Security", "cat-8"]], tags: ["Security", "Fintech", "API"] },
+  { id: 10, employer: 7, title: "Cross-Platform Fitness Application", description: "Develop a polished fitness tracking app with offline support, wearable synchronization, and accessible mobile interfaces.", budget: 4.4, days: 65, skills: [["skill-71", "React Native", "cat-5"], ["skill-77", "Expo", "cat-5"]], tags: ["Mobile", "Fitness", "React Native"] },
+  { id: 11, employer: 8, title: "Real-Time Analytics Data Pipeline", description: "Implement a scalable ingestion and transformation pipeline feeding a near-real-time operational analytics warehouse.", budget: 5.0, days: 60, skills: [["skill-113", "Apache Spark", "cat-9"], ["skill-115", "ETL / Data Pipelines", "cat-9"]], tags: ["Data", "Analytics", "ETL"] },
+  { id: 12, employer: 6, title: "Marketplace End-to-End Test Suite", description: "Create reliable browser tests for critical marketplace journeys and integrate parallel execution into CI.", budget: 2.2, days: 30, skills: [["skill-120", "Playwright", "cat-10"], ["skill-121", "End-to-End Testing", "cat-10"]], tags: ["QA", "Playwright", "CI"] },
+  { id: 13, employer: 9, title: "SaaS Product Design System", description: "Design and document an accessible component system with reusable tokens, responsive patterns, and engineering handoff.", budget: 2.8, days: 38, skills: [["skill-61", "Design Systems", "cat-4"], ["skill-9", "Figma", "cat-4"]], tags: ["Design System", "SaaS", "Figma"] },
+  { id: 14, employer: 1, title: "Smart Contract Monitoring Service", description: "Build a backend service that indexes contract events, detects anomalies, and sends low-latency operational alerts.", budget: 3.9, days: 48, skills: [["skill-15", "Ethers.js", "cat-1"], ["skill-7", "Node.js", "cat-3"]], tags: ["Blockchain", "Monitoring", "Node.js"] },
+  { id: 15, employer: 2, title: "Token-Gated Community Portal", description: "Create a responsive community portal with wallet authentication, token-gated content, and member administration.", budget: 2.7, days: 42, skills: [["skill-28", "Next.js", "cat-2"], ["skill-16", "Viem / Wagmi", "cat-1"]], tags: ["Web3", "Community", "Next.js"] },
+  { id: 16, employer: 3, title: "DeFi Protocol Documentation", description: "Produce developer documentation, integration tutorials, API references, and architecture diagrams for a DeFi protocol.", budget: 1.6, days: 25, skills: [["skill-129", "Technical Documentation", "cat-12"], ["skill-131", "Web3 Whitepapers", "cat-12"]], tags: ["Documentation", "DeFi", "API"] },
+  { id: 17, employer: 4, title: "Computer Vision Quality Inspector", description: "Prototype an image-based defect detection pipeline, train baseline models, and package an inference API.", budget: 4.8, days: 55, skills: [["skill-97", "Computer Vision", "cat-7"], ["skill-92", "PyTorch", "cat-7"]], tags: ["AI", "Computer Vision", "Manufacturing"] },
+  { id: 18, employer: 5, title: "Cloud Cost Optimization Dashboard", description: "Build a dashboard that aggregates cloud usage, highlights cost anomalies, and tracks optimization recommendations.", budget: 3.1, days: 45, skills: [["skill-82", "AWS", "cat-6"], ["skill-116", "Power BI / Tableau", "cat-9"]], tags: ["Cloud", "FinOps", "Dashboard"] },
+  { id: 19, employer: 6, title: "OAuth and MFA Modernization", description: "Modernize account security with standards-based OAuth, multi-factor authentication, session controls, and migration guidance.", budget: 3.5, days: 35, skills: [["skill-109", "Auth & Identity (OAuth/MFA)", "cat-8"], ["skill-57", "RESTful API Design", "cat-3"]], tags: ["Identity", "OAuth", "Security"] },
+  { id: 20, employer: 7, title: "Flutter Commerce App", description: "Deliver a Flutter commerce app with product discovery, checkout integration, push notifications, and release automation.", budget: 4.2, days: 58, skills: [["skill-72", "Flutter", "cat-5"], ["skill-79", "App Store Publishing", "cat-5"]], tags: ["Flutter", "Commerce", "Mobile"] },
 ];
 
 const projects = [
@@ -1698,6 +1811,7 @@ const projects = [
       { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 3 },
       { skill_id: "skill-5", skill_name: "TypeScript", category_id: "cat-2", years_of_experience: 2 },
     ]),
+    required_skill_ids: ["skill-4", "skill-5"],
     budget: 2.5,
     deadline: futureDate(45),
     is_rush: false,
@@ -1721,6 +1835,7 @@ const projects = [
       { skill_id: "skill-1", skill_name: "Solidity", category_id: "cat-1", years_of_experience: 4 },
       { skill_id: "skill-3", skill_name: "Hardhat", category_id: "cat-1", years_of_experience: 3 },
     ]),
+    required_skill_ids: ["skill-1", "skill-3"],
     budget: 4.5,
     deadline: futureDate(30),
     is_rush: true,
@@ -1745,6 +1860,7 @@ const projects = [
       { skill_id: "skill-7", skill_name: "Node.js", category_id: "cat-3", years_of_experience: 3 },
       { skill_id: "skill-1", skill_name: "Solidity", category_id: "cat-1", years_of_experience: 2 },
     ]),
+    required_skill_ids: ["skill-4", "skill-7", "skill-1"],
     budget: 3.6,
     deadline: futureDate(60),
     is_rush: false,
@@ -1769,6 +1885,7 @@ const projects = [
       { skill_id: "skill-9", skill_name: "Figma", category_id: "cat-4", years_of_experience: 3 },
       { skill_id: "skill-10", skill_name: "UI/UX Design", category_id: "cat-4", years_of_experience: 3 },
     ]),
+    required_skill_ids: ["skill-4", "skill-9", "skill-10"],
     budget: 2.0,
     deadline: futureDate(40),
     is_rush: false,
@@ -1793,6 +1910,7 @@ const projects = [
       { skill_id: "skill-6", skill_name: "Tailwind CSS", category_id: "cat-2", years_of_experience: 2 },
       { skill_id: "skill-5", skill_name: "TypeScript", category_id: "cat-2", years_of_experience: 3 },
     ]),
+    required_skill_ids: ["skill-4", "skill-6", "skill-5"],
     budget: 1.8,
     deadline: futureDate(35),
     is_rush: false,
@@ -1817,6 +1935,7 @@ const projects = [
       { skill_id: "skill-7", skill_name: "Node.js", category_id: "cat-3", years_of_experience: 3 },
       { skill_id: "skill-4", skill_name: "React", category_id: "cat-2", years_of_experience: 2 },
     ]),
+    required_skill_ids: ["skill-1", "skill-7", "skill-4"],
     budget: 5.5,
     deadline: futureDate(75),
     is_rush: false,
@@ -1832,6 +1951,31 @@ const projects = [
     tags: JSON.stringify(["DeFi", "Yield", "Aggregator"]),
     attachments: JSON.stringify([]),
   },
+  ...additionalProjectSeeds.map(({ id, employer, title, description, budget, days, skills: projectSkills, tags }) => ({
+    seedId: `project-${id}`,
+    employer_id: `employer-${employer}`,
+    title,
+    description,
+    required_skills: JSON.stringify(projectSkills.map(([skill_id, skill_name, category_id]) => ({
+      skill_id,
+      skill_name,
+      category_id,
+      years_of_experience: 2 + (id % 3),
+    }))),
+    required_skill_ids: projectSkills.map(([skillId]) => skillId),
+    budget,
+    deadline: futureDate(days),
+    is_rush: id % 5 === 0,
+    rush_fee_percentage: id % 5 === 0 ? 30 : 20,
+    status: "open",
+    milestones: JSON.stringify([
+      { id: `m${id}-1`, title: "Discovery & Foundation", description: "Confirm requirements and deliver the technical foundation", amount: budget / 2, due_date: futureDate(Math.floor(days / 2)), status: "pending" },
+      { id: `m${id}-2`, title: "Delivery & Handover", description: "Complete implementation, testing, and handover", amount: budget / 2, due_date: futureDate(days), status: "pending" },
+    ]),
+    freelancer_limit: id % 4 === 0 ? 2 : 1,
+    tags: JSON.stringify(tags),
+    attachments: JSON.stringify([]),
+  })),
 ];
 
 const kycVerifications = [
@@ -1979,6 +2123,53 @@ const kycVerifications = [
     metadata: JSON.stringify({ verified_at: "2026-01-14T16:45:00.000Z", tier: "business" }),
     admin_notes: "Auto-approved employer demo account",
   },
+  ...[
+    ...additionalEmployerSeeds.map(({ id, name, nationality }) => ({ id, name, nationality, role: "employer" })),
+    ...additionalFreelancerSeeds.map(({ id, name, nationality }) => ({ id, name, nationality, role: "freelancer" })),
+  ].map(({ id, name, nationality, role }) => {
+    const [firstName, ...lastNameParts] = name.split(" ");
+    const userId = `${role}-${id}`;
+    return {
+      seedId: `kyc-${userId}`,
+      user_id: userId,
+      status: "approved",
+      didit_session_id: `session_${role}_${id}_verified`,
+      didit_session_token: `tok_${role}_${id}_seeded`,
+      didit_session_url: `https://verification.didit.me/v/session_${role}_${id}_verified`,
+      didit_workflow_id: `wf_${role}_kyc`,
+      decision: "approved",
+      document_type: "PASSPORT",
+      document_number: `${role === "employer" ? "E" : "F"}${String(id).padStart(7, "0")}`,
+      first_name: firstName,
+      last_name: lastNameParts.join(" "),
+      nationality,
+      document_verified: true,
+      liveness_passed: true,
+      face_matched: true,
+      ip_address: "127.0.0.1",
+      metadata: JSON.stringify({ verified_at: "2026-03-10T09:00:00.000Z", tier: role === "employer" ? "business" : "standard" }),
+      admin_notes: "Auto-approved expanded demo account",
+    };
+  }),
+];
+
+const additionalPortfolioSeeds = [
+  { title: "Mobile Banking Design System", skills: ["React Native", "TypeScript", "Design Systems"] },
+  { title: "Knowledge Base RAG Assistant", skills: ["Python", "RAG Systems", "Vector Databases"] },
+  { title: "Multi-Region Kubernetes Platform", skills: ["Kubernetes", "Terraform", "AWS"] },
+  { title: "OWASP Application Security Review", skills: ["OWASP Security", "Threat Modeling", "Penetration Testing"] },
+  { title: "Streaming Commerce Data Lake", skills: ["Apache Spark", "ETL / Data Pipelines", "PostgreSQL"] },
+  { title: "Accessible SaaS Component Library", skills: ["Figma", "Design Systems", "User Research"] },
+  { title: "Cross-Browser Regression Framework", skills: ["Playwright", "Jest / Vitest", "CI/CD Pipelines"] },
+  { title: "Token Portfolio Mobile App", skills: ["Flutter", "Web3.js", "App Store Publishing"] },
+  { title: "LLM Evaluation Workbench", skills: ["Large Language Models", "Python", "MLOps"] },
+  { title: "Cloud Observability Control Center", skills: ["Prometheus & Grafana", "Docker", "Kubernetes"] },
+  { title: "Zero-Trust Identity Gateway", skills: ["Auth & Identity (OAuth/MFA)", "Network Security", "Node.js"] },
+  { title: "Executive Analytics Workspace", skills: ["Power BI / Tableau", "Data Warehousing", "Statistical Modeling"] },
+  { title: "Web3 Brand and Product Experience", skills: ["Branding & Identity", "Figma", "Interaction Design"] },
+  { title: "High-Load API Test Platform", skills: ["Performance Testing (k6)", "API Testing (Postman)", "Docker"] },
+  { title: "Offline Field Operations App", skills: ["React Native", "Expo", "Mobile App Security"] },
+  { title: "Smart Contract Incident Monitor", skills: ["Solidity", "Ethers.js", "Smart Contract Auditing"] },
 ];
 
 const portfolioItems = [
@@ -2022,6 +2213,20 @@ const portfolioItems = [
     skills: JSON.stringify(["Node.js", "TypeScript", "React", "Python"]),
     completed_at: "2026-01-05",
   },
+  ...additionalPortfolioSeeds.map(({ title, skills: itemSkills }, index) => {
+    const portfolioId = index + 5;
+    const freelancerId = ((portfolioId - 1) % 10) + 1;
+    return {
+      seedId: `port-${portfolioId}`,
+      freelancer_id: `freelancer-${freelancerId}`,
+      title,
+      description: `${title} delivered with production-ready implementation, documentation, automated checks, and a maintainable handover package.`,
+      project_url: `https://github.com/freelancexchain/demo-portfolio-${portfolioId}`,
+      images: JSON.stringify([`https://picsum.photos/seed/freelancexchain-${portfolioId}/1200/800`]),
+      skills: JSON.stringify(itemSkills),
+      completed_at: `2025-${String(((index + 3) % 12) + 1).padStart(2, "0")}-15`,
+    };
+  }),
 ];
 
 const contracts = [
