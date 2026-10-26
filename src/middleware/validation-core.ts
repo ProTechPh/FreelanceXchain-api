@@ -2,6 +2,7 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ValidationError } from './error-handler.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 import { APP_RATING_SOURCES } from '../models/app-rating.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_RESOLUTION_LENGTH,
@@ -168,8 +169,14 @@ function validatePattern(key: string, value: unknown, prop: SchemaProperty, erro
 }
 
 function validateLengthAndBounds(key: string, value: unknown, prop: SchemaProperty, errors: FieldError[]): void {
-  if (prop.minLength !== undefined && typeof value === 'string' && value.length < prop.minLength) {
-    errors.push({ field: key, message: `"${key}" must be at least ${prop.minLength} characters` });
+  // Passwords count every character; other text only counts letters and digits
+  // so filler like "  .  .  ." can't satisfy a minimum.
+  const minLengthCount = typeof value === 'string'
+    ? (prop.format === 'password' ? value.length : countMeaningfulChars(value))
+    : 0;
+  if (prop.minLength !== undefined && typeof value === 'string' && minLengthCount < prop.minLength) {
+    const unit = prop.format === 'password' ? 'characters' : 'letters or numbers';
+    errors.push({ field: key, message: `"${key}" must include at least ${prop.minLength} ${unit}` });
   }
 
   if (prop.maxLength !== undefined && typeof value === 'string' && value.length > prop.maxLength) {
@@ -505,7 +512,7 @@ export const registerSchema: RequestSchema = {
     type: 'object',
     properties: {
       email: { type: 'string', format: 'email', pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$', required: true },
-      password: { type: 'string', minLength: 8, required: true },
+      password: { type: 'string', format: 'password', minLength: 8, required: true },
       role: { type: 'string', enum: ['freelancer', 'employer'], required: true },
       name: { type: 'string' },
     },

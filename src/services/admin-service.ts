@@ -28,6 +28,7 @@ import { platformMetricsCache } from '../utils/cache.js';
 import { grantComplimentaryPro } from './subscription-service.js';
 import type { PlanTier } from '../models/subscription.js';
 import { sendUserInvitedEmail } from './email-delivery-service.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 interface PlatformStats {
   totalUsers: number;
@@ -637,7 +638,7 @@ function validateInviteUserInput(input: InviteUserInput): ServiceResult<never> |
   }
 
   const trimmedName = typeof input.name === 'string' ? input.name.trim() : '';
-  if (trimmedName.length < 2 || trimmedName.length > 100) {
+  if (countMeaningfulChars(trimmedName) < 2 || trimmedName.length > 100) {
     return errorResult('INVALID_NAME', 'Name must be between 2 and 100 characters');
   }
 

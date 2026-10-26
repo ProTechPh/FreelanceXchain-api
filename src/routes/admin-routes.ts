@@ -34,6 +34,7 @@ import {
   ADMIN_BUSINESS_PROFILE_STATUSES,
   type AdminBusinessProfileStatus,
 } from '../services/employer-business-document-service.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 const router = Router();
 
@@ -261,7 +262,7 @@ router.patch('/users/:userId', authMiddleware, requirePermission('users:manage')
     sendErrorResponse(res, 400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, { requestId });
     return;
   }
-  if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100)) {
+  if (name !== undefined && (typeof name !== 'string' || countMeaningfulChars(name) < 2 || name.trim().length > 100)) {
     sendErrorResponse(res, 400, 'INVALID_NAME', 'Name must be between 2 and 100 characters', { requestId });
     return;
   }
@@ -404,8 +405,8 @@ router.post('/users/:userId/suspend', authMiddleware, requirePermission('users:m
     return;
   }
 
-  if (typeof reason !== 'string' || reason.trim().length < 10 || reason.trim().length > 500) {
-    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', { requestId });
+  if (typeof reason !== 'string' || countMeaningfulChars(reason) < 10 || reason.trim().length > 500) {
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must include at least 10 letters or numbers (max 500 characters)', { requestId });
     return;
   }
 
@@ -486,9 +487,9 @@ router.post('/users/:userId/verify', authMiddleware, requirePermission('kyc:mana
 
   if (
     submittedReason !== undefined &&
-    (typeof submittedReason !== 'string' || submittedReason.trim().length < 10 || submittedReason.trim().length > 500)
+    (typeof submittedReason !== 'string' || countMeaningfulChars(submittedReason) < 10 || submittedReason.trim().length > 500)
   ) {
-    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', { requestId });
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must include at least 10 letters or numbers (max 500 characters)', { requestId });
     return;
   }
 
@@ -730,8 +731,8 @@ router.post('/employers/:userId/business-profile/reject', authMiddleware, requir
     return;
   }
   const notes = req.body?.notes;
-  if (!notes || typeof notes !== 'string' || notes.trim().length < 5) {
-    sendErrorResponse(res, 400, 'INVALID_NOTES', 'Please provide feedback notes explaining what the employer needs to correct (at least 5 characters)', { requestId });
+  if (!notes || typeof notes !== 'string' || countMeaningfulChars(notes) < 5) {
+    sendErrorResponse(res, 400, 'INVALID_NOTES', 'Please provide feedback notes explaining what the employer needs to correct (at least 5 letters or numbers)', { requestId });
     return;
   }
   const result = await rejectBusinessProfileByAdmin(adminUserId, targetUserId, notes);

@@ -20,6 +20,7 @@ import {
   type BusinessVerificationStatus,
   type EmployerProfile,
 } from '../models/employer-profile.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 export type UploadBusinessDocumentInput = {
   documentType: BusinessDocumentType;
@@ -312,10 +313,10 @@ export async function rejectBusinessProfileByAdmin(
     return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
   }
 
-  if (!notes || typeof notes !== 'string' || notes.trim().length < 5) {
+  if (!notes || typeof notes !== 'string' || countMeaningfulChars(notes) < 5) {
     return errorResult(
       'INVALID_NOTES',
-      'Please provide feedback notes explaining what the employer needs to correct (at least 5 characters).'
+      'Please provide feedback notes explaining what the employer needs to correct (at least 5 letters or numbers).'
     );
   }
 

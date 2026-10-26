@@ -35,6 +35,7 @@ import {
   type SupportTicketStats,
   type UpdateSupportTicketStatusInput,
 } from '../models/support-ticket.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 export async function submitSupportTicket(
   input: SubmitSupportTicketInput
@@ -46,7 +47,7 @@ export async function submitSupportTicket(
   }
 
   const subject = input.subject.trim();
-  if (subject.length < MIN_SUBJECT_LENGTH || subject.length > MAX_SUBJECT_LENGTH) {
+  if (countMeaningfulChars(subject) < MIN_SUBJECT_LENGTH || subject.length > MAX_SUBJECT_LENGTH) {
     return errorResult(
       'INVALID_SUBJECT',
       `Subject must be between ${MIN_SUBJECT_LENGTH} and ${MAX_SUBJECT_LENGTH} characters.`
@@ -54,7 +55,7 @@ export async function submitSupportTicket(
   }
 
   const description = input.description.trim();
-  if (description.length < MIN_DESCRIPTION_LENGTH || description.length > MAX_DESCRIPTION_LENGTH) {
+  if (countMeaningfulChars(description) < MIN_DESCRIPTION_LENGTH || description.length > MAX_DESCRIPTION_LENGTH) {
     return errorResult(
       'INVALID_DESCRIPTION',
       `Description must be between ${MIN_DESCRIPTION_LENGTH} and ${MAX_DESCRIPTION_LENGTH} characters.`
