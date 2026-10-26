@@ -112,10 +112,11 @@ router.get('/range', authMiddleware, requirePermission('audit:view'), async (req
 // Combined filtered search with pagination (admin only)
 router.get('/search', authMiddleware, requirePermission('audit:view'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { actor, user, action, resourceType, resourceId, status, startDate, endDate, limit, cursor } = req.query;
+    const { actor, actorRole, user, action, resourceType, resourceId, status, startDate, endDate, limit, cursor } = req.query;
 
     const filters: {
       actorId?: string;
+      actorRole?: 'admin' | 'user';
       userId?: string;
       action?: string;
       resourceType?: string;
@@ -128,6 +129,13 @@ router.get('/search', authMiddleware, requirePermission('audit:view'), async (re
     } = {};
 
     if (typeof actor === 'string' && actor) filters.actorId = actor;
+    if (typeof actorRole === 'string' && actorRole) {
+      if (actorRole !== 'admin' && actorRole !== 'user') {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid actorRole. Must be one of: admin, user', { requestId: getRequestId(req) });
+        return;
+      }
+      filters.actorRole = actorRole;
+    }
     if (typeof user === 'string' && user) filters.userId = user;
     if (typeof action === 'string' && action) filters.action = action;
     if (typeof resourceType === 'string' && resourceType) filters.resourceType = resourceType;

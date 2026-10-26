@@ -25,6 +25,7 @@ import {
 import { DiditWebhookPayload, DiditWebhookStatus, DiditWebhookType, KycStatus } from '../models/didit-kyc.js';
 import type { ServiceError } from '../types/service-result.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 const router = Router();
 
@@ -618,12 +619,16 @@ router.get('/admin/status/:status', authMiddleware, requirePermission('kyc:view'
  *             type: object
  *             required:
  *               - decision
+ *               - notes
  *             properties:
  *               decision:
  *                 type: string
  *                 enum: [approved, rejected]
  *               notes:
  *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 500
+ *                 description: Audit reason; needs at least 10 letters or numbers.
  *     responses:
  *       200:
  *         description: Review completed
@@ -643,8 +648,14 @@ router.post('/admin/review/:verificationId', authMiddleware, requirePermission('
     return;
   }
 
+  // Same audit-reason rule as the admin manual-verify endpoint.
+  if (typeof notes !== 'string' || countMeaningfulChars(notes) < 10 || notes.trim().length > 500) {
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must include at least 10 letters or numbers (max 500 characters)', { requestId: getRequestId(req) });
+    return;
+  }
+
   const effectiveReviewerId = reviewerId || adminUserId;
-  const result = await adminReviewVerification(verificationId, effectiveReviewerId, decision, notes);
+  const result = await adminReviewVerification(verificationId, effectiveReviewerId, decision, notes.trim());
 
   if (!result.success) {
     const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;

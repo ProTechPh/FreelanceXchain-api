@@ -30,6 +30,11 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   AuditLogSearchResult: {},
 }));
 
+const mockGetUsersByIds = jest.fn() as any;
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: { getUsersByIds: mockGetUsersByIds },
+}));
+
 const { AuditLogService } = await import('../../services/audit-log-service.js');
 
 const sampleLog = (overrides: Record<string, any> = {}) => ({
@@ -194,6 +199,28 @@ describe('AuditLogService', () => {
   });
 
   describe('getAdminActivitySummary', () => {
+    beforeEach(() => {
+      mockGetUsersByIds.mockImplementation(async (ids: string[]) =>
+        ids.map((id) => ({ id, role: id.startsWith('admin') ? 'admin' : 'freelancer' })),
+      );
+    });
+
+    it('should leave out actions by non-admin users', async () => {
+      mockListForRange.mockResolvedValue([
+        sampleLog({ actor_id: 'admin-1', action: 'auth.login', created_at: '2025-06-01T10:00:00Z' }),
+        sampleLog({ id: 'log-2', actor_id: 'freelancer-9', action: 'auth.login', created_at: '2025-06-01T11:00:00Z' }),
+        sampleLog({ id: 'log-3', actor_id: 'freelancer-9', action: 'auth.logout', created_at: '2025-06-01T12:00:00Z' }),
+      ]);
+
+      const summary = await service.getAdminActivitySummary(new Date('2025-06-01'), new Date('2025-06-30'));
+
+      expect(summary.totalActions).toBe(1);
+      expect(summary.activeAdmins).toBe(1);
+      expect(summary.items).toEqual([
+        { actor_id: 'admin-1', date: '2025-06-01', actions: { 'auth.login': 1 }, total: 1 },
+      ]);
+    });
+
     it('should aggregate actions per admin per day', async () => {
       const logs = [
         sampleLog({ actor_id: 'admin-1', action: 'kyc.approved', created_at: '2025-06-01T10:00:00Z' }),

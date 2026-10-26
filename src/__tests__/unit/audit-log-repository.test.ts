@@ -27,6 +27,7 @@ describe('AuditLogRepository', () => {
 
       const result = await repo.create({
         user_id: 'u1',
+        actor_id: 'admin-1',
         action: 'login',
         status: 'success',
         payload: { ip: '1.2.3.4' },
@@ -37,7 +38,8 @@ describe('AuditLogRepository', () => {
       expect(result!.payload).toEqual({ ip: '1.2.3.4' });
       const attributes = mockDatabases.createDocument.mock.calls[0][3] as Record<string, unknown>;
       expect(attributes.payload).toBe('{"ip":"1.2.3.4"}');
-      expect(attributes.created_at).toBeDefined();
+      // created_at is not a collection attribute; Appwrite would reject the write.
+      expect(attributes).not.toHaveProperty('created_at');
     });
 
     it('should pass string payloads through untouched', async () => {
@@ -50,7 +52,7 @@ describe('AuditLogRepository', () => {
         payload: 'raw-string',
       });
 
-      await repo.create({ action: 'delete', status: 'success', payload: 'raw-string' });
+      await repo.create({ actor_id: 'admin-1', action: 'delete', status: 'success', payload: 'raw-string' });
 
       const attributes = mockDatabases.createDocument.mock.calls[0][3] as Record<string, unknown>;
       expect(attributes.payload).toBe('raw-string');
@@ -65,16 +67,38 @@ describe('AuditLogRepository', () => {
         status: 'success',
       });
 
-      await repo.create({ action: 'read', status: 'success' });
+      await repo.create({ actor_id: 'admin-1', action: 'read', status: 'success' });
 
       const attributes = mockDatabases.createDocument.mock.calls[0][3] as Record<string, unknown>;
       expect(attributes.payload).toBe('{}');
     });
 
+    it('stamps the actor role so admin and user activity can be filtered', async () => {
+      mockDatabases.createDocument.mockResolvedValue({ $id: 'a9', $createdAt: '2025-03-01', $updatedAt: '2025-03-01' });
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'freelancer-1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', role: 'freelancer' });
+
+      await repo.create({ actor_id: 'freelancer-1', action: 'auth.login', resource_type: 'user', status: 'success' });
+      await repo.create({ actor_id: null, action: 'auth.login_failed', resource_type: 'auth', status: 'failure' });
+
+      expect(mockDatabases.createDocument).toHaveBeenCalledTimes(2);
+      expect(mockDatabases.createDocument.mock.calls[0][3]).toMatchObject({ actor_id: 'freelancer-1', actor_role: 'freelancer' });
+      expect(mockDatabases.createDocument.mock.calls[1][3]).toMatchObject({ actor_id: null, actor_role: null });
+      expect(mockDatabases.getDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it('still records the entry when the role lookup fails', async () => {
+      mockDatabases.createDocument.mockResolvedValue({ $id: 'a10', $createdAt: '2025-03-01', $updatedAt: '2025-03-01' });
+      mockDatabases.getDocument.mockRejectedValueOnce(Object.assign(new Error('not found'), { code: 404 }));
+
+      await repo.create({ actor_id: 'system', action: 'contract.cancelled', resource_type: 'contract', status: 'success' });
+
+      expect(mockDatabases.createDocument.mock.calls[0][3]).toMatchObject({ actor_id: 'system', actor_role: null });
+    });
+
     it('should return null when the write fails (never throws)', async () => {
       mockDatabases.createDocument.mockRejectedValueOnce(new Error('insert failed'));
 
-      const result = await repo.create({ action: 'delete', status: 'success' });
+      const result = await repo.create({ actor_id: 'admin-1', action: 'delete', status: 'success' });
       expect(result).toBeNull();
     });
   });
@@ -259,6 +283,28 @@ describe('AuditLogRepository', () => {
       const result = await repo.search({ limit: 2 });
       expect(result.hasMore).toBe(true);
       expect(result.nextCursor).toBeNull();
+    });
+
+    it('matches action and resource type partially so "Login" finds auth.login', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+      await repo.search({ action: ' Login ', resourceType: 'User' });
+
+      const queries = mockDatabases.listDocuments.mock.calls[0][2] as string[];
+      expect(queries).toContain('contains(action,Login)');
+      expect(queries).toContain('contains(resource_type,User)');
+      expect(queries).not.toContain('equal(action,Login)');
+    });
+
+    it.each([
+      ['admin', 'equal(actor_role,admin)'],
+      ['user', 'equal(actor_role,freelancer,employer)'],
+    ])('filters by actor role %s', async (actorRole, expected) => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+      await repo.search({ actorRole });
+
+      expect(mockDatabases.listDocuments.mock.calls[0][2]).toContain(expected);
     });
 
     it('should return empty result on database error', async () => {
