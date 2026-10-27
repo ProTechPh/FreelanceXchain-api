@@ -15,6 +15,7 @@ import {
   removeExperience,
 } from '../services/freelancer-profile-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 const router = Router();
 
@@ -132,8 +133,8 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
-  if (!bio || typeof bio !== 'string' || bio.trim().length < 10) {
-    errors.push({ field: 'bio', message: 'Bio must be at least 10 characters' });
+  if (!bio || typeof bio !== 'string' || countMeaningfulChars(bio) < 10) {
+    errors.push({ field: 'bio', message: 'Bio must include at least 10 letters or numbers' });
   }
   if (hourlyRate === undefined || typeof hourlyRate !== 'number' || hourlyRate < 1) {
     errors.push({ field: 'hourlyRate', message: 'Hourly rate must be a positive number' });
@@ -491,7 +492,7 @@ function validateExperienceSkills(skills: unknown, errors: { field: string; mess
     errors.push({ field: 'skills', message: 'Skills must be an array of at most 50 skill names' });
     return undefined;
   }
-  if (skills.some(skill => typeof skill !== 'string' || skill.trim().length < 1 || skill.trim().length > 100)) {
+  if (skills.some(skill => typeof skill !== 'string' || countMeaningfulChars(skill) < 1 || skill.trim().length > 100)) {
     errors.push({ field: 'skills', message: 'Each skill must be between 1 and 100 characters' });
     return undefined;
   }
@@ -511,14 +512,14 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
-  if (!title || typeof title !== 'string' || title.trim().length < 2) {
-    errors.push({ field: 'title', message: 'Title must be at least 2 characters' });
+  if (!title || typeof title !== 'string' || countMeaningfulChars(title) < 2) {
+    errors.push({ field: 'title', message: 'Title must include at least 2 letters or numbers' });
   }
-  if (!company || typeof company !== 'string' || company.trim().length < 2) {
-    errors.push({ field: 'company', message: 'Company must be at least 2 characters' });
+  if (!company || typeof company !== 'string' || countMeaningfulChars(company) < 2) {
+    errors.push({ field: 'company', message: 'Company must include at least 2 letters or numbers' });
   }
-  if (!description || typeof description !== 'string' || description.trim().length < 10) {
-    errors.push({ field: 'description', message: 'Description must be at least 10 characters' });
+  if (!description || typeof description !== 'string' || countMeaningfulChars(description) < 10) {
+    errors.push({ field: 'description', message: 'Description must include at least 10 letters or numbers' });
   }
   if (!startDate || typeof startDate !== 'string') {
     errors.push({ field: 'startDate', message: 'Start date is required' });
@@ -638,14 +639,14 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
 
   // Validate provided fields
   const errors: { field: string; message: string }[] = [];
-  if (title !== undefined && (typeof title !== 'string' || title.trim().length < 2)) {
-    errors.push({ field: 'title', message: 'Title must be at least 2 characters' });
+  if (title !== undefined && (typeof title !== 'string' || countMeaningfulChars(title) < 2)) {
+    errors.push({ field: 'title', message: 'Title must include at least 2 letters or numbers' });
   }
-  if (company !== undefined && (typeof company !== 'string' || company.trim().length < 2)) {
-    errors.push({ field: 'company', message: 'Company must be at least 2 characters' });
+  if (company !== undefined && (typeof company !== 'string' || countMeaningfulChars(company) < 2)) {
+    errors.push({ field: 'company', message: 'Company must include at least 2 letters or numbers' });
   }
-  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10)) {
-    errors.push({ field: 'description', message: 'Description must be at least 10 characters' });
+  if (description !== undefined && (typeof description !== 'string' || countMeaningfulChars(description) < 10)) {
+    errors.push({ field: 'description', message: 'Description must include at least 10 letters or numbers' });
   }
   const experienceSkills = validateExperienceSkills(skills, errors);
 

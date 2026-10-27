@@ -1,7 +1,12 @@
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 import { fromAppwriteDoc } from './base-repository.js';
+import { logger } from '../config/logger.js';
+import { userRepository } from './user-repository.js';
 
 export type AuditLogStatus = 'success' | 'failure' | 'pending';
+export type AuditActorRole = 'admin' | 'freelancer' | 'employer';
+/** Search filter: admins, or regular users (freelancers and employers). */
+export type AuditActorRoleFilter = 'admin' | 'user';
 
 export type BaseEntity = {
   id: string;
@@ -11,6 +16,8 @@ export type BaseEntity = {
 export interface AuditLogEntry extends BaseEntity {
   user_id: string | null;
   actor_id: string | null;
+  /** Actor's role when the action happened; null for actor-less events and older entries. */
+  actor_role: AuditActorRole | null;
   action: string;
   resource_type: string;
   resource_id: string | null;
@@ -21,10 +28,12 @@ export interface AuditLogEntry extends BaseEntity {
   error_message: string | null;
 }
 
-export type CreateAuditLogEntry = Omit<AuditLogEntry, 'id' | 'created_at'>;
+// actor_role is filled in by create() from actor_id, so callers don't pass it.
+export type CreateAuditLogEntry = Omit<AuditLogEntry, 'id' | 'created_at' | 'actor_role'>;
 
 export interface AuditLogSearchFilters {
   actorId?: string;
+  actorRole?: AuditActorRoleFilter;
   userId?: string;
   action?: string;
   resourceType?: string;
@@ -55,31 +64,47 @@ function mapAuditLog(doc: Record<string, unknown>): AuditLogEntry {
   return result as unknown as AuditLogEntry;
 }
 
+async function lookupActorRole(actorId: string | null | undefined): Promise<AuditActorRole | null> {
+  if (!actorId) return null;
+  try {
+    return (await userRepository.getUserById(actorId))?.role ?? null;
+  } catch {
+    // The role is a label for filtering; a failed lookup must not drop the entry.
+    return null;
+  }
+}
+
 export class AuditLogRepository {
   private collectionId: string = COLLECTION_ID;
 
   /**
-   * Persist an audit log entry (durable record of a privileged/system action).
+   * Persist an audit log entry. Every actor is recorded — users, admins and
+   * actor-less events like failed logins — so anomalies can be traced.
    * Returns null (never throws) when the write fails — auditing must not break
    * the primary action it records.
    */
   async create(entry: CreateAuditLogEntry): Promise<AuditLogEntry | null> {
     try {
+      const actorRole = await lookupActorRole(entry.actor_id);
       const doc = await databases.createDocument(
         DATABASE_ID,
         this.collectionId,
         ID.unique(),
         {
           ...entry,
+          actor_role: actorRole,
           payload: typeof entry.payload === 'string'
             ? entry.payload
             : JSON.stringify(entry.payload ?? {}),
-          created_at: new Date().toISOString(),
+          // No created_at: the collection has no such attribute (Appwrite rejects
+          // unknown keys); the timestamp comes from $createdAt.
         }
       );
       return mapAuditLog(doc);
-    } catch {
-      // Never throw — audit persistence is best-effort durability, not a gate.
+    } catch (error) {
+      // Never throw — audit persistence is best-effort durability, not a gate —
+      // but log it, or every failed write disappears without a trace.
+      logger.error('Failed to persist audit log entry', { error, action: entry.action });
       return null;
     }
   }
@@ -199,9 +224,13 @@ export class AuditLogRepository {
       // separate count round-trip.
       const queries: string[] = [];
       if (filters.actorId) queries.push(Query.equal('actor_id', filters.actorId));
+      if (filters.actorRole === 'admin') queries.push(Query.equal('actor_role', 'admin'));
+      if (filters.actorRole === 'user') queries.push(Query.equal('actor_role', ['freelancer', 'employer']));
       if (filters.userId) queries.push(Query.equal('user_id', filters.userId));
-      if (filters.action) queries.push(Query.equal('action', filters.action));
-      if (filters.resourceType) queries.push(Query.equal('resource_type', filters.resourceType));
+      // Partial, case-insensitive match: admins type "Login" or "KYC", while
+      // stored values look like "auth.login" or "kyc_verification".
+      if (filters.action) queries.push(Query.contains('action', filters.action.trim()));
+      if (filters.resourceType) queries.push(Query.contains('resource_type', filters.resourceType.trim()));
       if (filters.resourceId) queries.push(Query.equal('resource_id', filters.resourceId));
       if (filters.status) queries.push(Query.equal('status', filters.status));
       if (filters.startDate) queries.push(Query.greaterThanEqual('$createdAt', filters.startDate.toISOString()));
@@ -220,7 +249,8 @@ export class AuditLogRepository {
         hasMore,
         nextCursor: hasMore ? (pageDocuments[pageDocuments.length - 1]?.$id ?? null) : null,
       };
-    } catch {
+    } catch (error) {
+      logger.error('Failed to search audit log entries', { error });
       return { items: [], total: 0, hasMore: false, nextCursor: null };
     }
   }

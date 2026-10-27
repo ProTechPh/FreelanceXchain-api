@@ -322,7 +322,7 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
     cursorAfter: jest.fn((id: string) => `cursorAfter(${id})`),
     cursorBefore: jest.fn(),
     between: jest.fn(),
-    contains: jest.fn(),
+    contains: jest.fn((attr: string, val: unknown) => `contains(${attr},${val})`),
     or: jest.fn(),
     search: jest.fn(),
     greaterThan: jest.fn(),

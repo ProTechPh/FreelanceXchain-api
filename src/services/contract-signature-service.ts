@@ -40,6 +40,7 @@ import { transitionContract } from './contract-state-machine.js';
 import { signAgreement } from './agreement-contract.js';
 import { notifyContractParty } from './contract-notifications.js';
 import { contractTermsLockKey } from './contract-negotiation-service.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 const MAX_SIGNATURE_IMAGE_BYTES = 100 * 1024;
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -210,7 +211,7 @@ export async function listSignatures(contractId: string, userId: string, userRol
 
 function validateAdoptedSignature(input: SubmitSignatureInput): string | null {
   const typedName = input.typedName?.trim() ?? '';
-  if (typedName && (typedName.length < 2 || typedName.length > 120)) {
+  if (typedName && (countMeaningfulChars(typedName) < 2 || typedName.length > 120)) {
     return 'Typed name must be between 2 and 120 characters';
   }
   if (input.signatureType === 'typed') {

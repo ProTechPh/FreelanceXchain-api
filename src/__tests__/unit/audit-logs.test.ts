@@ -333,6 +333,21 @@ describe('Audit Logs Routes', () => {
       expect(mockSearchAuditLogs).toHaveBeenCalledWith({ status: 'success' });
     });
 
+    it('should pass the actorRole filter through', async () => {
+      mockSearchAuditLogs.mockResolvedValue({ items: [], total: 0, hasMore: false });
+      const res = await request(app).get('/api/audit-logs/search?actorRole=user');
+      expect(res.status).toBe(200);
+      expect(mockSearchAuditLogs).toHaveBeenCalledWith({ actorRole: 'user' });
+    });
+
+    it('should return 400 for an invalid actorRole', async () => {
+      const res = await request(app).get('/api/audit-logs/search?actorRole=freelancer');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(mockSearchAuditLogs).not.toHaveBeenCalled();
+    });
+
     it('should return 400 for invalid endDate', async () => {
       const res = await request(app).get('/api/audit-logs/search?endDate=not-a-date');
 

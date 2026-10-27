@@ -27,6 +27,7 @@ import { CreateUserCustomSkillInput, UpdateUserCustomSkillInput } from '../model
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 const router = Router();
 
@@ -251,8 +252,8 @@ router.post('/categories', authMiddleware, requirePermission('skills:manage'), a
 
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     errors.push({ field: 'name', message: 'Name is required' });
-  } else if (name.trim().length < 3) {
-    errors.push({ field: 'name', message: 'Category name must be at least 3 characters' });
+  } else if (countMeaningfulChars(name) < 3) {
+    errors.push({ field: 'name', message: 'Category name must include at least 3 letters or numbers' });
   }
   if (!description || typeof description !== 'string' || description.trim().length === 0) {
     errors.push({ field: 'description', message: 'Description is required' });
@@ -617,11 +618,11 @@ router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter
   const { name, description, yearsOfExperience, categoryName, suggestForGlobal }: CreateUserCustomSkillInput = req.body;
 
   const errors: { field: string; message: string }[] = [];
-  if (!name || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+  if (!name || typeof name !== 'string' || countMeaningfulChars(name) < 2 || name.trim().length > 100) {
     errors.push({ field: 'name', message: 'Name must be between 2 and 100 characters' });
   }
-  if (!description || typeof description !== 'string' || description.trim().length < 10 || description.trim().length > 500) {
-    errors.push({ field: 'description', message: 'Description must be between 10 and 500 characters' });
+  if (!description || typeof description !== 'string' || countMeaningfulChars(description) < 10 || description.trim().length > 500) {
+    errors.push({ field: 'description', message: 'Description must include at least 10 letters or numbers (max 500 characters)' });
   }
   if (yearsOfExperience === undefined || typeof yearsOfExperience !== 'number' || yearsOfExperience < 0 || yearsOfExperience > 50) {
     errors.push({ field: 'yearsOfExperience', message: 'Years of experience must be between 0 and 50' });
@@ -834,11 +835,11 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   const { name, description, yearsOfExperience, categoryName }: UpdateUserCustomSkillInput = req.body;
 
   const errors: { field: string; message: string }[] = [];
-  if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100)) {
+  if (name !== undefined && (typeof name !== 'string' || countMeaningfulChars(name) < 2 || name.trim().length > 100)) {
     errors.push({ field: 'name', message: 'Name must be between 2 and 100 characters' });
   }
-  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10 || description.trim().length > 500)) {
-    errors.push({ field: 'description', message: 'Description must be between 10 and 500 characters' });
+  if (description !== undefined && (typeof description !== 'string' || countMeaningfulChars(description) < 10 || description.trim().length > 500)) {
+    errors.push({ field: 'description', message: 'Description must include at least 10 letters or numbers (max 500 characters)' });
   }
   if (yearsOfExperience !== undefined && (typeof yearsOfExperience !== 'number' || yearsOfExperience < 0 || yearsOfExperience > 50)) {
     errors.push({ field: 'yearsOfExperience', message: 'Years of experience must be between 0 and 50' });
@@ -985,12 +986,12 @@ router.post('/suggestions', authMiddleware, apiRateLimiter, asyncHandler(async (
   const { name, description, categoryName, yearsOfExperience } = req.body;
   const errors: { field: string; message: string }[] = [];
 
-  if (!name || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+  if (!name || typeof name !== 'string' || countMeaningfulChars(name) < 2 || name.trim().length > 100) {
     errors.push({ field: 'name', message: 'Skill name must be between 2 and 100 characters' });
   }
 
-  if (!description || typeof description !== 'string' || description.trim().length < 5 || description.trim().length > 500) {
-    errors.push({ field: 'description', message: 'Description must be between 5 and 500 characters' });
+  if (!description || typeof description !== 'string' || countMeaningfulChars(description) < 5 || description.trim().length > 500) {
+    errors.push({ field: 'description', message: 'Description must include at least 5 letters or numbers (max 500 characters)' });
   }
 
   if (categoryName !== undefined && (typeof categoryName !== 'string' || categoryName.trim().length > 100)) {

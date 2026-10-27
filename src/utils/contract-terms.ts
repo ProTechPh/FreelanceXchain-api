@@ -82,12 +82,12 @@ export function floorUnits(floor: number): number {
   return Math.ceil(floor * UNITS_PER_ETH - 1e-6);
 }
 
-/** Share of the freelancer's proposed rate that an offer's base amount may go down to. */
+/** Share of the freelancer's proposed rate that an offer's base amount must stay above. */
 export const MIN_BASE_SHARE = 0.5;
 
-/** Lowest base amount allowed in an offer, in amount units: half the proposed rate, rounded up. */
+/** Lowest base amount allowed in an offer, in amount units: the smallest amount above half the proposed rate. */
 export function minimumBaseUnits(proposedRate: number): number {
-  return Math.ceil(floorUnits(proposedRate) * MIN_BASE_SHARE);
+  return Math.floor(floorUnits(proposedRate) * MIN_BASE_SHARE) + 1;
 }
 
 export function hasAtMostDecimals(value: number, decimals: number = AMOUNT_DECIMALS): boolean {
@@ -239,7 +239,7 @@ export function validateOfferTerms(input: OfferTermsInput, options: OfferValidat
     return {
       ok: false,
       code: 'FLOOR_VIOLATION',
-      message: `The base amount cannot go below half of the freelancer's proposed rate (${fromUnits(minimumUnits)} ETH)`,
+      message: `The base amount must be more than half of the freelancer's proposed rate (at least ${fromUnits(minimumUnits)} ETH)`,
       errors: [{ field: 'baseAmount', message: `Must be at least ${fromUnits(minimumUnits)}` }],
     };
   }

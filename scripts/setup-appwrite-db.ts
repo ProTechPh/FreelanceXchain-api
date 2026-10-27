@@ -696,6 +696,8 @@ const COLLECTIONS: CollectionDef[] = [
     attributes: [
       { name: 'user_id', type: 'string', size: 36, required: false },
       { name: 'actor_id', type: 'string', size: 36, required: false },
+      // Role of the actor when the action happened (admin | freelancer | employer); null for actor-less events.
+      { name: 'actor_role', type: 'string', size: 20, required: false },
       { name: 'action', type: 'string', size: 100, required: true },
       { name: 'resource_type', type: 'string', size: 50, required: true },
       { name: 'resource_id', type: 'string', size: 36, required: false },
@@ -708,6 +710,7 @@ const COLLECTIONS: CollectionDef[] = [
     indexes: [
       { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'actor_id_createdAt', type: DatabasesIndexType.Key, attributes: ['actor_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'actor_role_createdAt', type: DatabasesIndexType.Key, attributes: ['actor_role', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'action_createdAt', type: DatabasesIndexType.Key, attributes: ['action', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
       { key: 'resource_type_resource_id_createdAt', type: DatabasesIndexType.Key, attributes: ['resource_type', 'resource_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
       { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },

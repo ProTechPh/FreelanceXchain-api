@@ -131,6 +131,20 @@ describe('POST /api/kyc/admin/review/:verificationId', () => {
     });
   });
 
+  it.each([
+    ['missing', undefined],
+    ['filler only', '   .   .   .   .   .   .   .   .   .   .   .   '],
+    ['over 500 characters', 'a'.repeat(501)],
+  ])('rejects an audit reason that is %s', async (_label, notes) => {
+    const response = await request(app)
+      .post('/api/kyc/admin/review/kyc-freelancer-2')
+      .send({ decision: 'approved', notes });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVALID_REASON');
+    expect(mockAdminReviewVerification).not.toHaveBeenCalled();
+  });
+
   it('rejects values outside the Appwrite document ID allowlist', async () => {
     const response = await request(app)
       .post('/api/kyc/admin/review/not%20a%20document%20id')

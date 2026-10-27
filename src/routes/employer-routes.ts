@@ -27,6 +27,7 @@ import {
 } from '../models/employer-profile.js';
 import { listProjectsByEmployer } from '../services/project-service.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { countMeaningfulChars } from '../utils/text-validation.js';
 
 const router = Router();
 
@@ -40,7 +41,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRIVATE_BUSINESS_FIELDS = ['tin', 'registrationNumber', 'businessAddress', 'businessPhone', 'businessEmail'] as const;
 
 function isNonEmptyString(value: unknown, min = 1): value is string {
-  return typeof value === 'string' && value.trim().length >= min;
+  return typeof value === 'string' && countMeaningfulChars(value) >= min;
 }
 
 function isHttpUrl(value: string): boolean {
@@ -308,14 +309,14 @@ router.patch('/profile', authMiddleware, requireRole('employer', 'freelancer'), 
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
-  if (companyName !== undefined && (typeof companyName !== 'string' || companyName.trim().length < 2)) {
-    errors.push({ field: 'companyName', message: 'Company name must be at least 2 characters' });
+  if (companyName !== undefined && (typeof companyName !== 'string' || countMeaningfulChars(companyName) < 2)) {
+    errors.push({ field: 'companyName', message: 'Company name must include at least 2 letters or numbers' });
   }
-  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10)) {
-    errors.push({ field: 'description', message: 'Description must be at least 10 characters' });
+  if (description !== undefined && (typeof description !== 'string' || countMeaningfulChars(description) < 10)) {
+    errors.push({ field: 'description', message: 'Description must include at least 10 letters or numbers' });
   }
-  if (industry !== undefined && (typeof industry !== 'string' || industry.trim().length < 2)) {
-    errors.push({ field: 'industry', message: 'Industry must be at least 2 characters' });
+  if (industry !== undefined && (typeof industry !== 'string' || countMeaningfulChars(industry) < 2)) {
+    errors.push({ field: 'industry', message: 'Industry must include at least 2 letters or numbers' });
   }
   errors.push(...validateBusinessFields(body));
 

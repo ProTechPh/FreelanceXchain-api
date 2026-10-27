@@ -4,6 +4,7 @@ import {
   AuditLogSearchFilters,
   AuditLogSearchResult,
 } from '../repositories/audit-log-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 
 export class AuditLogService {
   private auditLogRepo: AuditLogRepository;
@@ -43,8 +44,8 @@ export class AuditLogService {
   }
 
   /**
-   * Aggregate audit entries into a per-admin, per-day activity summary for
-   * compliance reporting. Each row: { actor_id, date (YYYY-MM-DD), actions
+   * Aggregate admin audit entries into a per-admin, per-day activity summary
+   * for compliance reporting. Non-admin and actor-less entries are skipped. Each row: { actor_id, date (YYYY-MM-DD), actions
    * { action: count }, total }.
    */
   async getAdminActivitySummary(startDate: Date, endDate: Date): Promise<{
@@ -59,12 +60,17 @@ export class AuditLogService {
   }> {
     const logs = await this.auditLogRepo.listForRange(startDate, endDate);
 
+    // Every user's actions are audited, but this summary is admin activity only.
+    const actorIds = [...new Set(logs.map((log) => log.actor_id).filter((id): id is string => Boolean(id)))];
+    const actors = await userRepository.getUsersByIds(actorIds);
+    const adminIds = new Set(actors.filter((actor) => actor.role === 'admin').map((actor) => actor.id));
+
     const buckets = new Map<string, { actor_id: string; date: string; actions: Record<string, number>; total: number }>();
     let totalActions = 0;
     const activeAdmins = new Set<string>();
 
     for (const log of logs) {
-      if (!log.actor_id) continue; // system-level entries have no actor
+      if (!log.actor_id || !adminIds.has(log.actor_id)) continue; // system and non-admin entries
       totalActions += 1;
       activeAdmins.add(log.actor_id);
       const day = (log.created_at ?? '').slice(0, 10) || 'unknown';
