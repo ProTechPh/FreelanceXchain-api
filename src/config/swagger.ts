@@ -357,7 +357,7 @@ export const VALIDATED_ENDPOINTS: ValidatedEndpoint[] = [
     schema: createContractOfferSchema.body!,
     operation: {
       summary: 'Propose or counter contract terms',
-      description: "Either party proposes terms while the contract is negotiating. The base amount cannot go below half of the freelancer's proposed rate, and milestone amounts must sum to base + additional pay + rush fee.",
+      description: "Either party proposes terms while the contract is negotiating. The base amount must be more than half of the freelancer's proposed rate, and milestone amounts must sum to base + additional pay + rush fee.",
       tags: ['Contract Negotiation'],
       security: [{ bearerAuth: [] }],
       parameters: [
